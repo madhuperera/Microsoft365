@@ -1,0 +1,15 @@
+// First Define a List of Operations to Monitor
+let MonitoredOperations = dynamic(["Admin registered security info","Admin deleted security info"]);
+// Filter Further by Result Description
+let MonitoredResults = dynamic(["Admin registered temporary access pass method for user","Admin deleted phone method for user"]);
+// Define how far you want to check the logs for
+let NumOfDays = 7d;
+AuditLogs
+| where OperationName in (MonitoredOperations) and ResultDescription in (MonitoredResults)
+| where TimeGenerated > ago(NumOfDays)
+| extend AdministratorID = tostring(parse_json(tostring(InitiatedBy.user)).userPrincipalName)
+| extend AdministratorName = tostring(parse_json(tostring(InitiatedBy.user)).displayName)
+| extend AdministratorIPAddress = tostring(parse_json(tostring(InitiatedBy.user)).ipAddress)
+| extend AffectedUserAccountId = tostring(parse_json(tostring(TargetResources[0])).userPrincipalName)
+| extend AffectedUserAccountName = tostring(parse_json(tostring(TargetResources[0])).displayName)
+| project TimeGenerated, OperationName, ResultDescription, Result, AdministratorID, AdministratorName, AdministratorIPAddress, AffectedUserAccountId, AffectedUserAccountName
