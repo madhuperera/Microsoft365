@@ -1,0 +1,11 @@
+// Set the Number of Days before Certificate Expires
+let NumOfDays = 30;
+// Query for finding Certificates that are expriring
+DeviceTvmCertificateInfo
+| where FriendlyName endswith ".nz"
+| extend Company = tostring(parse_json(tostring(IssuedBy.Organization)))
+| extend Timestamp = now()
+| extend ReportId = SerialNumber
+| extend DaysToExpire = datetime_diff("day",ExpirationDate,Timestamp)
+| where Timestamp < ExpirationDate and DaysToExpire < NumOfDays
+| project FriendlyName, ExpirationDate, IssueDate, Company, Timestamp, DaysToExpire, ReportId, DeviceId
