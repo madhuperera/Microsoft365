@@ -1,0 +1,9 @@
+// Set the Number of Days to investigate
+let NumOfDays = 180d;
+// Set the ASR Actions Below
+let ASRRules = dynamic(["AsrOfficeMacroWin32ApiCallsAudited","AsrOfficeMacroWin32ApiCallsBlocked"]);
+// Query for finding Certificates that are expriring
+union withsource=SourceTable DeviceProcessEvents, DeviceNetworkEvents, DeviceFileEvents, DeviceRegistryEvents, 
+    DeviceLogonEvents, DeviceImageLoadEvents, DeviceEvents
+| where ActionType in (ASRRules)
+| where Timestamp > ago(NumOfDays)
