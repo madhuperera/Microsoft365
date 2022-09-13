@@ -1,0 +1,14 @@
+// Set the Number of Days to investigate
+let NumOfDays = 180d;
+// Set the Registry Locations Below
+let RegistryLocations = dynamic([@"SOFTWARE\Microsoft\Office\16.0\Excel\Security\Trusted Documents\TrustRecords",
+@"SOFTWARE\Microsoft\Office\16.0\Word\Security\Trusted Documents\TrustRecords",
+@"SOFTWARE\Microsoft\Office\16.0\PowerPoint\Security\Trusted Documents\TrustRecords",
+@"SOFTWARE\Microsoft\Office\16.0\Visio\Security\Trusted Documents\TrustRecords"]);
+// Set the File Extensions Below
+let FileExtensions = dynamic(["xlsm","xlm","xlam","xltm","xla","docm","dotm","ppam","pptm","potm","ppsm","sldm","ACCDE","ACCDR","ACCDA","MDE","MAM","MAD"]);
+// Query for changes
+DeviceRegistryEvents
+| where Timestamp > ago(NumOfDays)
+| where RegistryKey has_any (RegistryLocations)
+| where RegistryValueName has_any (FileExtensions)
