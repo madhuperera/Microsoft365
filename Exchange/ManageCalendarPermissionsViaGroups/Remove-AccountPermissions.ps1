@@ -13,6 +13,6 @@ $AllMembers = Get-DistributionGroupMember -Identity $DistributionGroupName `
 foreach ($Member in $AllMembers)
 {
     Write-Host "$($Member.DisplayName)" -ForegroundColor Green
-    Remove-MailboxFolderPermission -Identity $($Member.PrimarySmtpAddress + ":\Calendar") -User $OldAccount -AccessRights $Permissions -Confirm:$false
+    Remove-MailboxFolderPermission -Identity $($Member.PrimarySmtpAddress + ":\Calendar") -User $OldAccount -Confirm:$false
     Write-Host "`n"
 }
