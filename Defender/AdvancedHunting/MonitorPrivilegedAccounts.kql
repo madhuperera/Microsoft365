@@ -1,0 +1,9 @@
+let ReportTime = 1d;
+let MonitoredGroups = dynamic(["Domain Admins","Enterprise Admins"]);
+IdentityDirectoryEvents
+| where Timestamp > ago(ReportTime)
+| where ActionType == @"Group Membership changed"
+| where AdditionalFields has "TO.GROUP"
+| extend PrivilegedGroup = tostring(parse_json(AdditionalFields)["TO.GROUP"])
+| where PrivilegedGroup in~ (MonitoredGroups)
+| project TargetAccountDisplayName, TargetAccountUpn, ActionType, PrivilegedGroup
