@@ -6,4 +6,4 @@ IdentityDirectoryEvents
 | where AdditionalFields has "TO.GROUP"
 | extend PrivilegedGroup = tostring(parse_json(AdditionalFields)["TO.GROUP"])
 | where PrivilegedGroup in~ (MonitoredGroups)
-| project TargetAccountDisplayName, TargetAccountUpn, ActionType, PrivilegedGroup
+| project Timestamp, TargetAccountDisplayName, TargetAccountUpn, ActionType, PrivilegedGroup, ReportId
