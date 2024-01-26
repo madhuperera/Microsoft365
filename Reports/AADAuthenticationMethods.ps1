@@ -25,10 +25,10 @@ foreach ($Member in $AllUsers)
 		{
 			$DeviceName = $Method.additionalProperties.displayName
 			$RegisteredDate = $Method.additionalProperties.createdDateTime
-									Write-Host "Found on $DeviceName"
+			Write-Host "Found on $DeviceName"
 	
 			$OBJ = New-Object PSObject
-			$OBJ | Add-Member -MemberType NoteProperty -Name "STaffDisplayName" -Value $MemberName
+			$OBJ | Add-Member -MemberType NoteProperty -Name "StaffDisplayName" -Value $MemberName
 			$OBJ | Add-Member -MemberType NoteProperty -Name "DeviceName" -Value $DeviceName
 			$OBJ | Add-Member -MemberType NoteProperty -Name "RegisteredDate" -Value $RegisteredDate
 	
