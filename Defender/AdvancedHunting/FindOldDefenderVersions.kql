@@ -1,0 +1,18 @@
+// Please change ReportPeriod and CurrentPlatformVersion
+let ReportPeriod = 1d;
+let CurrentPlatformVersion = parse_version("4.18.23110.3"); // Change me to the latest supported version in the environment
+// Getting a list of Devices with older versions in the ReportPeriod
+let LastDeviceProcessEvent = DeviceProcessEvents
+| where InitiatingProcessFileName =~ "MsMpEng.exe"
+| where Timestamp > ago(ReportPeriod)
+| where parse_version(InitiatingProcessVersionInfoProductVersion) < CurrentPlatformVersion
+| summarize LastContact=max(Timestamp) by DeviceId, DeviceName, InitiatingProcessFileName, InitiatingProcessVersionInfoProductVersion;
+// Checking these devices first contact date within last 30 Days
+let FirstDeviceProcessEvent = DeviceProcessEvents
+| where Timestamp > ago(30d)
+| join kind=inner (LastDeviceProcessEvent | project DeviceId) on DeviceId
+| summarize FirstContact = min(Timestamp) by DeviceId, DeviceName;
+// Joining the table
+LastDeviceProcessEvent
+| join kind=inner (FirstDeviceProcessEvent) on DeviceId, DeviceName
+| project DeviceId, DeviceName, InitiatingProcessFileName, InitiatingProcessVersionInfoProductVersion, LastContact, FirstContact
