@@ -6,7 +6,7 @@ param
     [String] $Permissions
 )
 
-$AllMembers = Get-Mailbox | Where-Object {$_.RecipientTypeDetails -eq "UserMailbox"}`
+$AllMembers = Get-Mailbox | Where-Object {$_.RecipientTypeDetails -eq "UserMailbox" -and $_.PrimarySmtpAddress -ne $StaffMemberPrimarySmtpAddress}`
     | Select-Object DisplayName, PrimarySmtpAddress `
     | Sort-Object DisplayName
 
