@@ -41,7 +41,7 @@ Connect-MgGraph -Scopes UserAuthenticationMethod.Read.All, Directory.Read.All, U
 # Select-MgProfile Beta
 
 Write-Host "Finding licensed Azure AD accounts"
-[array]$Users = Get-MgUser -Filter "assignedLicenses/`$count ne 0 and userType eq 'Member'" -ConsistencyLevel eventual -CountVariable Records -top 3
+[array]$Users = Get-MgUser -Filter "assignedLicenses/`$count ne 0 and userType eq 'Member'" -ConsistencyLevel eventual -CountVariable Records -All
 If (!($Users)) { Write-Host "No licensed users found in Azure AD... exiting!"; break }
 
 $i = 0
