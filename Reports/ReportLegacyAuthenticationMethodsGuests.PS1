@@ -1,14 +1,14 @@
 <#
 .SYNOPSIS
-  Generates a report of authentication methods used by licensed Azure AD (Microsoft 365) accounts.
+  Generates a report of authentication methods used by Azure AD Guest accounts.
 
 .DESCRIPTION
-  This script connects to Microsoft Graph using the required scopes and retrieves all licensed Azure AD user accounts.
-  For each user, it enumerates their registered authentication methods, classifies them as Modern or Legacy, and compiles a report.
+  This script connects to Microsoft Graph using the required scopes and retrieves all Azure AD Guest user accounts.
+  For each guest user, it enumerates their registered authentication methods, classifies them as Modern or Legacy, and compiles a report.
   The report is displayed in an Out-GridView window and exported as a CSV file.
 
 .PARAMETER None
-  The script does not accept parameters. It operates on all licensed Azure AD users.
+  The script does not accept parameters. It operates on all Azure AD Guest users.
 
 .NOTES
   Author: Adapted from Tony Redmond's Office365itpros scripts.
@@ -25,24 +25,24 @@
   - Exports results to 'ReportAuthenticationMethods.csv' in the current directory.
 
 .EXAMPLE
-  .\ReportLegacyAuthenticationMethods.PS1
+  .\ReportLegacyAuthenticationMethodsGuests.PS1
 
-  Connects to Microsoft Graph, processes licensed users, and exports their authentication methods.
+  Connects to Microsoft Graph, processes guest users, and exports their authentication methods.
 
 .DISCLAIMER
   Do not use this script in production until you have validated it in a non-production environment.
   Review and adapt the code to meet your organization's requirements.
 #>
-# ReportAuthenticationMethods.PS1
+# ReportLegacyAuthenticationMethodsGuests.PS1
 # https://github.com/12Knocksinna/Office365itpros/blob/master/ReportAuthenticationMethods.PS1
-# A report of the authentication methods for Azure AD licensed accounts
+# A report of the authentication methods for Azure AD Guest accounts
 
 Connect-MgGraph -Scopes UserAuthenticationMethod.Read.All, Directory.Read.All, User.Read.All
 # Select-MgProfile Beta
 
-Write-Host "Finding licensed Azure AD accounts"
-[array]$Users = Get-MgUser -Filter "assignedLicenses/`$count ne 0 and userType eq 'Member'" -ConsistencyLevel eventual -CountVariable Records -All
-If (!($Users)) { Write-Host "No licensed users found in Azure AD... exiting!"; break }
+Write-Host "Finding Azure AD Guest accounts"
+[array]$Users = Get-MgUser -Filter "userType eq 'Guest'" -ConsistencyLevel eventual -CountVariable Records -All
+If (!($Users)) { Write-Host "No guest users found in Azure AD... exiting!"; break }
 
 $i = 0
 $Report = [System.Collections.Generic.List[Object]]::new()
@@ -110,7 +110,7 @@ $Report | Group-Object Method | Sort-Object Count -Descending | Select Name, Cou
 
 $Report | Out-GridView
 
-$Report | Export-Csv -Path ".\ReportAuthenticationMethods.csv" -NoTypeInformation -Encoding UTF8
+$Report | Export-Csv -Path ".\ReportAuthenticationMethodsGuests.csv" -NoTypeInformation -Encoding UTF8
 
 # An example script used to illustrate a concept. More information about the topic can be found in the Office 365 for IT Pros eBook https://gum.co/O365IT/
 # and/or a relevant article on https://office365itpros.com or https://www.practical365.com. See our post about the Office 365 for IT Pros repository 

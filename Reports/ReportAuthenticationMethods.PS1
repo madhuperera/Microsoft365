@@ -54,6 +54,7 @@ ForEach ($User in $Users) {
   
   $ReportLine   = [PSCustomObject] @{ 
      User   = $User.DisplayName
+     UPN    = $User.UserPrincipalName
      Method = $DisplayMethod
      Id     = $AuthMethod.Id
      P1     = $P1
