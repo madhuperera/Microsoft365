@@ -1,14 +1,15 @@
 <#
 .SYNOPSIS
-  Generates a report of authentication methods used by licensed Azure AD (Microsoft 365) accounts.
+  Generates a report of authentication methods used by Azure AD (Microsoft 365) accounts.
 
 .DESCRIPTION
-  This script connects to Microsoft Graph using the required scopes and retrieves all licensed Azure AD user accounts.
+  This script connects to Microsoft Graph using the required scopes and retrieves all Azure AD user accounts.
   For each user, it enumerates their registered authentication methods, classifies them as Modern or Legacy, and compiles a report.
+  The report includes license status, on-premises sync status, and account enabled status.
   The report is displayed in an Out-GridView window and exported as a CSV file.
 
 .PARAMETER None
-  The script does not accept parameters. It operates on all licensed Azure AD users.
+  The script does not accept parameters. It operates on all Azure AD users.
 
 .NOTES
   Author: Adapted from Tony Redmond's Office365itpros scripts.
@@ -27,7 +28,7 @@
 .EXAMPLE
   .\ReportLegacyAuthenticationMethods.PS1
 
-  Connects to Microsoft Graph, processes licensed users, and exports their authentication methods.
+  Connects to Microsoft Graph, processes all users, and exports their authentication methods with license and sync status.
 
 .DISCLAIMER
   Do not use this script in production until you have validated it in a non-production environment.
@@ -40,9 +41,9 @@
 Connect-MgGraph -Scopes UserAuthenticationMethod.Read.All, Directory.Read.All, User.Read.All
 # Select-MgProfile Beta
 
-Write-Host "Finding licensed Azure AD accounts"
-[array]$Users = Get-MgUser -Filter "assignedLicenses/`$count ne 0 and userType eq 'Member'" -ConsistencyLevel eventual -CountVariable Records -All
-If (!($Users)) { Write-Host "No licensed users found in Azure AD... exiting!"; break }
+Write-Host "Finding Azure AD accounts"
+[array]$Users = Get-MgUser -Filter "userType eq 'Member'" -ConsistencyLevel eventual -CountVariable Records -All -Property Id, DisplayName, UserPrincipalName, AccountEnabled, AssignedLicenses, OnPremisesSyncEnabled
+If (!($Users)) { Write-Host "No users found in Azure AD... exiting!"; break }
 
 $i = 0
 $Report = [System.Collections.Generic.List[Object]]::new()
@@ -79,8 +80,16 @@ if ($ModernTypes.Count -gt 0)
 } 
 elseif ($LegacyTypes.Count -gt 0) 
 {
-  $DisplayMethod = "Legacy Authentication"
   $P1 = $LegacyTypes -join ", "
+  # Check if only Password method exists (No MFA)
+  if ($LegacyTypes.Count -eq 1 -and $LegacyTypes[0] -eq "Password") 
+  {
+    $DisplayMethod = "No MFA"
+  }
+  else
+  {
+    $DisplayMethod = "Legacy Authentication"
+  }
 } 
 else 
 {
@@ -88,13 +97,24 @@ else
   $P1 = ""
 }
 
+# Determine license status
+$IsLicensed = if ($User.AssignedLicenses.Count -gt 0) { "Yes" } else { "No" }
+
+# Determine on-premises sync status
+$IsSynced = if ($User.OnPremisesSyncEnabled -eq $true) { "Yes" } elseif ($User.OnPremisesSyncEnabled -eq $false) { "No" } else { "Cloud-Only" }
+
+# Determine account enabled status
+$IsEnabled = if ($User.AccountEnabled -eq $true) { "Yes" } else { "No" }
+
 $ReportLine = [PSCustomObject]@{
   User   = $User.DisplayName
   UPN    = $User.UserPrincipalName
   Type   = $DisplayMethod
-  Id     = $User.Id
   Methods= $P1
-  UserId = $User.Id
+  Licensed = $IsLicensed
+  OnPremisesSynced = $IsSynced
+  AccountEnabled = $IsEnabled
+  Id     = $User.Id
 }
 $Report.Add($ReportLine)
 
