@@ -37,7 +37,7 @@
   - [Reports — DNS and email security](#reports--dns-and-email-security)
   - [Exchange — Calendar permission management](#exchange--calendar-permission-management)
   - [Exchange — Transport rules](#exchange--transport-rules)
-  - [Configurations — Anti-malware policy](#configurations--anti-malware-policy)
+  - [Exchange — Anti-malware policy](#exchange--anti-malware-policy)
   - [Incident response](#incident-response)
 - [Safe usage notes](#safe-usage-notes)
 - [Naming conventions and repository standards](#naming-conventions-and-repository-standards)
@@ -66,10 +66,9 @@ Scripts cover the following Microsoft 365 workloads:
 Microsoft365/
 ├── Reports/                     All reporting scripts across all workloads
 ├── Exchange/
+│   ├── AntiMalwarePolicy/       Anti-malware policy reference files
 │   ├── ManageCalendarPermissionsViaGroups/   Bulk calendar permission scripts
 │   └── TransportRules/          Transport rule supporting assets (HTML templates)
-├── Configurations/
-│   └── Anti_MalwarePolicy/      Anti-malware policy reference files
 ├── Incident_Response/           Incident response and investigation scripts
 └── README.md
 ```
@@ -80,9 +79,9 @@ Microsoft365/
 |--------|---------|
 | `Reports/` | All reporting scripts for every Microsoft 365 workload. Scripts produce CSV or HTML output suitable for review or client delivery. |
 | `Exchange/` | Exchange Online operational scripts and supporting assets. Workload-specific non-reporting tooling lives here. |
+| `Exchange/AntiMalwarePolicy/` | Reference files for Microsoft Defender anti-malware policy configuration, including a curated list of file types to block. |
 | `Exchange/ManageCalendarPermissionsViaGroups/` | Scripts for bulk management of mailbox calendar permissions via distribution group membership. |
 | `Exchange/TransportRules/` | HTML templates and assets used in Exchange Online transport rules. |
-| `Configurations/Anti_MalwarePolicy/` | Reference files for Microsoft Defender anti-malware policy configuration, including a curated list of file types to block. |
 | `Incident_Response/` | Reactive investigation scripts for use during a security incident. Scripts query audit logs and sign-in data to support analysis. |
 
 ---
@@ -235,13 +234,13 @@ Assets are located in [`Exchange/TransportRules/`](Exchange/TransportRules/).
 
 ---
 
-### Configurations — Anti-malware policy
+### Exchange — Anti-malware policy
 
-Assets are located in [`Configurations/Anti_MalwarePolicy/`](Configurations/Anti_MalwarePolicy/).
+Assets are located in [`Exchange/AntiMalwarePolicy/`](Exchange/AntiMalwarePolicy/).
 
 | File | Description |
 |------|-------------|
-| [`ListOfFileTypesToBlock.txt`](Configurations/Anti_MalwarePolicy/ListOfFileTypesToBlock.txt) | A reference list of file extensions to block in a Microsoft Defender for Office 365 anti-malware policy. |
+| [`ListOfFileTypesToBlock.txt`](Exchange/AntiMalwarePolicy/ListOfFileTypesToBlock.txt) | A reference list of file extensions to block in a Microsoft Defender for Office 365 anti-malware policy. |
 
 ---
 
@@ -293,7 +292,7 @@ Several scripts in this repository previously used older naming patterns (`AADAu
 | Reporting scripts (any workload) | `Reports/` |
 | Exchange Online action scripts | `Exchange/` |
 | Exchange Online supporting assets | `Exchange/<subfolder>/` |
-| Defender / policy configuration assets | `Configurations/<subfolder>/` |
+| Defender / policy configuration assets | `Exchange/<subfolder>/` |
 | Incident response scripts | `Incident_Response/` |
 
 Reporting scripts for all workloads must live in the single top-level `Reports/` folder. Do not create per-workload report subfolders. Use filename prefixes (such as `ReportEntraID*`, `ReportExo*`, `ReportIntune*`) to group reports within that folder.
