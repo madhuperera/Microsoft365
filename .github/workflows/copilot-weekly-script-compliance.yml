@@ -1,0 +1,107 @@
+name: Weekly Copilot Script Standards Review
+
+on:
+  schedule:
+    # Runs every Wednesday at 9:15 AM New Zealand time during NZST, 10:15 AM during NZDT.
+    # GitHub cron uses UTC.
+    - cron: "15 21 * * 2"
+
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  create-script-compliance-issue:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create weekly script compliance issue for Copilot
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_AGENT_PAT }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue create \
+            --repo "$GH_REPO" \
+            --title "Copilot Task: Weekly script standards and instruction compliance review" \
+            --body "$(cat <<'EOF'
+          ## Objective
+
+          Review all scripts in this Microsoft 365 automation repository and update them so they follow the repository instructions and conventions.
+
+          This includes script naming, report script naming, PowerShell formatting, Graph usage, comments, parameters, output handling, and any other standards defined in the repository instruction files.
+
+          ## Scope
+
+          You may update:
+
+          - PowerShell scripts
+          - KQL files
+          - JSON configuration files only if required by script standards
+          - Markdown only if script references need correction after a rename
+
+          Do not make broad functional changes unless required to align with the repository instructions.
+
+          Do not modify GitHub Actions workflows unless absolutely required. If workflow changes appear necessary, explain why in the PR before changing them.
+
+          ## Required instruction sources
+
+          You must follow all repository instruction files, especially:
+
+          - .github/copilot-instructions.md
+          - .github/instructions/*.instructions.md
+          - PowerShell-specific instruction files
+          - KQL-specific instruction files
+          - Markdown/documentation instruction files only where relevant
+          - Any naming convention guidance for report scripts
+          - Any Microsoft Graph usage guidance
+
+          ## Review requirements
+
+          For each script, check:
+
+          1. File name follows the required naming convention.
+          2. Report scripts follow the repository’s report script naming instruction.
+          3. Script-level variables follow the required naming convention.
+          4. Function-level variables follow the required naming convention.
+          5. PowerShell brace and formatting style follows repository standards.
+          6. Microsoft Graph usage follows repository guidance.
+          7. Required permissions/scopes are documented in comments where appropriate.
+          8. Output paths, report names, and log names are consistent.
+          9. Scripts do not use unsupported or incorrect Graph patterns.
+          10. Scripts do not contradict repository instructions.
+
+          ## Change approach
+
+          - Make small, safe, standards-focused changes.
+          - Preserve script intent and behaviour.
+          - Do not rewrite entire scripts unnecessarily.
+          - Do not introduce new dependencies unless clearly required.
+          - Do not change authentication flow unless the current approach conflicts with repository instructions.
+          - Where a script cannot be safely corrected, add a clear TODO comment and mention it in the PR.
+
+          ## Validation
+
+          Before completing:
+
+          - Review all relevant instruction files.
+          - Review every script in scope.
+          - Ensure modified scripts remain syntactically valid.
+          - Ensure naming changes do not break internal references.
+          - Update README.md if script names or paths are changed.
+          - Provide a clear list of changed scripts and why each was changed.
+
+          ## Pull request requirements
+
+          Create a pull request with:
+
+          - Summary of standards applied
+          - List of scripts changed
+          - Any files renamed
+          - Any Graph-related corrections made
+          - Any assumptions made
+          - Any items requiring human review
+          EOF
+          )" \
+            --assignee "@copilot"
