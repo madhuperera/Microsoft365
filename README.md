@@ -127,16 +127,16 @@ All scripts in this section are located in [`Reports/`](Reports/).
 |--------|-------------|--------------------------|
 | [`ReportAllMemberUsers.ps1`](Reports/ReportAllMemberUsers.ps1) | Reports on all member users in Entra ID including account status, last sign-in, licensing, and on-premises sync state. Supports an inactivity threshold parameter. Exports to CSV. | `Microsoft.Graph.Users`, `Microsoft.Graph.Identity.DirectoryManagement` |
 | [`ReportAllWindowsDevices.ps1`](Reports/ReportAllWindowsDevices.ps1) | Reports on all Windows devices registered in Entra ID, including registration state and last activity. Supports an inactivity threshold parameter. Exports to CSV. | `Microsoft.Graph.Identity.DirectoryManagement` |
-| [`ReportAuthenticationMethods.PS1`](Reports/ReportAuthenticationMethods.PS1) | Reports authentication methods registered for licensed Entra ID member accounts. Exports to CSV. | `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
+| [`ReportAuthenticationMethods.ps1`](Reports/ReportAuthenticationMethods.ps1) | Reports authentication methods registered for licensed Entra ID member accounts. Exports to CSV. | `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
 | [`ReportEntraIDApps.ps1`](Reports/ReportEntraIDApps.ps1) | Reports on application registrations in Entra ID, including last activity. Supports an inactivity threshold parameter. Exports to CSV. | `Microsoft.Graph.Applications`, `Microsoft.Graph.Identity.DirectoryManagement` |
 | [`ReportEntraIDRolesMemberships.ps1`](Reports/ReportEntraIDRolesMemberships.ps1) | Reports on users assigned to administrator or Global Reader directory roles, including last sign-in date. Exports to CSV and HTML. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users`, `Microsoft.Graph.Groups`, `Microsoft.Graph.Identity.DirectoryManagement` |
 | [`ReportInactiveGuestUsers.ps1`](Reports/ReportInactiveGuestUsers.ps1) | Reports on guest users who have not signed in within a configurable number of days. Supports a `Disable` mode to disable accounts after reporting. Exports to CSV. | `Microsoft.Graph.Users`, `Microsoft.Graph.Identity.DirectoryManagement` |
 | [`ReportInactiveMemberUsers.ps1`](Reports/ReportInactiveMemberUsers.ps1) | Reports on member users who have not signed in within a configurable number of days. Supports a `Disable` mode to disable accounts after reporting. Exports to CSV. | `Microsoft.Graph.Users`, `Microsoft.Graph.Identity.DirectoryManagement` |
-| [`ReportLegacyAuthenticationMethods_V1.PS1`](Reports/ReportLegacyAuthenticationMethods_V1.PS1) | Reports authentication methods for all Entra ID accounts, classifying each method as Modern or Legacy. Includes licence status and on-premises sync status. Exports to CSV. | `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
-| [`ReportLegacyAuthenticationMethodsGuests.PS1`](Reports/ReportLegacyAuthenticationMethodsGuests.PS1) | Reports authentication methods for Entra ID guest accounts, classifying each method as Modern or Legacy. Exports to CSV. | `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
-| [`UsersWithManagers.ps1`](Reports/UsersWithManagers.ps1) | Exports Entra ID users who have a manager assigned, including the manager's display name and email. Exports to CSV. | `Microsoft.Graph.Users` |
-| [`Get-NonMFAReport.ps1`](Reports/Get-NonMFAReport.ps1) | Generates a report of member users with MFA registration status, account activity, licensing, on-premises sync state, and group memberships. Exports to CSV. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Groups`, `Microsoft.Graph.Users`, `Microsoft.Graph.Reports` |
-| [`AADAuthenticationMethods.ps1`](Reports/AADAuthenticationMethods.ps1) | Reports authentication methods for all enabled Entra ID users. Earlier-generation script. Exports to CSV. *(Legacy naming — see [Naming conventions](#naming-conventions-and-repository-standards).)* | `UserAuthenticationMethod.Read.All` |
+| [`ReportLegacyAuthenticationMethods.ps1`](Reports/ReportLegacyAuthenticationMethods.ps1) | Reports authentication methods for all Entra ID accounts, classifying each method as Modern or Legacy. Includes licence status and on-premises sync status. Exports to CSV and HTML. | `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
+| [`ReportLegacyAuthenticationMethodsGuests.ps1`](Reports/ReportLegacyAuthenticationMethodsGuests.ps1) | Reports authentication methods for Entra ID guest accounts, classifying each method as Modern or Legacy. Exports to CSV. | `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
+| [`ReportUsersWithManagers.ps1`](Reports/ReportUsersWithManagers.ps1) | Exports Entra ID users who have a manager assigned, including the manager's display name and email. Exports to CSV. | `Microsoft.Graph.Users` |
+| [`ReportNonMFA.ps1`](Reports/ReportNonMFA.ps1) | Generates a report of member users with MFA registration status, account activity, licensing, on-premises sync state, and group memberships. Exports to CSV and HTML. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Groups`, `Microsoft.Graph.Users`, `Microsoft.Graph.Reports` |
+| [`ReportAADAuthenticationMethods.ps1`](Reports/ReportAADAuthenticationMethods.ps1) | Reports Windows Hello for Business authentication method registrations for enabled Entra ID users. Exports to CSV. | `UserAuthenticationMethod.Read.All` |
 
 </details>
 
@@ -151,9 +151,9 @@ All scripts in this section are located in [`Reports/`](Reports/).
 
 | Script | Description | Key permissions / modules |
 |--------|-------------|--------------------------|
-| [`MailboxQuota.ps1`](Reports/MailboxQuota.ps1) | Reports on mailbox quota usage for all user mailboxes. Accepts a warning threshold percentage parameter. Exports to CSV. *(Legacy naming — see [Naming conventions](#naming-conventions-and-repository-standards).)* | `ExchangeOnlineManagement` |
-| [`Report_CalendarPermissions.ps1`](Reports/Report_CalendarPermissions.ps1) | Reports on calendar permissions for all members of a specified distribution group. Outputs to the console. *(Legacy naming — see [Naming conventions](#naming-conventions-and-repository-standards).)* | `ExchangeOnlineManagement` |
-| [`UnusedExoMailboxes.PS1`](Reports/UnusedExoMailboxes.PS1) | Finds and reports on Exchange Online mailboxes that have not been used within a threshold period. Exports to CSV. *(Legacy naming — see [Naming conventions](#naming-conventions-and-repository-standards).)* | `ExchangeOnlineManagement`, `Microsoft.Graph` |
+| [`ReportMailboxQuota.ps1`](Reports/ReportMailboxQuota.ps1) | Reports on mailbox quota usage for all user mailboxes. Accepts a warning threshold percentage parameter. Exports to CSV. | `ExchangeOnlineManagement` |
+| [`ReportCalendarPermissions.ps1`](Reports/ReportCalendarPermissions.ps1) | Reports on calendar permissions for all members of a specified distribution group. Outputs to the console. | `ExchangeOnlineManagement` |
+| [`ReportUnusedExoMailboxes.ps1`](Reports/ReportUnusedExoMailboxes.ps1) | Finds and reports on Exchange Online mailboxes that have not been used within a threshold period. Exports to CSV. | `ExchangeOnlineManagement`, `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users` |
 
 </details>
 
@@ -198,9 +198,9 @@ All scripts in this section are located in [`Reports/`](Reports/).
 
 | Script | Description | Key permissions / modules |
 |--------|-------------|--------------------------|
-| [`VerifyDkimRecords.ps1`](Reports/VerifyDkimRecords.ps1) | Queries DKIM DNS records for all accepted domains configured in Exchange Online. Uses the Cloudflare DNS resolver (1.1.1.1). Outputs results to the console. | `ExchangeOnlineManagement` |
-| [`VerifyDmarcRecords.ps1`](Reports/VerifyDmarcRecords.ps1) | Queries DMARC DNS records for all accepted domains configured in Exchange Online. Uses the Cloudflare DNS resolver (1.1.1.1). Outputs results to the console. | `ExchangeOnlineManagement` |
-| [`VerifySPFRecords.ps1`](Reports/VerifySPFRecords.ps1) | Queries SPF DNS records for all accepted domains configured in Exchange Online. Uses the Cloudflare DNS resolver (1.1.1.1). Outputs results to the console. | `ExchangeOnlineManagement` |
+| [`ReportDkimRecords.ps1`](Reports/ReportDkimRecords.ps1) | Queries DKIM DNS records for all accepted domains configured in Exchange Online. Uses the Cloudflare DNS resolver (1.1.1.1). Outputs results to the console. | `ExchangeOnlineManagement` |
+| [`ReportDmarcRecords.ps1`](Reports/ReportDmarcRecords.ps1) | Queries DMARC DNS records for all accepted domains configured in Exchange Online. Uses the Cloudflare DNS resolver (1.1.1.1). Outputs results to the console. | `ExchangeOnlineManagement` |
+| [`ReportSPFRecords.ps1`](Reports/ReportSPFRecords.ps1) | Queries SPF DNS records for all accepted domains configured in Exchange Online. Uses the Cloudflare DNS resolver (1.1.1.1). Outputs results to the console. | `ExchangeOnlineManagement` |
 
 </details>
 
@@ -284,7 +284,7 @@ These scripts are intended for use during active security investigations. They r
 | `Report<Subject>.ps1` | Reporting scripts that produce a CSV, HTML, or console summary | `ReportInactiveGuestUsers.ps1` |
 | `Verb-Noun.ps1` | Action scripts using approved PowerShell verbs | `Get-AuditLogsByIP.ps1`, `Add-AccountToCalendarPermissions.ps1` |
 
-Several scripts in this repository use older naming patterns (`AADAuthenticationMethods.ps1`, `MailboxQuota.ps1`, `UnusedExoMailboxes.PS1`, `Report_CalendarPermissions.ps1`, `VerifyDkimRecords.ps1`, `VerifyDmarcRecords.ps1`, `VerifySPFRecords.ps1`, `Get-NonMFAReport.ps1`). These names are preserved to maintain git history and any external references. Renames are tracked as dedicated changes.
+Several scripts in this repository previously used older naming patterns (`AADAuthenticationMethods.ps1`, `MailboxQuota.ps1`, `UnusedExoMailboxes.PS1`, `Report_CalendarPermissions.ps1`, `VerifyDkimRecords.ps1`, `VerifyDmarcRecords.ps1`, `VerifySPFRecords.ps1`, `Get-NonMFAReport.ps1`). These have been renamed in a dedicated rename pass to align with the `Report<Subject>.ps1` convention. See git history for the old names.
 
 ### Folder placement rules
 

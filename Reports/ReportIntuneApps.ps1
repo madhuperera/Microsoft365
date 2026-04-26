@@ -67,9 +67,9 @@ try {
 
 	# --- Connect to Graph ---
 	$context = Get-MgContext
-	$requiredScopes = @('DeviceManagementApps.Read.All','Group.Read.All','Organization.Read.All')
+	$S_RequiredGraphScopes = @('DeviceManagementApps.Read.All','Group.Read.All','Organization.Read.All')
 	if (-not $context) {
-		Connect-MgGraph -Scopes $requiredScopes -NoWelcome -ErrorAction Stop | Out-Null
+		Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
 		$context = Get-MgContext
 	}
 

@@ -1,4 +1,31 @@
-# UnusedExoMailboxes.PS1
+#Requires -Modules ExchangeOnlineManagement, Microsoft.Graph.Authentication, Microsoft.Graph.Users
+
+<#
+.SYNOPSIS
+    Finds and reports Exchange Online mailboxes that have not been actively used.
+
+.DESCRIPTION
+    Connects to both Exchange Online and Microsoft Graph to identify user mailboxes
+    that show no recent activity. Reports mailbox statistics, last logon times from
+    Exchange Online diagnostic logs, and last Entra ID sign-in information.
+    Exports results to CSV.
+
+.PARAMETER ReportInExcel
+    When set to $true, attempts to export to Excel using the ImportExcel module.
+    Falls back to CSV if the module is not available.
+
+.PARAMETER RequiredGridView
+    When set to $true, displays the report in an Out-GridView window.
+
+.EXAMPLE
+    .\ReportUnusedExoMailboxes.ps1
+
+.EXAMPLE
+    .\ReportUnusedExoMailboxes.ps1 -RequiredGridView $true
+#>
+
+[CmdletBinding()]
+# ReportUnusedExoMailboxes.ps1
 # Modified from: https://github.com/12Knocksinna/Office365itpros/blob/master/ReportUnusedExoMailboxes.PS1
 # Original script by 12Knocksinna - adapted for custom requirements
 # Find and report unused Exchange Online mailboxes
@@ -6,20 +33,32 @@
 
 param
 (
+    [Parameter(Mandatory = $false)]
     [bool]$ReportInExcel = $false,
+
+    [Parameter(Mandatory = $false)]
     [bool]$RequiredGridView = $false
 )
 
+$ErrorActionPreference = 'Stop'
+
+$S_RequiredGraphScopes = @(
+    'User.Read.All'
+    'AuditLog.Read.All'
+)
+
+$S_GraphRequestDelayMilliseconds = 5
+
 $ReportNameTitle = "Unused Mailboxes Report"
 $ReportWorksheetName = "UnusedMailboxes"
-$ReportOutputName = (Get-Date -Format "yyyy-MM-dd HHmm") + "_" + "UnusedMailboxesReport"
+$ReportOutputName = (Get-Date -Format "yyyy-MM-dd HHmm") + "_" + "ReportUnusedExoMailboxes"
 
 # Function to convert dates to New Zealand time
 
 try
 {
   # Connect to the Microsoft Graph PowerShell SDK so that we can read sign in data
-  Connect-MgGraph -Scopes User.Read.All, AuditLog.Read.All -NoWelcome -ErrorAction Stop
+  Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop
 }
 catch
 {
@@ -89,7 +128,7 @@ Write-Host "Looking for User Mailboxes..."
     # Get last Sign in from Entra ID sign in logs
     $LastUserSignIn = $null
     $LastUserSignIn = (Get-MgAuditLogSignIn -Filter "UserId eq '$($M.ExternalDirectoryObjectId)'" -Top 1).CreatedDateTime
-    Start-Sleep -Milliseconds 250 # To avoid throttling from Graph
+    Start-Sleep -Milliseconds $S_GraphRequestDelayMilliseconds # To avoid throttling from Graph
     If ($LastUserSignIn) 
     {
        $LastUserSignInDate = Get-Date($LastUserSignIn) -format g 

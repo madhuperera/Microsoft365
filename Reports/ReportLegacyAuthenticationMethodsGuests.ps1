@@ -25,7 +25,7 @@
   - Exports results to 'ReportAuthenticationMethods.csv' in the current directory.
 
 .EXAMPLE
-  .\ReportLegacyAuthenticationMethodsGuests.PS1
+  .\ReportLegacyAuthenticationMethodsGuests.ps1
 
   Connects to Microsoft Graph, processes guest users, and exports their authentication methods.
 
@@ -37,8 +37,13 @@
 # https://github.com/12Knocksinna/Office365itpros/blob/master/ReportAuthenticationMethods.PS1
 # A report of the authentication methods for Azure AD Guest accounts
 
+$S_RequiredGraphScopes = @(
+    'UserAuthenticationMethod.Read.All'
+    'Directory.Read.All'
+    'User.Read.All'
+)
+
 Connect-MgGraph -Scopes UserAuthenticationMethod.Read.All, Directory.Read.All, User.Read.All
-# Select-MgProfile Beta
 
 Write-Host "Finding Azure AD Guest accounts"
 [array]$Users = Get-MgUser -Filter "userType eq 'Guest'" -ConsistencyLevel eventual -CountVariable Records -All

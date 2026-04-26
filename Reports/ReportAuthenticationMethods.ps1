@@ -2,8 +2,13 @@
 # https://github.com/12Knocksinna/Office365itpros/blob/master/ReportAuthenticationMethods.PS1
 # A report of the authentication methods for Azure AD licensed accounts
 
+$S_RequiredGraphScopes = @(
+    'UserAuthenticationMethod.Read.All'
+    'Directory.Read.All'
+    'User.Read.All'
+)
+
 Connect-MgGraph -Scopes UserAuthenticationMethod.Read.All, Directory.Read.All, User.Read.All
-Select-MgProfile Beta
 
 Write-Host "Finding licensed Azure AD accounts"
 [array]$Users = Get-MgUser -Filter "assignedLicenses/`$count ne 0 and userType eq 'Member'" -ConsistencyLevel eventual -CountVariable Records -All
