@@ -1,4 +1,19 @@
-$DNSServerToUse = "1.1.1.1"
+#Requires -Modules ExchangeOnlineManagement
+
+<#
+.SYNOPSIS
+    Reports on DKIM DNS record configuration for all accepted domains in Exchange Online.
+
+.DESCRIPTION
+    Retrieves DKIM signing configuration from Exchange Online and verifies DKIM DNS records
+    for all non-onmicrosoft.com domains using the specified DNS resolver.
+    Outputs results to the console.
+
+.EXAMPLE
+    .\ReportDkimRecords.ps1
+#>
+
+$S_DNSServerToUse = "1.1.1.1"
 $DkimConfiguration = Get-DkimSigningConfig | Where-Object {$_.Domain -notlike "*.onmicrosoft.com"}
 
 foreach ($DkimEntry in $DkimConfiguration)
@@ -13,11 +28,11 @@ foreach ($DkimEntry in $DkimConfiguration)
         {
             # Selector 1
             $Selector1DNSName = "selector1._domainkey.$DomainName"
-            $Result1 = Resolve-DnsName -Type CNAME -Server $DNSServerToUse -Name $Selector1DNSName -ErrorAction SilentlyContinue
+            $Result1 = Resolve-DnsName -Type CNAME -Server $S_DNSServerToUse -Name $Selector1DNSName -ErrorAction SilentlyContinue
             if ($Result1)
             {
                 $Selector1DnsHostName = $Result1.NameHost
-                if (Resolve-DnsName -Type CNAME -Server $DNSServerToUse -Name $Selector1DnsHostName -ErrorAction SilentlyContinue)
+                if (Resolve-DnsName -Type CNAME -Server $S_DNSServerToUse -Name $Selector1DnsHostName -ErrorAction SilentlyContinue)
                 {
                     Write-Output "Successfully verified Selector 1 for $DomainName"
                 }
@@ -28,16 +43,16 @@ foreach ($DkimEntry in $DkimConfiguration)
             }
             else
             {
-                Write-Output "Error validating DNS for $Selector1DNSName. Please either update $DNSServerToUse or check your DNS Provider"
+                Write-Output "Error validating DNS for $Selector1DNSName. Please either update $S_DNSServerToUse or check your DNS Provider"
             }
 
             # Selector 2
             $Selector2DNSName = "selector2._domainkey.$DomainName"
-            $Result2 = Resolve-DnsName -Type CNAME -Server $DNSServerToUse -Name $Selector2DNSName -ErrorAction SilentlyContinue
+            $Result2 = Resolve-DnsName -Type CNAME -Server $S_DNSServerToUse -Name $Selector2DNSName -ErrorAction SilentlyContinue
             if ($Result2)
             {
                 $Selector2DnsHostName = $Result2.NameHost
-                if (Resolve-DnsName -Type CNAME -Server $DNSServerToUse -Name $Selector2DnsHostName -ErrorAction SilentlyContinue)
+                if (Resolve-DnsName -Type CNAME -Server $S_DNSServerToUse -Name $Selector2DnsHostName -ErrorAction SilentlyContinue)
                 {
                     Write-Output "Successfully verified Selector 2 for $DomainName"
                 }
@@ -48,7 +63,7 @@ foreach ($DkimEntry in $DkimConfiguration)
             }
             else
             {
-                Write-Output "Error validating DNS for $Selector1DNSName. Please either update $DNSServerToUse or check your DNS Provider"
+                Write-Output "Error validating DNS for $Selector1DNSName. Please either update $S_DNSServerToUse or check your DNS Provider"
             }
 
             

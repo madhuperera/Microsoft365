@@ -41,7 +41,7 @@ if (-not $OutputPath) {
 $htmlPath = [System.IO.Path]::ChangeExtension($OutputPath, '.html')
 
 # ── Connect to Microsoft Graph ─────────────────────────────────────────────────
-$requiredScopes = @(
+$S_RequiredGraphScopes = @(
     'Organization.Read.All'
 )
 
@@ -58,7 +58,7 @@ if ($existingContext) {
         Write-Host "Disconnecting existing session..." -ForegroundColor Cyan
         Disconnect-MgGraph | Out-Null
         Write-Host "Reconnecting with required scopes..." -ForegroundColor Cyan
-        Connect-MgGraph -Scopes $requiredScopes -NoWelcome
+        Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
         Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
     }
     else {
@@ -67,7 +67,7 @@ if ($existingContext) {
 }
 else {
     Write-Host "Connecting to Microsoft Graph..." -ForegroundColor Cyan
-    Connect-MgGraph -Scopes $requiredScopes -NoWelcome
+    Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
     Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
 }
 

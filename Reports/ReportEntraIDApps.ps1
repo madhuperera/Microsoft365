@@ -10,6 +10,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$S_RequiredGraphScopes = @(
+	'Application.Read.All'
+	'AuditLog.Read.All'
+	'Organization.Read.All'
+)
+
 try {
 	# --- Module check ---
 	$requiredModules = @('Microsoft.Graph.Applications', 'Microsoft.Graph.Identity.DirectoryManagement')
@@ -24,7 +30,7 @@ try {
 	# --- Connect to Graph ---
 	$context = Get-MgContext
 	if (-not $context) {
-		Connect-MgGraph -Scopes "Application.Read.All", "AuditLog.Read.All", "Organization.Read.All" -ErrorAction Stop | Out-Null
+		Connect-MgGraph -Scopes $S_RequiredGraphScopes -ErrorAction Stop | Out-Null
 		$context = Get-MgContext
 	}
 

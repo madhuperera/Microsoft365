@@ -1,3 +1,29 @@
+#Requires -Modules ExchangeOnlineManagement
+
+<#
+.SYNOPSIS
+    Reports on mailbox quota usage for all user mailboxes in Exchange Online.
+
+.DESCRIPTION
+    Connects to Exchange Online and retrieves mailbox quota statistics for all user mailboxes.
+    Calculates percentage of quota used and flags mailboxes that exceed the warning threshold.
+    Exports results to CSV.
+
+.PARAMETER Threshold
+    Percentage of quota usage to use as the warning level. Defaults to 85.
+
+.PARAMETER ReportInExcel
+    When set to $true, attempts to export to Excel using the ImportExcel module.
+    Falls back to CSV if the module is not available.
+
+.EXAMPLE
+    .\ReportMailboxQuota.ps1
+
+.EXAMPLE
+    .\ReportMailboxQuota.ps1 -Threshold 90
+#>
+
+[CmdletBinding()]
 # Set threshold % of quota to use as warning level
 param
 (
@@ -5,9 +31,11 @@ param
     [bool]$ReportInExcel = $false
 )
 
+$ErrorActionPreference = 'Stop'
+
 $ReportNameTitle = "Mailbox Quota Report"
 $ReportWorksheetName = "MailboxQuota"
-$ReportOutputName = (Get-Date -Format "yyyy-MM-dd HHmm") + "_" + "MailboxQuotaReport"
+$ReportOutputName = (Get-Date -Format "yyyy-MM-dd HHmm") + "_" + "ReportMailboxQuota"
 
 Write-Host "Finding mailboxes..." 
 [array]$Mbx = Get-ExoMailbox -RecipientTypeDetails UserMailbox -PropertySet Quota -Properties DisplayName -ResultSize Unlimited 

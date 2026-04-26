@@ -36,6 +36,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$S_RequiredGraphScopes = @(
+	'User.Read.All'
+	'AuditLog.Read.All'
+	'Organization.Read.All'
+)
+
 try {
 	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Users)) {
 		throw "Microsoft.Graph.Users module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
@@ -45,7 +51,7 @@ try {
 
 	$context = Get-MgContext
 	if (-not $context) {
-		Connect-MgGraph -Scopes "User.Read.All", "AuditLog.Read.All", "Organization.Read.All" -ErrorAction Stop | Out-Null
+		Connect-MgGraph -Scopes $S_RequiredGraphScopes -ErrorAction Stop | Out-Null
 		$context = Get-MgContext
 	}
 

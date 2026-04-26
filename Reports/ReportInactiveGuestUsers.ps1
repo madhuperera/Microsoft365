@@ -17,6 +17,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Scopes required for ReportOnly mode. Disable mode additionally requires User.ReadWrite.All.
+$S_RequiredGraphScopes = @(
+	'User.Read.All'
+	'AuditLog.Read.All'
+)
+
 try {
 	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Users)) {
 		throw "Microsoft.Graph.Users module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
@@ -26,7 +32,7 @@ try {
 
 	$context = Get-MgContext
 	if (-not $context) {
-		$scopes = if ($Mode -eq "Disable") { "User.ReadWrite.All", "AuditLog.Read.All" } else { "User.Read.All", "AuditLog.Read.All" }
+		$scopes = if ($Mode -eq "Disable") { "User.ReadWrite.All", "AuditLog.Read.All" } else { $S_RequiredGraphScopes }
 		Connect-MgGraph -Scopes $scopes -ErrorAction Stop | Out-Null
 	}
 

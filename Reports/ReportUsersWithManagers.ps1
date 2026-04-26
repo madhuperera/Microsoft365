@@ -1,6 +1,8 @@
+#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.Users
+
 <#
 .SYNOPSIS
-    Export users with assigned managers from Entra ID
+    Exports Entra ID users who have a manager assigned.
 
 .DESCRIPTION
     Connects to Microsoft Graph and exports a list of users who have a manager assigned,
@@ -8,15 +10,24 @@
 
 .NOTES
     Author: Madhu Perera
-    Date: January 25, 2026
-    Requires: Microsoft.Graph.Users module
+    Requires: Microsoft.Graph.Authentication, Microsoft.Graph.Users modules
+
+.EXAMPLE
+    .\ReportUsersWithManagers.ps1
 #>
+
+$S_RequiredGraphScopes = @(
+    'User.Read.All'
+    'Directory.Read.All'
+)
+
+$S_GraphRequestDelayMilliseconds = 5
 
 # Install required module if not already installed
 # Install-Module Microsoft.Graph.Users -Scope CurrentUser -Force
 
 # Connect to Microsoft Graph
-Connect-MgGraph -Scopes "User.Read.All", "Directory.Read.All"
+Connect-MgGraph -Scopes $S_RequiredGraphScopes
 
 # Get all users with their manager information
 Write-Host "Retrieving licensed and enabled users from Entra ID..." -ForegroundColor Cyan
@@ -30,6 +41,7 @@ foreach ($user in $users) {
     
     # Get manager for each user
     try {
+        Start-Sleep -Milliseconds $S_GraphRequestDelayMilliseconds
         $manager = Get-MgUserManager -UserId $user.Id -ErrorAction SilentlyContinue
         
         if ($manager) {
@@ -54,7 +66,7 @@ Write-Progress -Activity "Processing users" -Completed
 
 # Export results
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$exportPath = ".\UsersWithManagers_$timestamp.csv"
+$exportPath = ".\ReportUsersWithManagers_$timestamp.csv"
 
 $usersWithManagers | Export-Csv -Path $exportPath -NoTypeInformation -Encoding UTF8
 

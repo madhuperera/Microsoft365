@@ -10,6 +10,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$S_RequiredGraphScopes = @(
+	'Device.Read.All'
+	'Organization.Read.All'
+)
+
 try {
 	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Identity.DirectoryManagement)) {
 		throw "Microsoft.Graph.Identity.DirectoryManagement module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
@@ -19,7 +24,7 @@ try {
 
 	$context = Get-MgContext
 	if (-not $context) {
-		Connect-MgGraph -Scopes "Device.Read.All", "Organization.Read.All" -ErrorAction Stop | Out-Null
+		Connect-MgGraph -Scopes $S_RequiredGraphScopes -ErrorAction Stop | Out-Null
 		$context = Get-MgContext
 	}
 
