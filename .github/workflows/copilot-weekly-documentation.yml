@@ -1,0 +1,94 @@
+name: Weekly Copilot Documentation Review
+
+on:
+  schedule:
+    # Runs every Sunday 6:00 PM UTC = Monday 6:00 AM New Zealand Standard Time
+    # GitHub cron uses UTC.
+    - cron: "0 18 * * 0"
+
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  create-documentation-issue:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create weekly documentation issue for Copilot
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_AGENT_PAT }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh issue create \
+            --repo "$GH_REPO" \
+            --title "Copilot Task: Weekly repository documentation review" \
+            --body "$(cat <<'EOF'
+          ## Objective
+
+          Review and update the repository documentation so the primary README.md remains accurate and aligned with the current Microsoft 365 automation repository structure.
+
+          ## Scope
+
+          You may update:
+
+          - README.md
+          - Files under /docs if required
+
+          Do not modify PowerShell, KQL, JSON, YAML, GitHub Actions, or script logic.
+
+          ## Instructions to follow
+
+          You must follow all repository instruction files, including:
+
+          - .github/copilot-instructions.md
+          - .github/instructions/*.instructions.md
+
+          Pay special attention to markdown, documentation, HTML, formatting, and repository structure instructions.
+
+          ## README requirements
+
+          The README.md must include or maintain:
+
+          1. Repository purpose
+          2. High-level folder structure
+          3. Explanation of each major folder
+          4. Script catalogue grouped by folder or function
+          5. What each script does
+          6. High-level prerequisites or permissions where obvious
+          7. Safe usage notes
+          8. Naming conventions and repository standards
+          9. Maintenance guidance for future updates
+
+          ## Formatting requirements
+
+          - Use markdown as the base format.
+          - Use HTML blocks/cards where the repository instructions recommend it.
+          - Keep it professional and easy to scan.
+          - Do not invent functionality.
+          - Do not over-explain internal script logic.
+          - If a script purpose is unclear, mark it as inferred.
+
+          ## Validation
+
+          Before completing:
+
+          - Review the repository structure.
+          - Review all instruction files.
+          - Review scripts only to understand their purpose.
+          - Ensure all links and relative paths are valid.
+          - Ensure README.md reflects the current repo.
+
+          ## Pull request requirements
+
+          Create a pull request with:
+
+          - Summary of documentation changes
+          - Files changed
+          - Assumptions made
+          - Items needing human review
+          EOF
+          )" \
+            --assignee "@copilot"
