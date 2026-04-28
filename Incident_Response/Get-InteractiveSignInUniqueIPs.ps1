@@ -1,4 +1,30 @@
 #Requires -Modules Microsoft.Graph.Users
+
+<#
+.SYNOPSIS
+    Reports all unique IP addresses seen in interactive sign-in events over a configurable lookback period.
+
+.DESCRIPTION
+    Connects to Microsoft Graph and retrieves interactive sign-in events for the specified date range.
+    Aggregates results by unique IP address and reports user, application, and geographic information
+    for each IP. Exports results to CSV.
+
+.PARAMETER Days
+    Number of days to look back from now (UTC). Supported range: 1 to 30.
+
+.PARAMETER OutputPath
+    Folder to save the CSV report. The folder will be created if it does not exist.
+
+.PARAMETER ThrottleMs
+    Delay in milliseconds between Graph API page calls to reduce throttling. Defaults to 5.
+
+.EXAMPLE
+    .\Get-InteractiveSignInUniqueIPs.ps1 -Days 7 -OutputPath "C:\IR\Output"
+
+.EXAMPLE
+    .\Get-InteractiveSignInUniqueIPs.ps1 -Days 30 -OutputPath "C:\IR\Output"
+#>
+
 [CmdletBinding()]
 param (
     # Number of days to look back from now (UTC). Supported range: 1 to 30.
@@ -19,6 +45,10 @@ param (
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$S_RequiredGraphScopes = @(
+    'AuditLog.Read.All'
+)
 
 # ---------------------------------------------------------------------------
 # Connection
@@ -43,7 +73,7 @@ if ($context) {
         Write-Host "Disconnecting existing session..." -ForegroundColor Cyan
         Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Reconnecting with required scope..." -ForegroundColor Cyan
-        Connect-MgGraph -Scopes "AuditLog.Read.All" -NoWelcome -ErrorAction Stop | Out-Null
+        Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
         Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
     }
     else {
@@ -52,7 +82,7 @@ if ($context) {
 }
 else {
     Write-Host "Connecting to Microsoft Graph..." -ForegroundColor Cyan
-    Connect-MgGraph -Scopes "AuditLog.Read.All" -NoWelcome -ErrorAction Stop | Out-Null
+    Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
     Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
 }
 

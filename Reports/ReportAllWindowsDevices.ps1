@@ -1,3 +1,31 @@
+#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.Identity.DirectoryManagement
+
+<#
+.SYNOPSIS
+    Reports on all Windows devices registered in Entra ID, including registration state
+    and last activity.
+
+.DESCRIPTION
+    Connects to Microsoft Graph and retrieves all Windows devices registered in Entra ID.
+    For each device, reports registration date, last sign-in date, management type,
+    compliance state, and an activity status relative to the specified inactivity threshold.
+    Exports results to CSV and HTML.
+
+.PARAMETER ReportPath
+    Folder or file path for the output report. If a folder is specified, a timestamped
+    filename is generated automatically. Defaults to the current directory.
+
+.PARAMETER InactiveDays
+    Number of days since last activity to consider a device inactive. Defaults to 180.
+
+.EXAMPLE
+    .\ReportAllWindowsDevices.ps1
+
+.EXAMPLE
+    .\ReportAllWindowsDevices.ps1 -InactiveDays 90
+#>
+
+[CmdletBinding()]
 param(
 	[Parameter(Mandatory = $false)]
 	[ValidateNotNullOrEmpty()]

@@ -1,3 +1,32 @@
+#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.Applications, Microsoft.Graph.Identity.DirectoryManagement
+
+<#
+.SYNOPSIS
+    Reports on enterprise applications (service principals) in Entra ID, including
+    sign-in activity and credential expiry.
+
+.DESCRIPTION
+    Connects to Microsoft Graph and retrieves all service principals (enterprise applications).
+    Cross-references app registrations to identify which service principals have a local
+    app registration. Resolves Microsoft Graph permission names for each application.
+    Exports results to CSV and HTML.
+    Supports an inactivity threshold to flag applications that have not been used recently.
+
+.PARAMETER ReportPath
+    Folder or file path for the output report. If a folder is specified, a timestamped
+    filename is generated automatically. Defaults to the current directory.
+
+.PARAMETER InactiveDays
+    Number of days since last sign-in to consider an application inactive. Defaults to 180.
+
+.EXAMPLE
+    .\ReportEntraIDApps.ps1
+
+.EXAMPLE
+    .\ReportEntraIDApps.ps1 -InactiveDays 90
+#>
+
+[CmdletBinding()]
 param(
 	[Parameter(Mandatory = $false)]
 	[ValidateNotNullOrEmpty()]

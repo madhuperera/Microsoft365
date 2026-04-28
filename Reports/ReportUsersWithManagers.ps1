@@ -5,8 +5,11 @@
     Exports Entra ID users who have a manager assigned.
 
 .DESCRIPTION
-    Connects to Microsoft Graph and exports a list of users who have a manager assigned,
-    including their email address and manager information.
+    Connects to Microsoft Graph and exports a list of licensed, enabled users who have
+    a manager assigned, including their email address and manager information.
+
+.PARAMETER OutputPath
+    Path for the output CSV file. Defaults to a timestamped file in the current directory.
 
 .NOTES
     Author: Madhu Perera
@@ -14,7 +17,24 @@
 
 .EXAMPLE
     .\ReportUsersWithManagers.ps1
+
+.EXAMPLE
+    .\ReportUsersWithManagers.ps1 -OutputPath "C:\Reports\UsersWithManagers.csv"
 #>
+
+[CmdletBinding()]
+param (
+    [Parameter(Mandatory = $false)]
+    [string]$OutputPath
+)
+
+$ErrorActionPreference = 'Stop'
+
+if (-not $OutputPath)
+{
+    $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+    $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportUsersWithManagers_$S_Timestamp.csv"
+}
 
 $S_RequiredGraphScopes = @(
     'User.Read.All'
@@ -23,11 +43,26 @@ $S_RequiredGraphScopes = @(
 
 $S_GraphRequestDelayMilliseconds = 5
 
-# Install required module if not already installed
-# Install-Module Microsoft.Graph.Users -Scope CurrentUser -Force
+$S_ExistingContext = Get-MgContext
+if ($S_ExistingContext)
+{
+    Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
+    Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
+    Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
+    Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
+    Write-Host ""
 
-# Connect to Microsoft Graph
-Connect-MgGraph -Scopes $S_RequiredGraphScopes
+    $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+    if ($S_Choice -eq 'N')
+    {
+        Disconnect-MgGraph | Out-Null
+        Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
+    }
+}
+else
+{
+    Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
+}
 
 # Get all users with their manager information
 Write-Host "Retrieving licensed and enabled users from Entra ID..." -ForegroundColor Cyan
@@ -64,19 +99,19 @@ foreach ($user in $users) {
 
 Write-Progress -Activity "Processing users" -Completed
 
-# Export results
-$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$exportPath = ".\ReportUsersWithManagers_$timestamp.csv"
-
-$usersWithManagers | Export-Csv -Path $exportPath -NoTypeInformation -Encoding UTF8
+$usersWithManagers | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
 
 Write-Host "`nExport complete!" -ForegroundColor Green
 Write-Host "Total users with managers: $($usersWithManagers.Count)" -ForegroundColor Yellow
-Write-Host "File saved to: $exportPath" -ForegroundColor Yellow
+Write-Host "File saved to: $OutputPath" -ForegroundColor Yellow
 
-# Disconnect from Microsoft Graph
-Disconnect-MgGraph
-
-# Display sample of results
-Write-Host "`nSample of exported data:" -ForegroundColor Cyan
-$usersWithManagers | Select-Object -First 5 | Format-Table -AutoSize
+$S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
+if ($S_DisconnectChoice -eq 'Y')
+{
+    Disconnect-MgGraph | Out-Null
+    Write-Host "Disconnected." -ForegroundColor Green
+}
+else
+{
+    Write-Host "Graph session kept alive." -ForegroundColor Green
+}

@@ -9,29 +9,32 @@
     they have a Windows Hello for Business authentication method registered and exports the results
     to a CSV file.
 
-.PARAMETER S_ReportFilePath
+.PARAMETER OutputPath
     Path for the output CSV file. Defaults to a timestamped file in the current directory.
 
 .EXAMPLE
     .\ReportAADAuthenticationMethods.ps1
 
 .EXAMPLE
-    .\ReportAADAuthenticationMethods.ps1 -S_ReportFilePath "C:\Reports\WHfBReport.csv"
+    .\ReportAADAuthenticationMethods.ps1 -OutputPath "C:\Reports\WHfBReport.csv"
 #>
 
 [CmdletBinding()]
-param
-(
+param (
     [Parameter(Mandatory = $false)]
-    [string] $S_ReportFilePath
+    [string]$OutputPath
 )
 
 $ErrorActionPreference = 'Stop'
 
-if (-not $S_ReportFilePath)
+if (-not $OutputPath)
 {
     $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
     $S_ReportFilePath = Join-Path -Path (Get-Location).Path -ChildPath "ReportAADAuthenticationMethods_$S_Timestamp.csv"
+}
+else
+{
+    $S_ReportFilePath = $OutputPath
 }
 
 $S_RequiredGraphScopes = @(

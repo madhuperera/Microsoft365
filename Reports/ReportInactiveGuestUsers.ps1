@@ -1,4 +1,42 @@
-param(
+#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.Users
+
+<#
+.SYNOPSIS
+    Reports on guest users who have not signed in within a configurable number of days.
+
+.DESCRIPTION
+    Connects to Microsoft Graph and retrieves all enabled guest user accounts.
+    Evaluates sign-in activity and identifies guests who have been inactive for longer
+    than the specified threshold. Exports results to CSV and HTML.
+    When Mode is set to Disable, optionally disables inactive accounts after reporting.
+
+.PARAMETER ReportPath
+    Folder or file path for the output report. If a folder is specified, a timestamped
+    filename is generated automatically. Defaults to the current directory.
+
+.PARAMETER InactiveDays
+    Number of days of inactivity after which a guest is considered inactive. Defaults to 90.
+
+.PARAMETER Mode
+    Operating mode. ReportOnly (default) only exports a report. Disable additionally
+    disables inactive guest accounts after reporting.
+
+.PARAMETER SkipIfLastSignInIsNEVER
+    When set to $true (default), skips disabling accounts that have never signed in.
+    Only applies when Mode is Disable.
+
+.EXAMPLE
+    .\ReportInactiveGuestUsers.ps1
+
+.EXAMPLE
+    .\ReportInactiveGuestUsers.ps1 -InactiveDays 60 -Mode ReportOnly
+
+.EXAMPLE
+    .\ReportInactiveGuestUsers.ps1 -InactiveDays 90 -Mode Disable
+#>
+
+[CmdletBinding()]
+param (
 	[Parameter(Mandatory = $false)]
 	[ValidateNotNullOrEmpty()]
 	[string]$ReportPath,

@@ -1,3 +1,35 @@
+#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.Users
+
+<#
+.SYNOPSIS
+    Reports on all member users in Entra ID including account status, sign-in activity,
+    licensing, and on-premises sync state.
+
+.DESCRIPTION
+    Connects to Microsoft Graph and retrieves all member user accounts.
+    For each user, evaluates sign-in activity, licence assignment, on-premises sync status,
+    and account enabled state. Exports results to CSV and HTML.
+    Supports an inactivity threshold to flag users who have not signed in recently.
+
+.PARAMETER ReportPath
+    Folder or file path for the output report. If a folder is specified, a timestamped
+    filename is generated automatically. Defaults to the current directory.
+
+.PARAMETER InactiveDays
+    Number of days since last sign-in to consider a user inactive. Defaults to 90.
+
+.PARAMETER PrimaryLicenseSkus
+    Array of SKU part numbers to treat as primary licences when identifying licensed users.
+    Defaults to a built-in list of common Microsoft 365 SKUs.
+
+.EXAMPLE
+    .\ReportAllMemberUsers.ps1
+
+.EXAMPLE
+    .\ReportAllMemberUsers.ps1 -InactiveDays 60
+#>
+
+[CmdletBinding()]
 param(
 	[Parameter(Mandatory = $false)]
 	[ValidateNotNullOrEmpty()]

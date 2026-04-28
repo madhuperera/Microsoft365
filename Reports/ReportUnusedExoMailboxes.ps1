@@ -25,14 +25,7 @@
 #>
 
 [CmdletBinding()]
-# ReportUnusedExoMailboxes.ps1
-# Modified from: https://github.com/12Knocksinna/Office365itpros/blob/master/ReportUnusedExoMailboxes.PS1
-# Original script by 12Knocksinna - adapted for custom requirements
-# Find and report unused Exchange Online mailboxes
-# Needs to connect to Exchange Online and the Microsoft Graph PowerShell SDK
-
-param
-(
+param (
     [Parameter(Mandatory = $false)]
     [bool]$ReportInExcel = $false,
 

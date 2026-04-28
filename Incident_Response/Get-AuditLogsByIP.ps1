@@ -1,4 +1,43 @@
 #Requires -Modules ExchangeOnlineManagement
+
+<#
+.SYNOPSIS
+    Searches the Exchange Online unified audit log for activity from specified IP addresses.
+
+.DESCRIPTION
+    Connects to Exchange Online and searches the unified audit log for events matching
+    one or more IP addresses within a defined date range. Supports optional filtering
+    by user UPN and operation type. Parses operation-specific fields from audit records
+    and exports results to CSV and HTML.
+    Intended for use during active security investigations.
+
+.PARAMETER IPAddresses
+    One or more IP addresses to search for. Accepts multiple values.
+
+.PARAMETER FromDate
+    Start date (UTC) for the audit log search window.
+
+.PARAMETER ToDate
+    End date (UTC) for the audit log search window.
+
+.PARAMETER UserUPNs
+    Optional. Filter results to specific user UPNs. Omit to search all users.
+
+.PARAMETER Operations
+    Optional. Filter results to specific audit operations. Omit to return all operations.
+    Common IR values: UserLoggedIn, MailItemsAccessed, New-InboxRule, Move,
+    MoveToDeletedItems, HardDelete, SoftDelete, Update, Create, SendAs, SendOnBehalf.
+
+.PARAMETER OutputPath
+    Folder to save the CSV and HTML reports. The folder will be created if it does not exist.
+
+.EXAMPLE
+    .\Get-AuditLogsByIP.ps1 -IPAddresses "1.2.3.4" -FromDate "2025-01-01" -ToDate "2025-01-31" -OutputPath "C:\IR\Output"
+
+.EXAMPLE
+    .\Get-AuditLogsByIP.ps1 -IPAddresses "1.2.3.4","5.6.7.8" -FromDate "2025-01-01" -ToDate "2025-01-31" -Operations "MailItemsAccessed","New-InboxRule" -OutputPath "C:\IR\Output"
+#>
+
 [CmdletBinding()]
 param (
     # One or more attacker IPs, e.g. -IPAddresses "1.2.3.4","5.6.7.8"

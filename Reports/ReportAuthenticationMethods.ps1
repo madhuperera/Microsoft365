@@ -1,6 +1,38 @@
-# ReportAuthenticationMethods.PS1
-# https://github.com/12Knocksinna/Office365itpros/blob/master/ReportAuthenticationMethods.PS1
-# A report of the authentication methods for Azure AD licensed accounts
+#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.Users
+
+<#
+.SYNOPSIS
+    Reports authentication methods registered for licensed Entra ID member accounts.
+
+.DESCRIPTION
+    Connects to Microsoft Graph and retrieves all licensed member user accounts.
+    For each user, enumerates their registered authentication methods and exports
+    the results to a CSV file. Also displays an interactive grid view of the results.
+    Adapted from Tony Redmond's Office365itpros scripts.
+
+.PARAMETER OutputPath
+    Path for the output CSV file. Defaults to a timestamped file in the current directory.
+
+.EXAMPLE
+    .\ReportAuthenticationMethods.ps1
+
+.EXAMPLE
+    .\ReportAuthenticationMethods.ps1 -OutputPath "C:\Reports\AuthMethods.csv"
+#>
+
+[CmdletBinding()]
+param (
+    [Parameter(Mandatory = $false)]
+    [string]$OutputPath
+)
+
+$ErrorActionPreference = 'Stop'
+
+if (-not $OutputPath)
+{
+    $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+    $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportAuthenticationMethods_$S_Timestamp.csv"
+}
 
 $S_RequiredGraphScopes = @(
     'UserAuthenticationMethod.Read.All'
@@ -8,7 +40,28 @@ $S_RequiredGraphScopes = @(
     'User.Read.All'
 )
 
-Connect-MgGraph -Scopes UserAuthenticationMethod.Read.All, Directory.Read.All, User.Read.All
+$S_GraphRequestDelayMilliseconds = 5
+
+$S_ExistingContext = Get-MgContext
+if ($S_ExistingContext)
+{
+    Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
+    Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
+    Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
+    Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
+    Write-Host ""
+
+    $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+    if ($S_Choice -eq 'N')
+    {
+        Disconnect-MgGraph | Out-Null
+        Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
+    }
+}
+else
+{
+    Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
+}
 
 Write-Host "Finding licensed Azure AD accounts"
 [array]$Users = Get-MgUser -Filter "assignedLicenses/`$count ne 0 and userType eq 'Member'" -ConsistencyLevel eventual -CountVariable Records -All
@@ -78,11 +131,16 @@ $Report | Group-Object Method | Sort-Object Count -Descending | Select Name, Cou
 
 $Report | Out-GridView
 
-$Report | Export-Csv -Path ".\ReportAuthenticationMethods.csv" -NoTypeInformation -Encoding UTF8
+$Report | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+Write-Host "Report exported to: $OutputPath" -ForegroundColor Green
 
-# An example script used to illustrate a concept. More information about the topic can be found in the Office 365 for IT Pros eBook https://gum.co/O365IT/
-# and/or a relevant article on https://office365itpros.com or https://www.practical365.com. See our post about the Office 365 for IT Pros repository 
-# https://office365itpros.com/office-365-github-repository/ for information about the scripts we write.
-
-# Do not use our scripts in production until you are satisfied that the code meets the needs of your organization. Never run any code downloaded from 
-# the Internet without first validating the code in a non-production environment.
+$S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
+if ($S_DisconnectChoice -eq 'Y')
+{
+    Disconnect-MgGraph | Out-Null
+    Write-Host "Disconnected." -ForegroundColor Green
+}
+else
+{
+    Write-Host "Graph session kept alive." -ForegroundColor Green
+}

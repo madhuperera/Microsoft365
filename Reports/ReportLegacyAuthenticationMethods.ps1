@@ -1,42 +1,40 @@
+#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.Users
+
 <#
 .SYNOPSIS
-  Generates a report of authentication methods used by Azure AD (Microsoft 365) accounts.
+    Reports authentication methods for Entra ID member accounts, classifying each as Modern or Legacy.
 
 .DESCRIPTION
-  This script connects to Microsoft Graph using the required scopes and retrieves all Azure AD user accounts.
-  For each user, it enumerates their registered authentication methods, classifies them as Modern or Legacy, and compiles a report.
-  The report includes license status, on-premises sync status, and account enabled status.
-  The report is displayed in an Out-GridView window and exported as a CSV file.
+    Connects to Microsoft Graph and retrieves all member user accounts.
+    For each user, enumerates registered authentication methods, classifies them as
+    Modern Authentication, Legacy Authentication, No MFA, or No Methods, and exports
+    results to CSV and HTML. Includes licence status and on-premises sync status.
+    Adapted from Tony Redmond's Office365itpros scripts.
 
-.PARAMETER None
-  The script does not accept parameters. It operates on all Azure AD users.
-
-.NOTES
-  Author: Adapted from Tony Redmond's Office365itpros scripts.
-  Source: https://github.com/12Knocksinna/Office365itpros/blob/master/ReportAuthenticationMethods.PS1
-  More Info: https://office365itpros.com
-
-.REQUIREMENTS
-  - Microsoft Graph PowerShell SDK (Connect-MgGraph, Get-MgUser, Get-MgUserAuthenticationMethod)
-  - Appropriate permissions: UserAuthenticationMethod.Read.All, Directory.Read.All, User.Read.All
-
-.OUTPUTS
-  - Displays a summary of authentication methods in the console.
-  - Shows detailed results in an Out-GridView window.
-  - Exports results to 'ReportAuthenticationMethods.csv' in the current directory.
+.PARAMETER OutputPath
+    Path for the output CSV file. Defaults to a timestamped file in the current directory.
+    The HTML report is written to the same path with a .html extension.
 
 .EXAMPLE
-  .\ReportLegacyAuthenticationMethods.ps1
+    .\ReportLegacyAuthenticationMethods.ps1
 
-  Connects to Microsoft Graph, processes all users, and exports their authentication methods with license and sync status.
-
-.DISCLAIMER
-  Do not use this script in production until you have validated it in a non-production environment.
-  Review and adapt the code to meet your organization's requirements.
+.EXAMPLE
+    .\ReportLegacyAuthenticationMethods.ps1 -OutputPath "C:\Reports\AuthMethods.csv"
 #>
-# ReportLegacyAuthenticationMethods.ps1
-# https://github.com/12Knocksinna/Office365itpros/blob/master/ReportAuthenticationMethods.PS1
-# A report of the authentication methods for Azure AD licensed accounts
+
+[CmdletBinding()]
+param (
+    [Parameter(Mandatory = $false)]
+    [string]$OutputPath
+)
+
+$ErrorActionPreference = 'Stop'
+
+if (-not $OutputPath)
+{
+    $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+    $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportLegacyAuthenticationMethods_$S_Timestamp.csv"
+}
 
 $S_RequiredGraphScopes = @(
     'UserAuthenticationMethod.Read.All'
@@ -44,7 +42,26 @@ $S_RequiredGraphScopes = @(
     'User.Read.All'
 )
 
-Connect-MgGraph -Scopes UserAuthenticationMethod.Read.All, Directory.Read.All, User.Read.All
+$S_ExistingContext = Get-MgContext
+if ($S_ExistingContext)
+{
+    Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
+    Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
+    Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
+    Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
+    Write-Host ""
+
+    $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+    if ($S_Choice -eq 'N')
+    {
+        Disconnect-MgGraph | Out-Null
+        Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
+    }
+}
+else
+{
+    Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
+}
 
 Write-Host "Finding Azure AD accounts"
 [array]$Users = Get-MgUser -Filter "userType eq 'Member'" -ConsistencyLevel eventual -CountVariable Records -All -Property Id, DisplayName, UserPrincipalName, AccountEnabled, AssignedLicenses, OnPremisesSyncEnabled
@@ -129,9 +146,7 @@ $Report.Add($ReportLine)
 $Report = $Report | Sort-Object User 
 
 # --- CSV Export ---
-$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-$csvFile = ".\ReportAuthenticationMethods_{0}.csv" -f $timestamp
-$Report | Export-Csv -Path $csvFile -NoTypeInformation -Encoding UTF8
+$Report | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
 
 # --- HTML Report: Enabled Users MFA Status ---
 $totalMembers     = $Report.Count
@@ -294,8 +309,8 @@ new Chart(document.getElementById('pieChart'), {
 </html>
 "@
 
-$htmlFile = ".\ReportAuthenticationMethods_{0}.html" -f $timestamp
-$html | Out-File -FilePath $htmlFile -Encoding UTF8
+$S_HtmlPath = [System.IO.Path]::ChangeExtension($OutputPath, '.html')
+$html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
 
 # --- Console Summary ---
 Write-Host ""
@@ -308,12 +323,16 @@ Write-Host ("Modern Auth               : {0}" -f $mfaModern)
 Write-Host ("Legacy Auth               : {0}" -f $mfaLegacy)
 Write-Host ("No MFA (Password Only)    : {0}" -f $mfaNone)
 Write-Host ("No Methods                : {0}" -f $mfaNoMethod)
-Write-Host ("CSV exported to           : {0}" -f $csvFile)
-Write-Host ("HTML exported to          : {0}" -f $htmlFile)
+Write-Host ("CSV exported to           : {0}" -f $OutputPath)
+Write-Host ("HTML exported to          : {0}" -f $S_HtmlPath)
 
-# An example script used to illustrate a concept. More information about the topic can be found in the Office 365 for IT Pros eBook https://gum.co/O365IT/
-# and/or a relevant article on https://office365itpros.com or https://www.practical365.com. See our post about the Office 365 for IT Pros repository 
-# https://office365itpros.com/office-365-github-repository/ for information about the scripts we write.
-
-# Do not use our scripts in production until you are satisfied that the code meets the needs of your organization. Never run any code downloaded from 
-# the Internet without first validating the code in a non-production environment.
+$S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
+if ($S_DisconnectChoice -eq 'Y')
+{
+    Disconnect-MgGraph | Out-Null
+    Write-Host "Disconnected." -ForegroundColor Green
+}
+else
+{
+    Write-Host "Graph session kept alive." -ForegroundColor Green
+}
