@@ -30,11 +30,7 @@ $ErrorActionPreference = 'Stop'
 if (-not $OutputPath)
 {
     $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-    $S_ReportFilePath = Join-Path -Path (Get-Location).Path -ChildPath "ReportAADAuthenticationMethods_$S_Timestamp.csv"
-}
-else
-{
-    $S_ReportFilePath = $OutputPath
+    $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportAADAuthenticationMethods_$S_Timestamp.csv"
 }
 
 $S_RequiredGraphScopes = @(
@@ -86,5 +82,5 @@ foreach ($Member in $AllUsers)
     }
 }
 
-$AllData | Export-Csv -Path $S_ReportFilePath -NoTypeInformation
-Write-Host "Report exported to: $S_ReportFilePath" -ForegroundColor Green
+$AllData | Export-Csv -Path $OutputPath -NoTypeInformation
+Write-Host "Report exported to: $OutputPath" -ForegroundColor Green

@@ -126,7 +126,7 @@ Write-Host ""
 Write-Host "Authentication Methods found"
 Write-Host "----------------------------"
 Write-Host ""
-$Report | Group-Object Type | Sort-Object Count -Descending | Select-Object Name, Count
+$Report | Group-Object Type | Sort-Object Count -Descending | Select-Object Name, Count | Format-Table -AutoSize
 
 $Report | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
 Write-Host "Report exported to: $OutputPath" -ForegroundColor Green
