@@ -17,10 +17,9 @@
 #>
 
 [CmdletBinding()]
-param
-(
-    [Parameter(Mandatory=$True)]
-    [String] $DistributionGroupName
+param (
+    [Parameter(Mandatory = $true)]
+    [string]$DistributionGroupName
 )
 
 $ErrorActionPreference = 'Stop'

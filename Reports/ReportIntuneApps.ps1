@@ -1,3 +1,33 @@
+#Requires -Modules Microsoft.Graph.Authentication
+
+<#
+.SYNOPSIS
+    Reports on applications managed by Microsoft Intune. Filterable by platform.
+
+.DESCRIPTION
+    Connects to Microsoft Graph and retrieves all mobile apps managed by Intune.
+    For each application, reports the platform, publisher, version, assignment groups,
+    and assignment intent. Supports filtering by platform (Windows, Android, iOS, or All).
+    Exports results to CSV and HTML.
+
+.PARAMETER Platform
+    Platform to filter results by. Accepts All (default), Windows, Android, or iOS.
+
+.PARAMETER ReportPath
+    Folder or file path for the output report. If a folder is specified, a timestamped
+    filename is generated automatically. Defaults to the current directory.
+
+.EXAMPLE
+    .\ReportIntuneApps.ps1
+
+.EXAMPLE
+    .\ReportIntuneApps.ps1 -Platform Windows
+
+.EXAMPLE
+    .\ReportIntuneApps.ps1 -Platform iOS -ReportPath "C:\Reports"
+#>
+
+[CmdletBinding()]
 param(
 	[Parameter(Mandatory = $false)]
 	[ValidateSet("All", "Windows", "Android", "iOS")]
@@ -66,8 +96,8 @@ try {
 	Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
 
 	# --- Connect to Graph ---
+	$S_RequiredGraphScopes = @('DeviceManagementApps.Read.All', 'Group.Read.All', 'Organization.Read.All')
 	$context = Get-MgContext
-	$S_RequiredGraphScopes = @('DeviceManagementApps.Read.All','Group.Read.All','Organization.Read.All')
 	if (-not $context) {
 		Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
 		$context = Get-MgContext

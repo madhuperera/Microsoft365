@@ -5,6 +5,11 @@
     Reports on users assigned to Administrator or Global Reader directory roles,
     including their last sign-in date. Exports CSV and HTML.
 
+.DESCRIPTION
+    Connects to Microsoft Graph and retrieves all active Entra ID directory roles.
+    For each role, reports the assigned users including their display name, UPN,
+    account state, and last sign-in date. Exports results to CSV and HTML.
+
 .PARAMETER OutputPath
     Path for the output CSV file. Defaults to a timestamped file in the current directory.
 

@@ -1,4 +1,31 @@
 #Requires -Modules Microsoft.Graph.Users
+
+<#
+.SYNOPSIS
+    Reports all interactive sign-in events matching one or more specified IP addresses.
+
+.DESCRIPTION
+    Connects to Microsoft Graph and retrieves interactive sign-in events for the specified
+    date range. Filters results to only those matching the supplied IP address list.
+    For each matched sign-in, reports user, application, resource, location, and status
+    information. Exports results to CSV.
+
+.PARAMETER IPAddresses
+    One or more IP addresses to match. Accepts multiple values.
+
+.PARAMETER Days
+    Number of days to look back from now (UTC). Supported range: 1 to 30.
+
+.PARAMETER OutputPath
+    Folder to save the CSV report. The folder will be created if it does not exist.
+
+.EXAMPLE
+    .\Get-InteractiveSignInsByIP.ps1 -IPAddresses "1.2.3.4" -Days 7 -OutputPath "C:\IR\Output"
+
+.EXAMPLE
+    .\Get-InteractiveSignInsByIP.ps1 -IPAddresses "1.2.3.4","5.6.7.8" -Days 30 -OutputPath "C:\IR\Output"
+#>
+
 [CmdletBinding()]
 param (
     # One or more IP addresses to match, e.g. -IPAddresses "1.2.3.4","5.6.7.8"
@@ -19,6 +46,10 @@ param (
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$S_RequiredGraphScopes = @(
+    'AuditLog.Read.All'
+)
 
 # ---------------------------------------------------------------------------
 # Connection
@@ -43,7 +74,7 @@ if ($context) {
         Write-Host "Disconnecting existing session..." -ForegroundColor Cyan
         Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Reconnecting with required scope..." -ForegroundColor Cyan
-        Connect-MgGraph -Scopes "AuditLog.Read.All" -NoWelcome -ErrorAction Stop | Out-Null
+        Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
         Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
     }
     else {
@@ -52,7 +83,7 @@ if ($context) {
 }
 else {
     Write-Host "Connecting to Microsoft Graph..." -ForegroundColor Cyan
-    Connect-MgGraph -Scopes "AuditLog.Read.All" -NoWelcome -ErrorAction Stop | Out-Null
+    Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
     Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
 }
 

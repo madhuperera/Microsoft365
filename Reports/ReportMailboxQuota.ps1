@@ -6,8 +6,8 @@
 
 .DESCRIPTION
     Connects to Exchange Online and retrieves mailbox quota statistics for all user mailboxes.
-    Calculates percentage of quota used and flags mailboxes that exceed the warning threshold.
-    Exports results to CSV.
+    Calculates the percentage of quota used and flags mailboxes that exceed the warning threshold.
+    Exports results to CSV. Optionally exports to Excel using the ImportExcel module.
 
 .PARAMETER Threshold
     Percentage of quota usage to use as the warning level. Defaults to 85.
@@ -25,9 +25,12 @@
 
 [CmdletBinding()]
 # Set threshold % of quota to use as warning level
-param
-(
+param (
+    [Parameter(Mandatory = $false)]
+    [ValidateRange(1, 100)]
     [int]$Threshold = 85,
+
+    [Parameter(Mandatory = $false)]
     [bool]$ReportInExcel = $false
 )
 

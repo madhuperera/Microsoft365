@@ -13,6 +13,11 @@
     .\ReportDkimRecords.ps1
 #>
 
+[CmdletBinding()]
+param ()
+
+$ErrorActionPreference = 'Stop'
+
 $S_DNSServerToUse = "1.1.1.1"
 $DkimConfiguration = Get-DkimSigningConfig | Where-Object {$_.Domain -notlike "*.onmicrosoft.com"}
 

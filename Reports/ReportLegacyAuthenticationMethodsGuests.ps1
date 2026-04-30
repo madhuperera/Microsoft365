@@ -1,41 +1,38 @@
+#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.Users
+
 <#
 .SYNOPSIS
-  Generates a report of authentication methods used by Azure AD Guest accounts.
+    Reports authentication methods for Entra ID guest accounts, classifying each as Modern or Legacy.
 
 .DESCRIPTION
-  This script connects to Microsoft Graph using the required scopes and retrieves all Azure AD Guest user accounts.
-  For each guest user, it enumerates their registered authentication methods, classifies them as Modern or Legacy, and compiles a report.
-  The report is displayed in an Out-GridView window and exported as a CSV file.
+    Connects to Microsoft Graph and retrieves all guest user accounts.
+    For each guest, enumerates registered authentication methods, classifies them as
+    Modern Authentication, Legacy Authentication, or No Methods, and exports results to CSV.
+    Adapted from Tony Redmond's Office365itpros scripts.
 
-.PARAMETER None
-  The script does not accept parameters. It operates on all Azure AD Guest users.
-
-.NOTES
-  Author: Adapted from Tony Redmond's Office365itpros scripts.
-  Source: https://github.com/12Knocksinna/Office365itpros/blob/master/ReportAuthenticationMethods.PS1
-  More Info: https://office365itpros.com
-
-.REQUIREMENTS
-  - Microsoft Graph PowerShell SDK (Connect-MgGraph, Get-MgUser, Get-MgUserAuthenticationMethod)
-  - Appropriate permissions: UserAuthenticationMethod.Read.All, Directory.Read.All, User.Read.All
-
-.OUTPUTS
-  - Displays a summary of authentication methods in the console.
-  - Shows detailed results in an Out-GridView window.
-  - Exports results to 'ReportAuthenticationMethods.csv' in the current directory.
+.PARAMETER OutputPath
+    Path for the output CSV file. Defaults to a timestamped file in the current directory.
 
 .EXAMPLE
-  .\ReportLegacyAuthenticationMethodsGuests.ps1
+    .\ReportLegacyAuthenticationMethodsGuests.ps1
 
-  Connects to Microsoft Graph, processes guest users, and exports their authentication methods.
-
-.DISCLAIMER
-  Do not use this script in production until you have validated it in a non-production environment.
-  Review and adapt the code to meet your organization's requirements.
+.EXAMPLE
+    .\ReportLegacyAuthenticationMethodsGuests.ps1 -OutputPath "C:\Reports\GuestAuthMethods.csv"
 #>
-# ReportLegacyAuthenticationMethodsGuests.PS1
-# https://github.com/12Knocksinna/Office365itpros/blob/master/ReportAuthenticationMethods.PS1
-# A report of the authentication methods for Azure AD Guest accounts
+
+[CmdletBinding()]
+param (
+    [Parameter(Mandatory = $false)]
+    [string]$OutputPath
+)
+
+$ErrorActionPreference = 'Stop'
+
+if (-not $OutputPath)
+{
+    $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+    $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportLegacyAuthenticationMethodsGuests_$S_Timestamp.csv"
+}
 
 $S_RequiredGraphScopes = @(
     'UserAuthenticationMethod.Read.All'
@@ -43,7 +40,26 @@ $S_RequiredGraphScopes = @(
     'User.Read.All'
 )
 
-Connect-MgGraph -Scopes UserAuthenticationMethod.Read.All, Directory.Read.All, User.Read.All
+$S_ExistingContext = Get-MgContext
+if ($S_ExistingContext)
+{
+    Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
+    Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
+    Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
+    Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
+    Write-Host ""
+
+    $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+    if ($S_Choice -eq 'N')
+    {
+        Disconnect-MgGraph | Out-Null
+        Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
+    }
+}
+else
+{
+    Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
+}
 
 Write-Host "Finding Azure AD Guest accounts"
 [array]$Users = Get-MgUser -Filter "userType eq 'Guest'" -ConsistencyLevel eventual -CountVariable Records -All
@@ -94,32 +110,34 @@ else
 }
 
 $ReportLine = [PSCustomObject]@{
-  User   = $User.DisplayName
-  UPN    = $User.UserPrincipalName
-  Type   = $DisplayMethod
-  Id     = $User.Id
-  Methods= $P1
-  UserId = $User.Id
+  User    = $User.DisplayName
+  UPN     = $User.UserPrincipalName
+  Type    = $DisplayMethod
+  Methods = $P1
+  Id      = $User.Id
 }
 $Report.Add($ReportLine)
 
 } #End ForEach User
  
    
-$Report = $Report | Sort-Object User 
+$Report = $Report | Sort-Object User
 Write-Host ""
 Write-Host "Authentication Methods found"
 Write-Host "----------------------------"
 Write-Host ""
-$Report | Group-Object Method | Sort-Object Count -Descending | Select Name, Count
+$Report | Group-Object Type | Sort-Object Count -Descending | Select-Object Name, Count | Format-Table -AutoSize
 
-$Report | Out-GridView
+$Report | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+Write-Host "Report exported to: $OutputPath" -ForegroundColor Green
 
-$Report | Export-Csv -Path ".\ReportAuthenticationMethodsGuests.csv" -NoTypeInformation -Encoding UTF8
-
-# An example script used to illustrate a concept. More information about the topic can be found in the Office 365 for IT Pros eBook https://gum.co/O365IT/
-# and/or a relevant article on https://office365itpros.com or https://www.practical365.com. See our post about the Office 365 for IT Pros repository 
-# https://office365itpros.com/office-365-github-repository/ for information about the scripts we write.
-
-# Do not use our scripts in production until you are satisfied that the code meets the needs of your organization. Never run any code downloaded from 
-# the Internet without first validating the code in a non-production environment.
+$S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
+if ($S_DisconnectChoice -eq 'Y')
+{
+    Disconnect-MgGraph | Out-Null
+    Write-Host "Disconnected." -ForegroundColor Green
+}
+else
+{
+    Write-Host "Graph session kept alive." -ForegroundColor Green
+}

@@ -13,6 +13,11 @@
     .\ReportDmarcRecords.ps1
 #>
 
+[CmdletBinding()]
+param ()
+
+$ErrorActionPreference = 'Stop'
+
 $S_DNSServerToUse = "1.1.1.1"
 $AllDomains = (Get-AcceptedDomain | Where-Object {$_.DomainName -notlike "*.onmicrosoft.com"}).DomainName
 
