@@ -117,6 +117,20 @@ Examples:
 | Checks DKIM configuration only | `Report` |
 | Checks DKIM configuration and can rotate or enable DKIM | `Review` |
 
+### Read-only Microsoft Graph connection script under Reports
+
+The script `Microsoft365\Reports\_ReadOnlyConnectionScript.ps1` is used as the shared Microsoft Graph connection script for reporting scripts.
+
+When this script is updated:
+
+- Scan all PowerShell scripts under `Microsoft365\Reports`.
+- Identify all Microsoft Graph scopes or permissions required by those scripts.
+- Include only read-only Graph permissions.
+- Exclude any permission that can create, update, delete, assign, manage, reset, rotate, enable, disable, or otherwise modify tenant configuration.
+- Add the final read-only scope list to `Microsoft365\Reports\_ReadOnlyConnectionScript.ps1`.
+- Use `Connect-MgGraph` with a clearly named scope array.
+- Do not modify report scripts unless explicitly requested.
+
 ## Pull request expectations
 
 Pull requests should:
