@@ -92,6 +92,31 @@ All reporting scripts for every Microsoft 365 workload (Entra ID, Exchange Onlin
 
 If a reporting script needs grouping inside `Reports/`, achieve it through the filename prefix (for example `ReportEntraID*`, `ReportExo*`, `ReportIntune*`) rather than by adding subfolders.
 
+### Report and review script naming under Reports
+
+Scripts under `Reports/` must be named based on whether they are read-only reporting scripts or scripts that can also make tenant changes.
+
+Use the following naming rules:
+
+- Use the `Report` prefix only for scripts that are strictly read-only.
+- Use the `Review` prefix for scripts that can be used for both reporting/review and making changes.
+- If a script has any mode, parameter, switch, or code path that can create, update, remove, enable, disable, remediate, rotate, reset, or otherwise change Microsoft 365 tenant configuration, it must use the `Review` prefix rather than the `Report` prefix.
+- If a script only reads data, validates configuration, exports findings, or produces HTML, CSV, TXT, JSON, or Markdown output without changing the tenant, the `Report` prefix is appropriate.
+- When renaming a script from `Report*` to `Review*`, update any README, index, usage examples, relative links, or references in the repository.
+- Do not rename a script to `Review*` unless the script clearly contains a change-capable path.
+- If the script purpose is unclear, do not guess. Leave the filename unchanged and call out the uncertainty in the Pull Request.
+
+Examples:
+
+| Script capability | Correct prefix |
+|---|---|
+| Exports mailbox settings only | `Report` |
+| Reviews mailbox settings and can apply corrections | `Review` |
+| Generates Conditional Access findings only | `Report` |
+| Reviews Conditional Access findings and can create or update policies | `Review` |
+| Checks DKIM configuration only | `Report` |
+| Checks DKIM configuration and can rotate or enable DKIM | `Review` |
+
 ## Pull request expectations
 
 Pull requests should:
