@@ -35,6 +35,7 @@
   - [Reports — Intune](#reports--intune)
   - [Reports — Licensing](#reports--licensing)
   - [Reports — DNS and email security](#reports--dns-and-email-security)
+  - [Reports — Microsoft Teams](#reports--microsoft-teams)
   - [Exchange — Calendar permission management](#exchange--calendar-permission-management)
   - [Exchange — Transport rules](#exchange--transport-rules)
   - [Exchange — Anti-malware policy](#exchange--anti-malware-policy)
@@ -88,6 +89,10 @@ Microsoft365/
 
 ## Prerequisites
 
+### Shared connection helper
+
+[`Reports/_ReadOnlyConnectionScript.ps1`](Reports/_ReadOnlyConnectionScript.ps1) is a shared helper that establishes a single read-only Microsoft Graph session for the entire `Reports/` folder. Run it once at the start of a reporting session (dot-source it with `. .\_ReadOnlyConnectionScript.ps1`) so that subsequent report scripts can reuse the same context without being prompted for consent on each run. Pass `-Force` to disconnect any existing session and reconnect automatically.
+
 ### PowerShell modules
 
 Install the required modules from the PowerShell Gallery before running any script.
@@ -100,6 +105,7 @@ Install-Module Microsoft.Graph.Groups -Scope CurrentUser
 Install-Module Microsoft.Graph.Reports -Scope CurrentUser
 Install-Module Microsoft.Graph.Identity.DirectoryManagement -Scope CurrentUser
 Install-Module Microsoft.Graph.Applications -Scope CurrentUser
+Install-Module Microsoft.Graph.Teams -Scope CurrentUser
 
 # Exchange Online Management
 Install-Module ExchangeOnlineManagement -Scope CurrentUser
@@ -199,7 +205,23 @@ All scripts in this section are located in [`Reports/`](Reports/).
 |--------|-------------|--------------------------|
 | [`ReportDkimRecords.ps1`](Reports/ReportDkimRecords.ps1) | Queries DKIM DNS records for all accepted domains configured in Exchange Online. Uses the Cloudflare DNS resolver (1.1.1.1). Outputs results to the console. | `ExchangeOnlineManagement` |
 | [`ReportDmarcRecords.ps1`](Reports/ReportDmarcRecords.ps1) | Queries DMARC DNS records for all accepted domains configured in Exchange Online. Uses the Cloudflare DNS resolver (1.1.1.1). Outputs results to the console. | `ExchangeOnlineManagement` |
+| [`ReportDomains.ps1`](Reports/ReportDomains.ps1) | Generates a comprehensive domain and DNS HTML report for all verified Microsoft 365 tenant domains. Collects authoritative name servers, SPF, MX, DKIM (selector1/selector2), and DMARC records. DNS is resolved against authoritative name servers first, falling back to Cloudflare (1.1.1.1) then Google (8.8.8.8). Supports optional RDAP/WHOIS registrar lookup. Exports to HTML. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Identity.DirectoryManagement`; `Domain.Read.All`, `Organization.Read.All` |
 | [`ReportSPFRecords.ps1`](Reports/ReportSPFRecords.ps1) | Queries SPF DNS records for all accepted domains configured in Exchange Online. Uses the Cloudflare DNS resolver (1.1.1.1). Outputs results to the console. | `ExchangeOnlineManagement` |
+
+</details>
+
+---
+
+### Reports — Microsoft Teams
+
+All scripts in this section are located in [`Reports/`](Reports/).
+
+<details>
+<summary>View Microsoft Teams reporting scripts</summary>
+
+| Script | Description | Key permissions / modules |
+|--------|-------------|--------------------------|
+| [`ReportTeamsGroups.ps1`](Reports/ReportTeamsGroups.ps1) | Reports on all Microsoft Teams-enabled groups in the tenant, including display name, mail nickname, visibility (Public/Private), creation date, and owner and member counts. Exports to CSV. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Groups`, `Microsoft.Graph.Teams`, `Microsoft.Graph.Identity.DirectoryManagement`; `Group.Read.All`, `GroupMember.Read.All`, `Team.ReadBasic.All` |
 
 </details>
 
