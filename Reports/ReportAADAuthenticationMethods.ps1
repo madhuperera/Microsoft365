@@ -41,7 +41,22 @@ $S_GraphRequestDelayMilliseconds = 5
 
 # Connect to Microsoft Graph
 $S_ExistingContext = Get-MgContext
-if (-not $S_ExistingContext)
+if ($S_ExistingContext)
+{
+    Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
+    Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
+    Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
+    Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
+    Write-Host ""
+
+    $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+    if ($S_Choice -eq 'N')
+    {
+        Disconnect-MgGraph | Out-Null
+        Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
+    }
+}
+else
 {
     Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
 }

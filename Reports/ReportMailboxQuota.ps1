@@ -16,29 +16,43 @@
     When set to $true, attempts to export to Excel using the ImportExcel module.
     Falls back to CSV if the module is not available.
 
+.PARAMETER OutputPath
+    Path for the output CSV or Excel file. Defaults to a timestamped file in the current directory.
+
 .EXAMPLE
     .\ReportMailboxQuota.ps1
 
 .EXAMPLE
     .\ReportMailboxQuota.ps1 -Threshold 90
+
+.EXAMPLE
+    .\ReportMailboxQuota.ps1 -OutputPath "C:\Reports\MailboxQuota.csv"
 #>
 
 [CmdletBinding()]
-# Set threshold % of quota to use as warning level
 param (
     [Parameter(Mandatory = $false)]
     [ValidateRange(1, 100)]
     [int]$Threshold = 85,
 
     [Parameter(Mandatory = $false)]
-    [bool]$ReportInExcel = $false
+    [bool]$ReportInExcel = $false,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateNotNullOrEmpty()]
+    [string]$OutputPath
 )
 
 $ErrorActionPreference = 'Stop'
 
-$ReportNameTitle = "Mailbox Quota Report"
-$ReportWorksheetName = "MailboxQuota"
-$ReportOutputName = (Get-Date -Format "yyyy-MM-dd HHmm") + "_" + "ReportMailboxQuota"
+if (-not $OutputPath)
+{
+    $S_Timestamp = Get-Date -Format 'yyyy-MM-dd_HHmm'
+    $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportMailboxQuota_$S_Timestamp"
+}
+
+$S_ReportNameTitle = "Mailbox Quota Report"
+$S_ReportWorksheetName = "MailboxQuota"
 
 Write-Host "Finding mailboxes..." 
 [array]$Mbx = Get-ExoMailbox -RecipientTypeDetails UserMailbox -PropertySet Quota -Properties DisplayName -ResultSize Unlimited 
@@ -73,29 +87,27 @@ ForEach ($M in $Mbx)
     }  
     $Report.Add($ReportLine) 
 }  
-# Export to CSV 
-$Report | Sort-Object Mailbox | Export-csv -NoTypeInformation MailboxQuotaReport.csv 
 
 if ($ReportInExcel) 
 {
     If (Get-Module ImportExcel -ListAvailable) 
     { 
         Import-Module ImportExcel -ErrorAction SilentlyContinue 
-        $ExcelOutputFile = ((New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path) + "\$ReportOutputName.xlsx" 
-        $Report | Export-Excel -Path $ExcelOutputFile -WorksheetName $ReportWorksheetName -Title ("$ReportNameTitle {0}" -f (Get-Date -format 'dd-MMM-yyyy')) -TitleBold -TableName $ReportWorksheetName
+        $ExcelOutputFile = "$OutputPath.xlsx"
+        $Report | Sort-Object Mailbox | Export-Excel -Path $ExcelOutputFile -WorksheetName $S_ReportWorksheetName -Title ("$S_ReportNameTitle {0}" -f (Get-Date -format 'dd-MMM-yyyy')) -TitleBold -TableName $S_ReportWorksheetName
         $OutputFile = $ExcelOutputFile 
     }
     else 
     { 
-        $CSVOutputFile = ((New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path) + "\$ReportOutputName.csv" 
-        $Report | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
+        $CSVOutputFile = "$OutputPath.csv"
+        $Report | Sort-Object Mailbox | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
         $Outputfile = $CSVOutputFile 
     } 
 }
 else
 {
-    $CSVOutputFile = ((New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path) + "\$ReportOutputName.csv" 
-    $Report | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
+    $CSVOutputFile = "$OutputPath.csv"
+    $Report | Sort-Object Mailbox | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
     $Outputfile = $CSVOutputFile 
 }
 Write-Host ("Output data is available in {0}" -f $OutputFile)

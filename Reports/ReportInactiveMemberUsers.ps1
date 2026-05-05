@@ -61,6 +61,8 @@ $S_RequiredGraphScopes = @(
 	'AuditLog.Read.All'
 )
 
+$S_GraphRequestDelayMilliseconds = 5
+
 try {
 	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Users)) {
 		throw "Microsoft.Graph.Users module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
@@ -68,8 +70,8 @@ try {
 
 	Import-Module Microsoft.Graph.Users -ErrorAction Stop
 
-	$context = Get-MgContext
-	if (-not $context) {
+	$S_Context = Get-MgContext
+	if (-not $S_Context) {
 		$scopes = if ($Mode -eq "Disable") { "User.ReadWrite.All", "AuditLog.Read.All" } else { $S_RequiredGraphScopes }
 		Connect-MgGraph -Scopes $scopes -ErrorAction Stop | Out-Null
 	}
@@ -130,9 +132,9 @@ try {
 		New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
 	}
 
-	$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+	$S_Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 	$reportFile = if (Test-Path $ReportPath -PathType Container) {
-		Join-Path $ReportPath ("InactiveMemberUsers_{0}.csv" -f $timestamp)
+		Join-Path $ReportPath ("ReportInactiveMemberUsers_{0}.csv" -f $S_Timestamp)
 	} else {
 		$ReportPath
 	}
@@ -194,7 +196,7 @@ try {
 	$inactiveCloudOnly   = $totalInactive - $inactiveOnPrem
 	$inactiveNeverSignIn = ($inactiveUsers | Where-Object { $_.LastSignInAgoDays -eq "Never" }).Count
 
-	$tenantName = if ($context.TenantId) { $context.TenantId } else { "Unknown" }
+	$tenantName = if ($S_Context.TenantId) { $S_Context.TenantId } else { "Unknown" }
 	$reportDate = Get-Date -Format "dd MMM yyyy HH:mm"
 
 	$html = @"
@@ -315,7 +317,7 @@ new Chart(document.getElementById('pieChart'), {
 </html>
 "@
 
-	$htmlReportFile = Join-Path $reportFolder ("InactiveMemberUsers_{0}.html" -f $timestamp)
+	$htmlReportFile = Join-Path $reportFolder ("ReportInactiveMemberUsers_{0}.html" -f $S_Timestamp)
 	$html | Out-File -FilePath $htmlReportFile -Encoding UTF8
 
 	$disableReport = @()
@@ -361,7 +363,7 @@ new Chart(document.getElementById('pieChart'), {
 
 	$disableReportFile = $null
 	if ($disableReport.Count -gt 0) {
-		$disableReportFile = Join-Path $reportFolder ("DisabledMemberUsers_{0}.csv" -f $timestamp)
+		$disableReportFile = Join-Path $reportFolder ("DisabledMemberUsers_{0}.csv" -f $S_Timestamp)
 		$disableReport | Export-Csv -Path $disableReportFile -NoTypeInformation -Encoding UTF8
 	}
 
@@ -378,8 +380,8 @@ new Chart(document.getElementById('pieChart'), {
 		Write-Host ("Disable report exported  : {0}" -f $disableReportFile)
 	}
 
-	$disconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
-	if ($disconnectChoice -match '^(y|yes)$') {
+	$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
+	if ($S_DisconnectChoice -match '^(y|yes)$') {
 		Disconnect-MgGraph -ErrorAction SilentlyContinue
 	}
 }

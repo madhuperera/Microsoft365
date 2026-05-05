@@ -17,11 +17,17 @@
 .PARAMETER RequiredGridView
     When set to $true, displays the report in an Out-GridView window.
 
+.PARAMETER OutputPath
+    Path for the output file (without extension). Defaults to a timestamped file in the current directory.
+
 .EXAMPLE
     .\ReportUnusedExoMailboxes.ps1
 
 .EXAMPLE
     .\ReportUnusedExoMailboxes.ps1 -RequiredGridView $true
+
+.EXAMPLE
+    .\ReportUnusedExoMailboxes.ps1 -OutputPath "C:\Reports\UnusedMailboxes"
 #>
 
 [CmdletBinding()]
@@ -30,7 +36,11 @@ param (
     [bool]$ReportInExcel = $false,
 
     [Parameter(Mandatory = $false)]
-    [bool]$RequiredGridView = $false
+    [bool]$RequiredGridView = $false,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateNotNullOrEmpty()]
+    [string]$OutputPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -42,16 +52,41 @@ $S_RequiredGraphScopes = @(
 
 $S_GraphRequestDelayMilliseconds = 5
 
+if (-not $OutputPath)
+{
+    $S_Timestamp = Get-Date -Format 'yyyy-MM-dd_HHmm'
+    $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportUnusedExoMailboxes_$S_Timestamp"
+}
+
 $ReportNameTitle = "Unused Mailboxes Report"
 $ReportWorksheetName = "UnusedMailboxes"
-$ReportOutputName = (Get-Date -Format "yyyy-MM-dd HHmm") + "_" + "ReportUnusedExoMailboxes"
+$ReportOutputName = [System.IO.Path]::GetFileNameWithoutExtension($OutputPath)
 
 # Function to convert dates to New Zealand time
 
 try
 {
   # Connect to the Microsoft Graph PowerShell SDK so that we can read sign in data
-  Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop
+  $S_ExistingContext = Get-MgContext
+  if ($S_ExistingContext)
+  {
+    Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
+    Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
+    Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
+    Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
+    Write-Host ""
+
+    $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+    if ($S_Choice -eq 'N')
+    {
+      Disconnect-MgGraph | Out-Null
+      Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop
+    }
+  }
+  else
+  {
+    Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop
+  }
 }
 catch
 {
@@ -160,20 +195,20 @@ if ($ReportInExcel)
     If (Get-Module ImportExcel -ListAvailable) 
     { 
         Import-Module ImportExcel -ErrorAction SilentlyContinue 
-        $ExcelOutputFile = ((New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path) + "\$ReportOutputName.xlsx" 
+        $ExcelOutputFile = "$OutputPath.xlsx"
         $Report | Export-Excel -Path $ExcelOutputFile -WorksheetName $ReportWorksheetName -Title ("$ReportNameTitle {0}" -f (Get-Date -format 'dd-MMM-yyyy')) -TitleBold -TableName $ReportWorksheetName
         $OutputFile = $ExcelOutputFile 
     }
     else 
     { 
-        $CSVOutputFile = ((New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path) + "\$ReportOutputName.csv" 
+        $CSVOutputFile = "$OutputPath.csv"
         $Report | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
         $Outputfile = $CSVOutputFile 
     } 
 }
 else
 {
-    $CSVOutputFile = ((New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path) + "\$ReportOutputName.csv" 
+    $CSVOutputFile = "$OutputPath.csv"
     $Report | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
     $Outputfile = $CSVOutputFile 
 }

@@ -81,16 +81,16 @@ if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement)) {
 
 Import-Module ExchangeOnlineManagement -ErrorAction Stop
 
-$existingConnection = Get-ConnectionInformation -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Connected' } | Select-Object -First 1
-if ($existingConnection) {
+$S_ExistingConnection = Get-ConnectionInformation -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Connected' } | Select-Object -First 1
+if ($S_ExistingConnection) {
     Write-Host "Existing Exchange Online session detected:" -ForegroundColor Yellow
-    Write-Host "  Account     : $($existingConnection.UserPrincipalName)" -ForegroundColor Yellow
-    Write-Host "  Organization: $($existingConnection.Organization)" -ForegroundColor Yellow
-    Write-Host "  TenantId    : $($existingConnection.TenantId)" -ForegroundColor Yellow
+    Write-Host "  Account     : $($S_ExistingConnection.UserPrincipalName)" -ForegroundColor Yellow
+    Write-Host "  Organization: $($S_ExistingConnection.Organization)" -ForegroundColor Yellow
+    Write-Host "  TenantId    : $($S_ExistingConnection.TenantId)" -ForegroundColor Yellow
     Write-Host ""
 
-    $choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-    if ($choice -eq 'N') {
+    $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+    if ($S_Choice -eq 'N') {
         Write-Host "Disconnecting existing session..." -ForegroundColor Cyan
         Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Reconnecting to Exchange Online..." -ForegroundColor Cyan
@@ -107,18 +107,18 @@ else {
     Write-Host "Connected to Exchange Online." -ForegroundColor Green
 }
 
-$context = Get-ConnectionInformation -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Connected' } | Select-Object -First 1
-$tenantName = if ($context -and $context.Organization)    { [string]$context.Organization }
-              elseif ($context -and $context.DelegatedOrganization) { [string]$context.DelegatedOrganization }
+$S_Context = Get-ConnectionInformation -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Connected' } | Select-Object -First 1
+$S_TenantName = if ($S_Context -and $S_Context.Organization)    { [string]$S_Context.Organization }
+              elseif ($S_Context -and $S_Context.DelegatedOrganization) { [string]$S_Context.DelegatedOrganization }
               else { 'Unknown' }
-$tenantId   = if ($context) { [string]$context.TenantId }          else { 'Unknown' }
-$account    = if ($context) { [string]$context.UserPrincipalName } else { 'Unknown' }
+$S_TenantId   = if ($S_Context) { [string]$S_Context.TenantId }          else { 'Unknown' }
+$S_Account    = if ($S_Context) { [string]$S_Context.UserPrincipalName } else { 'Unknown' }
 
 Write-Host ""
 Write-Host ("=" * 70) -ForegroundColor Cyan
-Write-Host "  Tenant     : $tenantName"  -ForegroundColor Cyan
-Write-Host "  Tenant ID  : $tenantId"    -ForegroundColor Cyan
-Write-Host "  Account    : $account"     -ForegroundColor Cyan
+Write-Host "  Tenant     : $S_TenantName"  -ForegroundColor Cyan
+Write-Host "  Tenant ID  : $S_TenantId"    -ForegroundColor Cyan
+Write-Host "  Account    : $S_Account"     -ForegroundColor Cyan
 Write-Host ("=" * 70) -ForegroundColor Cyan
 Write-Host ""
 
@@ -291,8 +291,8 @@ try {
         <h1>Audit Logs by IP Report</h1>
         <div class="meta">
             <div class="lbl">Generated</div><div class="val">$reportDate</div>
-            <div class="lbl">Tenant</div><div class="val">$([System.Net.WebUtility]::HtmlEncode($tenantName))</div>
-            <div class="lbl">Tenant ID</div><div class="val"><code style="background:rgba(255,255,255,0.1);color:#fff;">$tenantId</code></div>
+            <div class="lbl">Tenant</div><div class="val">$([System.Net.WebUtility]::HtmlEncode($S_TenantName))</div>
+            <div class="lbl">Tenant ID</div><div class="val"><code style="background:rgba(255,255,255,0.1);color:#fff;">$S_TenantId</code></div>
             <div class="lbl">Period</div><div class="val">$($FromDate.ToString('yyyy-MM-dd HH:mm')) &rarr; $($ToDate.ToString('yyyy-MM-dd HH:mm'))</div>
             <div class="lbl">IP(s)</div><div class="val">$ipListHtml</div>
         </div>
@@ -373,8 +373,8 @@ $detailRows
     $opsSummary | Select-Object Name, Count | Format-Table -AutoSize
 }
 finally {
-    $disconnectChoice = Read-Host "`nDisconnect from Exchange Online? [Y] Yes  [N] Keep session  (Default: N)"
-    if ($disconnectChoice -eq 'Y') {
+    $S_DisconnectChoice = Read-Host "`nDisconnect from Exchange Online? [Y] Yes  [N] Keep session  (Default: N)"
+    if ($S_DisconnectChoice -eq 'Y') {
         Write-Host "Disconnecting from Exchange Online..." -ForegroundColor Cyan
         Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Disconnected." -ForegroundColor Green
