@@ -76,7 +76,7 @@ try {
 		Connect-MgGraph -Scopes $scopes -ErrorAction Stop | Out-Null
 	}
 
-	$cutoffDate = (Get-Date).AddDays(-$InactiveDays)
+	$S_CutoffDate = (Get-Date).AddDays(-$InactiveDays)
 
 	$users = Get-MgUser -All `
 		-Filter "userType eq 'Member' and accountEnabled eq true" `
@@ -97,7 +97,7 @@ try {
 		$isInactive = $false
 		if (-not $lastInteractiveDt -and -not $lastNonInteractiveDt) {
 			$isInactive = $true
-		} elseif ((-not $lastInteractiveDt -or $lastInteractiveDt -lt $cutoffDate) -and (-not $lastNonInteractiveDt -or $lastNonInteractiveDt -lt $cutoffDate)) {
+		} elseif ((-not $lastInteractiveDt -or $lastInteractiveDt -lt $S_CutoffDate) -and (-not $lastNonInteractiveDt -or $lastNonInteractiveDt -lt $S_CutoffDate)) {
 			$isInactive = $true
 		}
 

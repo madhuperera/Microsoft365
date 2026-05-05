@@ -365,9 +365,9 @@ $detailRows
 "@
 
     $htmlName = "AuditLogsByIP_${ipTag}_${reportTime}.html"
-    $htmlPath = Join-Path -Path $OutputPath -ChildPath $htmlName
-    $html | Out-File -FilePath $htmlPath -Encoding UTF8
-    Write-Host "HTML report saved to: $htmlPath" -ForegroundColor Green
+    $S_HtmlPath = Join-Path -Path $OutputPath -ChildPath $htmlName
+    $html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
+    Write-Host "HTML report saved to: $S_HtmlPath" -ForegroundColor Green
 
     Write-Host "`nOperations summary:" -ForegroundColor Cyan
     $opsSummary | Select-Object Name, Count | Format-Table -AutoSize

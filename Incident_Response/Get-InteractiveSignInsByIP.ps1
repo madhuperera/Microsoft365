@@ -51,6 +51,8 @@ $S_RequiredGraphScopes = @(
     'AuditLog.Read.All'
 )
 
+$S_GraphRequestDelayMilliseconds = 5
+
 # ---------------------------------------------------------------------------
 # Connection
 # ---------------------------------------------------------------------------
@@ -193,7 +195,7 @@ try {
 
         $nextLink = Get-GraphNextLink -Response $response
         if ($nextLink) {
-            [System.Threading.Thread]::Sleep(5)
+            [System.Threading.Thread]::Sleep($S_GraphRequestDelayMilliseconds)
         }
     }
 }
@@ -217,7 +219,7 @@ catch {
 
         $nextLink = Get-GraphNextLink -Response $response
         if ($nextLink) {
-            [System.Threading.Thread]::Sleep(5)
+            [System.Threading.Thread]::Sleep($S_GraphRequestDelayMilliseconds)
         }
     }
 }
@@ -314,8 +316,8 @@ $summary | Format-Table -AutoSize
 
 }
 finally {
-    $disconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
-    if ($disconnectChoice -eq 'Y') {
+    $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
+    if ($S_DisconnectChoice -eq 'Y') {
         Write-Host "Disconnecting from Microsoft Graph..." -ForegroundColor Cyan
         Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Disconnected." -ForegroundColor Green

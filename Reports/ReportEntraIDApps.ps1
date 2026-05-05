@@ -177,7 +177,7 @@ try {
 	# --- Build report data ---
 	Write-Host "Building report data for $($servicePrincipals.Count) enterprise applications..." -ForegroundColor Cyan
 	$now = Get-Date
-	$cutoffDate = $now.AddDays(-$InactiveDays)
+	$S_CutoffDate = $now.AddDays(-$InactiveDays)
 	$expiringThresholdDate = $now.AddDays(30)
 
 	$report = foreach ($sp in $servicePrincipals) {
@@ -274,7 +274,7 @@ try {
 		# --- Status (Disabled > Inactive > Active) ---
 		if (-not $sp.AccountEnabled) {
 			$status = "Disabled"
-		} elseif ($lastSignIn -and ([datetime]$lastSignIn) -ge $cutoffDate) {
+		} elseif ($lastSignIn -and ([datetime]$lastSignIn) -ge $S_CutoffDate) {
 			$status = "Active"
 		} else {
 			$status = "Inactive"
@@ -339,9 +339,9 @@ try {
 		New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
 	}
 
-	$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+	$S_Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 	$csvFile = if (Test-Path $ReportPath -PathType Container) {
-		Join-Path $ReportPath ("EntraIDApps_{0}.csv" -f $timestamp)
+		Join-Path $ReportPath ("ReportEntraIDApps_{0}.csv" -f $S_Timestamp)
 	} else { $ReportPath }
 
 	# --- CSV export ---
@@ -830,7 +830,7 @@ applyThreshold();
 </html>
 "@
 
-	$htmlReportFile = Join-Path $reportFolder ("EntraIDApps_{0}.html" -f $timestamp)
+	$htmlReportFile = Join-Path $reportFolder ("ReportEntraIDApps_{0}.html" -f $S_Timestamp)
 	$html | Out-File -FilePath $htmlReportFile -Encoding UTF8
 
 	# --- Console summary ---
@@ -873,8 +873,8 @@ applyThreshold();
 	Write-Host ("CSV report               : {0}" -f $csvFile) -ForegroundColor Yellow
 	Write-Host ("HTML report              : {0}" -f $htmlReportFile) -ForegroundColor Yellow
 
-	$disconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
-	if ($disconnectChoice -match '^(y|yes)$') {
+	$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
+	if ($S_DisconnectChoice -match '^(y|yes)$') {
 		Disconnect-MgGraph -ErrorAction SilentlyContinue
 	}
 }

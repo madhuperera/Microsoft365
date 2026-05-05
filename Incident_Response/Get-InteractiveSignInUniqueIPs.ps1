@@ -677,10 +677,10 @@ $tableRows
 "@
 
     $htmlName = "InteractiveUniqueIPs_${Days}d_${reportTime}.html"
-    $htmlPath = Join-Path -Path $OutputPath -ChildPath $htmlName
-    $html | Out-File -FilePath $htmlPath -Encoding UTF8
+    $S_HtmlPath = Join-Path -Path $OutputPath -ChildPath $htmlName
+    $html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
 
-    Write-Host "`nHTML report saved to: $htmlPath" -ForegroundColor Green
+    Write-Host "`nHTML report saved to: $S_HtmlPath" -ForegroundColor Green
     Write-Host "`nUnique IP addresses: $($uniqueIpReport.Count)" -ForegroundColor Green
     Write-Host "Total sign-ins: $totalSignIns" -ForegroundColor Green
 
@@ -690,8 +690,8 @@ $tableRows
         Format-Table -AutoSize
 }
 finally {
-    $disconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
-    if ($disconnectChoice -eq 'Y') {
+    $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
+    if ($S_DisconnectChoice -eq 'Y') {
         Write-Host "Disconnecting from Microsoft Graph..." -ForegroundColor Cyan
         Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Disconnected." -ForegroundColor Green

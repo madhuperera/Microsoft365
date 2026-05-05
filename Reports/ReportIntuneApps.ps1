@@ -254,8 +254,8 @@ try {
 	if ($reportFolder -and -not (Test-Path $reportFolder)) {
 		New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
 	}
-	$timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-	$fileBase = "IntuneApps_{0}_{1}" -f $Platform, $timestamp
+	$S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+	$fileBase = "ReportIntuneApps_{0}_{1}" -f $Platform, $S_Timestamp
 	$csvFile  = if (Test-Path $ReportPath -PathType Container) { Join-Path $ReportPath ("{0}.csv" -f $fileBase) } else { $ReportPath }
 	$htmlFile = Join-Path $reportFolder ("{0}.html" -f $fileBase)
 
@@ -522,8 +522,8 @@ filterTable();
 	Write-Host ("CSV report               : {0}" -f $csvFile)  -ForegroundColor Yellow
 	Write-Host ("HTML report              : {0}" -f $htmlFile) -ForegroundColor Yellow
 
-	$disconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
-	if ($disconnectChoice -match '^(y|yes)$') {
+	$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
+	if ($S_DisconnectChoice -match '^(y|yes)$') {
 		Disconnect-MgGraph -ErrorAction SilentlyContinue
 	}
 }
