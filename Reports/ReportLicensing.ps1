@@ -55,8 +55,8 @@ if ($S_ExistingContext) {
     Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
     Write-Host ""
 
-    $choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-    if ($choice -eq 'N') {
+    $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+    if ($S_Choice -eq 'N') {
         Write-Host "Disconnecting existing session..." -ForegroundColor Cyan
         Disconnect-MgGraph | Out-Null
         Write-Host "Reconnecting with required scopes..." -ForegroundColor Cyan
