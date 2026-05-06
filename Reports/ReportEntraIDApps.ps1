@@ -45,6 +45,8 @@ $S_RequiredGraphScopes = @(
 	'Organization.Read.All'
 )
 
+$S_GraphRequestDelayMilliseconds = 5
+
 try {
 	# --- Module check ---
 	$requiredModules = @('Microsoft.Graph.Applications', 'Microsoft.Graph.Identity.DirectoryManagement')
@@ -57,11 +59,27 @@ try {
 	Import-Module Microsoft.Graph.Identity.DirectoryManagement -ErrorAction Stop
 
 	# --- Connect to Graph ---
-	$context = Get-MgContext
-	if (-not $context) {
-		Connect-MgGraph -Scopes $S_RequiredGraphScopes -ErrorAction Stop | Out-Null
-		$context = Get-MgContext
+	$S_ExistingContext = Get-MgContext
+	if ($S_ExistingContext)
+	{
+		Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
+		Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
+		Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
+		Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
+		Write-Host ""
+
+		$S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+		if ($S_Choice -eq 'N')
+		{
+			Disconnect-MgGraph | Out-Null
+			Connect-MgGraph -Scopes $S_RequiredGraphScopes -ErrorAction Stop | Out-Null
+		}
 	}
+	else
+	{
+		Connect-MgGraph -Scopes $S_RequiredGraphScopes -ErrorAction Stop | Out-Null
+	}
+	$S_ExistingContext = Get-MgContext
 
 	# --- Tenant info ---
 	$tenantDisplayName = $null
@@ -69,8 +87,8 @@ try {
 		$org = Get-MgOrganization -ErrorAction Stop | Select-Object -First 1
 		$tenantDisplayName = $org.DisplayName
 	} catch { }
-	if (-not $tenantDisplayName) { $tenantDisplayName = $context.TenantId }
-	$tenantId = if ($context.TenantId) { $context.TenantId } else { "Unknown" }
+	if (-not $tenantDisplayName) { $tenantDisplayName = $S_ExistingContext.TenantId }
+	$tenantId = if ($S_ExistingContext.TenantId) { $S_ExistingContext.TenantId } else { "Unknown" }
 
 	# --- Fetch all Service Principals (Enterprise Applications) ---
 	Write-Host "Fetching all enterprise applications (service principals)..." -ForegroundColor Cyan
@@ -159,7 +177,7 @@ try {
 	# --- Build report data ---
 	Write-Host "Building report data for $($servicePrincipals.Count) enterprise applications..." -ForegroundColor Cyan
 	$now = Get-Date
-	$cutoffDate = $now.AddDays(-$InactiveDays)
+	$S_CutoffDate = $now.AddDays(-$InactiveDays)
 	$expiringThresholdDate = $now.AddDays(30)
 
 	$report = foreach ($sp in $servicePrincipals) {
@@ -256,7 +274,7 @@ try {
 		# --- Status (Disabled > Inactive > Active) ---
 		if (-not $sp.AccountEnabled) {
 			$status = "Disabled"
-		} elseif ($lastSignIn -and ([datetime]$lastSignIn) -ge $cutoffDate) {
+		} elseif ($lastSignIn -and ([datetime]$lastSignIn) -ge $S_CutoffDate) {
 			$status = "Active"
 		} else {
 			$status = "Inactive"
@@ -321,9 +339,9 @@ try {
 		New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
 	}
 
-	$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+	$S_Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 	$csvFile = if (Test-Path $ReportPath -PathType Container) {
-		Join-Path $ReportPath ("EntraIDApps_{0}.csv" -f $timestamp)
+		Join-Path $ReportPath ("ReportEntraIDApps_{0}.csv" -f $S_Timestamp)
 	} else { $ReportPath }
 
 	# --- CSV export ---
@@ -812,7 +830,7 @@ applyThreshold();
 </html>
 "@
 
-	$htmlReportFile = Join-Path $reportFolder ("EntraIDApps_{0}.html" -f $timestamp)
+	$htmlReportFile = Join-Path $reportFolder ("ReportEntraIDApps_{0}.html" -f $S_Timestamp)
 	$html | Out-File -FilePath $htmlReportFile -Encoding UTF8
 
 	# --- Console summary ---
@@ -855,8 +873,8 @@ applyThreshold();
 	Write-Host ("CSV report               : {0}" -f $csvFile) -ForegroundColor Yellow
 	Write-Host ("HTML report              : {0}" -f $htmlReportFile) -ForegroundColor Yellow
 
-	$disconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
-	if ($disconnectChoice -match '^(y|yes)$') {
+	$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
+	if ($S_DisconnectChoice -match '^(y|yes)$') {
 		Disconnect-MgGraph -ErrorAction SilentlyContinue
 	}
 }

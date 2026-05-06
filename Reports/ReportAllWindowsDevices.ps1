@@ -43,6 +43,8 @@ $S_RequiredGraphScopes = @(
 	'Organization.Read.All'
 )
 
+$S_GraphRequestDelayMilliseconds = 5
+
 try {
 	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Identity.DirectoryManagement)) {
 		throw "Microsoft.Graph.Identity.DirectoryManagement module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
@@ -50,11 +52,27 @@ try {
 
 	Import-Module Microsoft.Graph.Identity.DirectoryManagement -ErrorAction Stop
 
-	$context = Get-MgContext
-	if (-not $context) {
-		Connect-MgGraph -Scopes $S_RequiredGraphScopes -ErrorAction Stop | Out-Null
-		$context = Get-MgContext
+	$S_ExistingContext = Get-MgContext
+	if ($S_ExistingContext)
+	{
+		Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
+		Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
+		Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
+		Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
+		Write-Host ""
+
+		$S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+		if ($S_Choice -eq 'N')
+		{
+			Disconnect-MgGraph | Out-Null
+			Connect-MgGraph -Scopes $S_RequiredGraphScopes -ErrorAction Stop | Out-Null
+		}
 	}
+	else
+	{
+		Connect-MgGraph -Scopes $S_RequiredGraphScopes -ErrorAction Stop | Out-Null
+	}
+	$S_ExistingContext = Get-MgContext
 
 	# --- Resolve tenant display name ---
 	$tenantDisplayName = $null
@@ -62,8 +80,8 @@ try {
 		$org = Get-MgOrganization -ErrorAction Stop | Select-Object -First 1
 		$tenantDisplayName = $org.DisplayName
 	} catch { }
-	if (-not $tenantDisplayName) { $tenantDisplayName = $context.TenantId }
-	$tenantId = if ($context.TenantId) { $context.TenantId } else { "Unknown" }
+	if (-not $tenantDisplayName) { $tenantDisplayName = $S_ExistingContext.TenantId }
+	$tenantId = if ($S_ExistingContext.TenantId) { $S_ExistingContext.TenantId } else { "Unknown" }
 
 	# --- Fetch all Windows devices ---
 	$devices = Get-MgDevice -All `
@@ -73,7 +91,7 @@ try {
 
 	# --- Build report data ---
 	$now = Get-Date
-	$cutoffDate = $now.AddDays(-$InactiveDays)
+	$S_CutoffDate = $now.AddDays(-$InactiveDays)
 	$report = foreach ($device in $devices) {
 		$regDt = if ($device.RegistrationDateTime) { [datetime]$device.RegistrationDateTime } else { $null }
 		$lastActivityDt = if ($device.ApproximateLastSignInDateTime) { [datetime]$device.ApproximateLastSignInDateTime } else { $null }
@@ -84,7 +102,7 @@ try {
 		# Status: Disabled > Inactive > Active
 		if (-not $device.AccountEnabled) {
 			$status = "Disabled"
-		} elseif (-not $lastActivityDt -or $lastActivityDt -lt $cutoffDate) {
+		} elseif (-not $lastActivityDt -or $lastActivityDt -lt $S_CutoffDate) {
 			$status = "Inactive"
 		} else {
 			$status = "Active"
@@ -134,9 +152,9 @@ try {
 		New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
 	}
 
-	$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+	$S_Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 	$csvFile = if (Test-Path $ReportPath -PathType Container) {
-		Join-Path $ReportPath ("AllWindowsDevices_{0}.csv" -f $timestamp)
+		Join-Path $ReportPath ("ReportAllWindowsDevices_{0}.csv" -f $S_Timestamp)
 	} else {
 		$ReportPath
 	}
@@ -485,7 +503,7 @@ applyThreshold();
 </html>
 "@
 
-	$htmlReportFile = Join-Path $reportFolder ("AllWindowsDevices_{0}.html" -f $timestamp)
+	$htmlReportFile = Join-Path $reportFolder ("ReportAllWindowsDevices_{0}.html" -f $S_Timestamp)
 	$html | Out-File -FilePath $htmlReportFile -Encoding UTF8
 
 	# --- Console summary ---
@@ -514,8 +532,8 @@ applyThreshold();
 	Write-Host ("CSV report               : {0}" -f $csvFile) -ForegroundColor Yellow
 	Write-Host ("HTML report              : {0}" -f $htmlReportFile) -ForegroundColor Yellow
 
-	$disconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
-	if ($disconnectChoice -match '^(y|yes)$') {
+	$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
+	if ($S_DisconnectChoice -match '^(y|yes)$') {
 		Disconnect-MgGraph -ErrorAction SilentlyContinue
 	}
 }

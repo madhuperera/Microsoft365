@@ -56,9 +56,9 @@ if (-not $OutputPath) {
     $OutputPath = Join-Path (Get-Location).Path "ReportNonMFA_$S_Timestamp.csv"
 }
 
-$htmlPath = [System.IO.Path]::ChangeExtension($OutputPath, '.html')
+$S_HtmlPath = [System.IO.Path]::ChangeExtension($OutputPath, '.html')
 
-$cutoffDate = (Get-Date).AddDays(-$InactiveDays)
+$S_CutoffDate = (Get-Date).AddDays(-$InactiveDays)
 
 # ── Connect to Microsoft Graph ─────────────────────────────────────────────────
 $S_RequiredGraphScopes = @(
@@ -68,16 +68,18 @@ $S_RequiredGraphScopes = @(
     'UserAuthenticationMethod.Read.All'
 )
 
-$existingContext = Get-MgContext
-if ($existingContext) {
+$S_GraphRequestDelayMilliseconds = 5
+
+$S_ExistingContext = Get-MgContext
+if ($S_ExistingContext) {
     Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
-    Write-Host "  Account : $($existingContext.Account)" -ForegroundColor Yellow
-    Write-Host "  TenantId: $($existingContext.TenantId)" -ForegroundColor Yellow
-    Write-Host "  Scopes  : $($existingContext.Scopes -join ', ')" -ForegroundColor Yellow
+    Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
+    Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
+    Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
     Write-Host ""
 
-    $choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-    if ($choice -eq 'N') {
+    $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+    if ($S_Choice -eq 'N') {
         Write-Host "Disconnecting existing session..." -ForegroundColor Cyan
         Disconnect-MgGraph | Out-Null
         Write-Host "Reconnecting with required scopes..." -ForegroundColor Cyan
@@ -215,7 +217,7 @@ try {
             }
             else {
                 $lastSignIn = ($dates | Sort-Object -Descending | Select-Object -First 1)
-                if ($lastSignIn -ge $cutoffDate) {
+                if ($lastSignIn -ge $S_CutoffDate) {
                     $activeAccount = 'Yes'
                 }
                 else {
@@ -401,16 +403,16 @@ $tableRows
 </html>
 "@
 
-    $html | Out-File -FilePath $htmlPath -Encoding UTF8
-    Write-Host "HTML report exported to: $htmlPath" -ForegroundColor Green
+    $html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
+    Write-Host "HTML report exported to: $S_HtmlPath" -ForegroundColor Green
 }
 catch {
     Write-Error "An error occurred: $_"
 }
 finally {
     # ── Disconnect ─────────────────────────────────────────────────────────────
-    $disconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
-    if ($disconnectChoice -eq 'Y') {
+    $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
+    if ($S_DisconnectChoice -eq 'Y') {
         Write-Host "Disconnecting from Microsoft Graph..." -ForegroundColor Cyan
         Disconnect-MgGraph | Out-Null
         Write-Host "Disconnected." -ForegroundColor Green

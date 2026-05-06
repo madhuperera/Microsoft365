@@ -40,6 +40,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$S_RequiredGraphScopes = @(
+	'DeviceManagementApps.Read.All'
+	'Group.Read.All'
+	'Organization.Read.All'
+)
+
+$S_GraphRequestDelayMilliseconds = 5
+
 # --- @odata.type maps for platform filtering ---
 $platformTypeMap = @{
 	Windows = @(
@@ -96,12 +104,27 @@ try {
 	Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
 
 	# --- Connect to Graph ---
-	$S_RequiredGraphScopes = @('DeviceManagementApps.Read.All', 'Group.Read.All', 'Organization.Read.All')
-	$context = Get-MgContext
-	if (-not $context) {
-		Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
-		$context = Get-MgContext
+	$S_ExistingContext = Get-MgContext
+	if ($S_ExistingContext)
+	{
+		Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
+		Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
+		Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
+		Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
+		Write-Host ""
+
+		$S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+		if ($S_Choice -eq 'N')
+		{
+			Disconnect-MgGraph | Out-Null
+			Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
+		}
 	}
+	else
+	{
+		Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
+	}
+	$S_ExistingContext = Get-MgContext
 
 	# --- Tenant info ---
 	$tenantDisplayName = $null
@@ -109,8 +132,8 @@ try {
 		$orgResp = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization' -ErrorAction Stop
 		if ($orgResp.value) { $tenantDisplayName = $orgResp.value[0].displayName }
 	} catch { }
-	if (-not $tenantDisplayName) { $tenantDisplayName = $context.TenantId }
-	$tenantId = if ($context.TenantId) { $context.TenantId } else { 'Unknown' }
+	if (-not $tenantDisplayName) { $tenantDisplayName = $S_ExistingContext.TenantId }
+	$tenantId = if ($S_ExistingContext.TenantId) { $S_ExistingContext.TenantId } else { 'Unknown' }
 
 	# --- Fetch all mobileApps with assignments (Beta returns more app types) ---
 	Write-Host "Fetching Intune mobile apps with assignments..." -ForegroundColor Cyan
@@ -231,8 +254,8 @@ try {
 	if ($reportFolder -and -not (Test-Path $reportFolder)) {
 		New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
 	}
-	$timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-	$fileBase = "IntuneApps_{0}_{1}" -f $Platform, $timestamp
+	$S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+	$fileBase = "ReportIntuneApps_{0}_{1}" -f $Platform, $S_Timestamp
 	$csvFile  = if (Test-Path $ReportPath -PathType Container) { Join-Path $ReportPath ("{0}.csv" -f $fileBase) } else { $ReportPath }
 	$htmlFile = Join-Path $reportFolder ("{0}.html" -f $fileBase)
 
@@ -499,8 +522,8 @@ filterTable();
 	Write-Host ("CSV report               : {0}" -f $csvFile)  -ForegroundColor Yellow
 	Write-Host ("HTML report              : {0}" -f $htmlFile) -ForegroundColor Yellow
 
-	$disconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
-	if ($disconnectChoice -match '^(y|yes)$') {
+	$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
+	if ($S_DisconnectChoice -match '^(y|yes)$') {
 		Disconnect-MgGraph -ErrorAction SilentlyContinue
 	}
 }

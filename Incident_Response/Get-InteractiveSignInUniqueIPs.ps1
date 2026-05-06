@@ -60,16 +60,16 @@ if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Users)) {
 
 Import-Module Microsoft.Graph.Users -ErrorAction Stop
 
-$context = Get-MgContext -ErrorAction SilentlyContinue
-if ($context) {
+$S_Context = Get-MgContext -ErrorAction SilentlyContinue
+if ($S_Context) {
     Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
-    Write-Host "  Account : $($context.Account)" -ForegroundColor Yellow
-    Write-Host "  TenantId: $($context.TenantId)" -ForegroundColor Yellow
-    Write-Host "  Scopes  : $($context.Scopes -join ', ')" -ForegroundColor Yellow
+    Write-Host "  Account : $($S_Context.Account)" -ForegroundColor Yellow
+    Write-Host "  TenantId: $($S_Context.TenantId)" -ForegroundColor Yellow
+    Write-Host "  Scopes  : $($S_Context.Scopes -join ', ')" -ForegroundColor Yellow
     Write-Host ""
 
-    $choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-    if ($choice -eq 'N') {
+    $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+    if ($S_Choice -eq 'N') {
         Write-Host "Disconnecting existing session..." -ForegroundColor Cyan
         Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Reconnecting with required scope..." -ForegroundColor Cyan
@@ -86,16 +86,16 @@ else {
     Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
 }
 
-$context = Get-MgContext -ErrorAction SilentlyContinue
-$tenantId = if ($context) { $context.TenantId } else { 'Unknown' }
-$tenantName = 'Unknown'
+$S_Context = Get-MgContext -ErrorAction SilentlyContinue
+$S_TenantId = if ($S_Context) { $S_Context.TenantId } else { 'Unknown' }
+$S_TenantName = 'Unknown'
 try {
     $orgInfo = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization?$select=displayName,verifiedDomains' -OutputType PSObject -ErrorAction Stop
     if ($orgInfo.value -and $orgInfo.value.Count -gt 0) {
         $org = $orgInfo.value[0]
-        $tenantName = [string]$org.displayName
+        $S_TenantName = [string]$org.displayName
         $defaultDomain = ($org.verifiedDomains | Where-Object { $_.isDefault -eq $true } | Select-Object -First 1).name
-        if ($defaultDomain) { $tenantName = "$tenantName ($defaultDomain)" }
+        if ($defaultDomain) { $S_TenantName = "$S_TenantName ($defaultDomain)" }
     }
 }
 catch {
@@ -104,8 +104,8 @@ catch {
 
 Write-Host ""
 Write-Host ("=" * 70) -ForegroundColor Cyan
-Write-Host "  Tenant: $tenantName" -ForegroundColor Cyan
-Write-Host "  Tenant ID: $tenantId" -ForegroundColor Cyan
+Write-Host "  Tenant: $S_TenantName" -ForegroundColor Cyan
+Write-Host "  Tenant ID: $S_TenantId" -ForegroundColor Cyan
 Write-Host ("=" * 70) -ForegroundColor Cyan
 Write-Host ""
 
@@ -592,7 +592,7 @@ try {
 <body>
     <div class="header">
         <h1>Interactive Sign-In Unique IPs Report</h1>
-        <div class="subtitle">Generated: $reportDate | Tenant: $tenantName | Tenant ID: $tenantId | Period: $Days days | Total IPs: $($uniqueIpReport.Count)</div>
+        <div class="subtitle">Generated: $reportDate | Tenant: $S_TenantName | Tenant ID: $S_TenantId | Period: $Days days | Total IPs: $($uniqueIpReport.Count)</div>
     </div>
 
     <div class="summary-cards">
@@ -677,10 +677,10 @@ $tableRows
 "@
 
     $htmlName = "InteractiveUniqueIPs_${Days}d_${reportTime}.html"
-    $htmlPath = Join-Path -Path $OutputPath -ChildPath $htmlName
-    $html | Out-File -FilePath $htmlPath -Encoding UTF8
+    $S_HtmlPath = Join-Path -Path $OutputPath -ChildPath $htmlName
+    $html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
 
-    Write-Host "`nHTML report saved to: $htmlPath" -ForegroundColor Green
+    Write-Host "`nHTML report saved to: $S_HtmlPath" -ForegroundColor Green
     Write-Host "`nUnique IP addresses: $($uniqueIpReport.Count)" -ForegroundColor Green
     Write-Host "Total sign-ins: $totalSignIns" -ForegroundColor Green
 
@@ -690,8 +690,8 @@ $tableRows
         Format-Table -AutoSize
 }
 finally {
-    $disconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
-    if ($disconnectChoice -eq 'Y') {
+    $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
+    if ($S_DisconnectChoice -eq 'Y') {
         Write-Host "Disconnecting from Microsoft Graph..." -ForegroundColor Cyan
         Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Disconnected." -ForegroundColor Green
