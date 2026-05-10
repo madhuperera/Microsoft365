@@ -130,13 +130,13 @@ All scripts in this section are located in [`Reports/`](Reports/).
 
 | Script | Description | Key permissions / modules |
 |--------|-------------|--------------------------|
-| [`ReportAllMemberUsers.ps1`](Reports/ReportAllMemberUsers.ps1) | Reports on all member users in Entra ID including account status, last sign-in, licensing, and on-premises sync state. Supports an inactivity threshold parameter. Exports to CSV. | `Microsoft.Graph.Users` |
-| [`ReportAllWindowsDevices.ps1`](Reports/ReportAllWindowsDevices.ps1) | Reports on all Windows devices registered in Entra ID, including registration state and last activity. Supports an inactivity threshold parameter. Exports to CSV. | `Microsoft.Graph.Identity.DirectoryManagement` |
+| [`ReportAllMemberUsers.ps1`](Reports/ReportAllMemberUsers.ps1) | Reports on all member users in Entra ID including account status, last sign-in, licensing, and on-premises sync state. Supports an inactivity threshold parameter. Exports to CSV and HTML. | `Microsoft.Graph.Users` |
+| [`ReportAllWindowsDevices.ps1`](Reports/ReportAllWindowsDevices.ps1) | Reports on all Windows devices registered in Entra ID, including registration state and last activity. Supports an inactivity threshold parameter. Exports to CSV and HTML. | `Microsoft.Graph.Identity.DirectoryManagement` |
 | [`ReportAuthenticationMethods.ps1`](Reports/ReportAuthenticationMethods.ps1) | Reports authentication methods registered for licensed Entra ID member accounts. Exports to CSV. | `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
 | [`ReportEntraIDApps.ps1`](Reports/ReportEntraIDApps.ps1) | Reports on enterprise applications (service principals) in Entra ID, including sign-in activity. Cross-references app registrations to identify which service principals have a local app registration. Supports an inactivity threshold parameter. Exports to CSV and HTML. | `Microsoft.Graph.Applications`, `Microsoft.Graph.Identity.DirectoryManagement` |
 | [`ReportEntraIDRolesMemberships.ps1`](Reports/ReportEntraIDRolesMemberships.ps1) | Reports on users assigned to administrator or Global Reader directory roles, including last sign-in date. Exports to CSV and HTML. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users`, `Microsoft.Graph.Groups`, `Microsoft.Graph.Identity.DirectoryManagement` |
-| [`ReportInactiveGuestUsers.ps1`](Reports/ReportInactiveGuestUsers.ps1) | Reports on guest users who have not signed in within a configurable number of days. Supports a `Disable` mode to disable accounts after reporting. Exports to CSV. | `Microsoft.Graph.Users` |
-| [`ReportInactiveMemberUsers.ps1`](Reports/ReportInactiveMemberUsers.ps1) | Reports on member users who have not signed in within a configurable number of days. Supports a `Disable` mode to disable accounts after reporting. Exports to CSV. | `Microsoft.Graph.Users` |
+| [`ReportInactiveGuestUsers.ps1`](Reports/ReportInactiveGuestUsers.ps1) | Reports on guest users who have not signed in within a configurable number of days. Supports a `Disable` mode to disable accounts after reporting. Exports to CSV and HTML. | `Microsoft.Graph.Users` |
+| [`ReportInactiveMemberUsers.ps1`](Reports/ReportInactiveMemberUsers.ps1) | Reports on member users who have not signed in within a configurable number of days. Supports a `Disable` mode to disable accounts after reporting. Exports to CSV and HTML. | `Microsoft.Graph.Users` |
 | [`ReportLegacyAuthenticationMethods.ps1`](Reports/ReportLegacyAuthenticationMethods.ps1) | Reports authentication methods for all Entra ID member accounts, classifying each method as Modern or Legacy. Includes licence status and on-premises sync status. Exports to CSV and HTML. | `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
 | [`ReportLegacyAuthenticationMethodsGuests.ps1`](Reports/ReportLegacyAuthenticationMethodsGuests.ps1) | Reports authentication methods for Entra ID guest accounts, classifying each method as Modern or Legacy. Exports to CSV. | `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
 | [`ReportUsersWithManagers.ps1`](Reports/ReportUsersWithManagers.ps1) | Exports Entra ID users who have a manager assigned, including the manager's display name and email. Exports to CSV. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users` |
@@ -302,8 +302,11 @@ These scripts are intended for use during active security investigations. They r
 
 | Pattern | Purpose | Example |
 |---------|---------|---------|
-| `Report<Subject>.ps1` | Reporting scripts that produce a CSV, HTML, or console summary | `ReportInactiveGuestUsers.ps1` |
+| `Report<Subject>.ps1` | Strictly read-only scripts that produce a CSV, HTML, or console summary without making any tenant changes | `ReportLicensing.ps1`, `ReportEntraIDApps.ps1` |
+| `Review<Subject>.ps1` | Scripts that can both report on and make changes to tenant configuration (for example, via a `Disable` or `Remediate` mode) | `ReviewInactiveGuestUsers.ps1` *(pending rename)* |
 | `Verb-Noun.ps1` | Action scripts using approved PowerShell verbs | `Get-AuditLogsByIP.ps1`, `Add-AccountToCalendarPermissions.ps1` |
+
+`ReportInactiveGuestUsers.ps1` and `ReportInactiveMemberUsers.ps1` currently use the `Report` prefix but include a `Disable` mode that can modify tenant configuration. These scripts are candidates for renaming to `ReviewInactiveGuestUsers.ps1` and `ReviewInactiveMemberUsers.ps1` in a dedicated rename pass.
 
 Several scripts in this repository previously used older naming patterns (`AADAuthenticationMethods.ps1`, `MailboxQuota.ps1`, `UnusedExoMailboxes.PS1`, `Report_CalendarPermissions.ps1`, `VerifyDkimRecords.ps1`, `VerifyDmarcRecords.ps1`, `VerifySPFRecords.ps1`, `Get-NonMFAReport.ps1`). These have been renamed in a dedicated rename pass to align with the `Report<Subject>.ps1` convention. See git history for the old names.
 
@@ -345,7 +348,7 @@ All scripts should include:
 When adding a new script to this repository:
 
 1. **Determine the correct folder.** Reporting scripts go in `Reports/`. Action scripts go in the appropriate workload folder (`Exchange/`, `Incident_Response/`, etc.).
-2. **Use the correct filename.** New reporting scripts must use the `Report<Subject>.ps1` format. New action scripts must use `Verb-Noun.ps1` with an approved PowerShell verb.
+2. **Use the correct filename.** New read-only reporting scripts must use the `Report<Subject>.ps1` format. Scripts that can both report and make tenant changes must use `Review<Subject>.ps1`. Action scripts must use `Verb-Noun.ps1` with an approved PowerShell verb.
 3. **Include a complete script header.** Add `#Requires`, comment-based help, `[CmdletBinding()]`, and all required parameters with validation attributes.
 4. **Declare Graph scopes.** For any Microsoft Graph script, declare all required scopes in `$S_RequiredGraphScopes`.
 5. **Update this README.** Add the new script to the appropriate table in the [Script catalogue](#script-catalogue) section. Include the script name as a relative link, a concise description, and the key modules or permissions required.
