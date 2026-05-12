@@ -71,7 +71,15 @@ Write-Host "  Environment: $($S_ActiveContext.Environment)" -ForegroundColor Cya
 Write-Host "  Scopes     : $($S_ActiveContext.Scopes -join ', ')" -ForegroundColor Cyan
 Write-Host ""
 
-$S_ContextConfirmation = (Read-Host "Proceed with this Graph context? [Y] Yes  [N] No").ToUpperInvariant()
+$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
+if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
+{
+    $S_ContextConfirmation = 'N'
+}
+else
+{
+    $S_ContextConfirmation = $S_ContextConfirmation.ToUpperInvariant()
+}
 if ($S_ContextConfirmation -ne 'Y')
 {
     throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
@@ -115,7 +123,15 @@ foreach ($S_Member in $S_AllUsers)
 $S_AllData | Export-Csv -Path $OutputPath -NoTypeInformation
 Write-Host "Report exported to: $OutputPath" -ForegroundColor Green
 
-$S_DisconnectChoice = (Read-Host "Disconnect from Microsoft Graph now? [Y] Yes  [N] No  (Default: N)").ToUpperInvariant()
+$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph now? [Y] Yes  [N] No  (Default: N)"
+if ([string]::IsNullOrWhiteSpace($S_DisconnectChoice))
+{
+    $S_DisconnectChoice = 'N'
+}
+else
+{
+    $S_DisconnectChoice = $S_DisconnectChoice.ToUpperInvariant()
+}
 if ($S_DisconnectChoice -eq 'Y')
 {
     Disconnect-MgGraph | Out-Null
