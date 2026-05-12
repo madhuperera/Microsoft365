@@ -62,33 +62,48 @@ else
 }
 
 # Get all enabled users in Entra ID
-$AllUsers = Get-MgUser -Filter "accountEnabled eq true" -All
-$AllUsers = $AllUsers | Sort-Object -Property DisplayName
+$S_ActiveContext = Get-MgContext
+Write-Host ""
+Write-Host "Active Graph context:" -ForegroundColor Cyan
+Write-Host "  Account    : $($S_ActiveContext.Account)" -ForegroundColor Cyan
+Write-Host "  TenantId   : $($S_ActiveContext.TenantId)" -ForegroundColor Cyan
+Write-Host "  Environment: $($S_ActiveContext.Environment)" -ForegroundColor Cyan
+Write-Host "  Scopes     : $($S_ActiveContext.Scopes -join ', ')" -ForegroundColor Cyan
+Write-Host ""
 
-$AllData = @()
+$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No"
+if ($S_ContextConfirmation -ne 'Y')
+{
+    throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
+}
+
+$S_AllUsers = Get-MgUser -Filter "accountEnabled eq true" -All
+$S_AllUsers = $S_AllUsers | Sort-Object -Property DisplayName
+
+$S_AllData = @()
 
 # Loop through each user and retrieve their authentication methods
-foreach ($Member in $AllUsers)
+foreach ($S_Member in $S_AllUsers)
 {
-    $MemberId = $Member.Id
-    $MemberName = $Member.DisplayName
-    Write-Host "`nWindows Hello for Business Check for $($MemberName):"
+    $S_MemberId = $S_Member.Id
+    $S_MemberName = $S_Member.DisplayName
+    Write-Host "`nWindows Hello for Business Check for $($S_MemberName):"
     Start-Sleep -Milliseconds $S_GraphRequestDelayMilliseconds
-    $WHfBAuthMethods = Get-MgUserAuthenticationMethod -UserId $MemberId | Where-Object {$_.additionalProperties.'@odata.type' -like "*windowsHelloForBusinessAuthenticationMethod*"}
-    if ($WHfBAuthMethods)
+    $S_WHfBAuthMethods = Get-MgUserAuthenticationMethod -UserId $S_MemberId | Where-Object { $_.additionalProperties.'@odata.type' -like "*windowsHelloForBusinessAuthenticationMethod*" }
+    if ($S_WHfBAuthMethods)
     {
-        foreach ($Method in $WHfBAuthMethods)
+        foreach ($S_Method in $S_WHfBAuthMethods)
         {
-            $DeviceName = $Method.additionalProperties.displayName
-            $RegisteredDate = $Method.additionalProperties.createdDateTime
-            Write-Host "Found on $DeviceName"
+            $S_DeviceName = $S_Method.additionalProperties.displayName
+            $S_RegisteredDate = $S_Method.additionalProperties.createdDateTime
+            Write-Host "Found on $S_DeviceName"
 
-            $OBJ = New-Object PSObject
-            $OBJ | Add-Member -MemberType NoteProperty -Name "StaffDisplayName" -Value $MemberName
-            $OBJ | Add-Member -MemberType NoteProperty -Name "DeviceName" -Value $DeviceName
-            $OBJ | Add-Member -MemberType NoteProperty -Name "RegisteredDate" -Value $RegisteredDate
+            $S_OBJ = New-Object PSObject
+            $S_OBJ | Add-Member -MemberType NoteProperty -Name "StaffDisplayName" -Value $S_MemberName
+            $S_OBJ | Add-Member -MemberType NoteProperty -Name "DeviceName" -Value $S_DeviceName
+            $S_OBJ | Add-Member -MemberType NoteProperty -Name "RegisteredDate" -Value $S_RegisteredDate
 
-            $AllData += $OBJ
+            $S_AllData += $S_OBJ
         }
     }
     else
@@ -97,5 +112,12 @@ foreach ($Member in $AllUsers)
     }
 }
 
-$AllData | Export-Csv -Path $OutputPath -NoTypeInformation
+$S_AllData | Export-Csv -Path $OutputPath -NoTypeInformation
 Write-Host "Report exported to: $OutputPath" -ForegroundColor Green
+
+$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph now? [Y] Yes  [N] No  (Default: N)"
+if ($S_DisconnectChoice -eq 'Y')
+{
+    Disconnect-MgGraph | Out-Null
+    Write-Host "Disconnected from Microsoft Graph." -ForegroundColor Yellow
+}
