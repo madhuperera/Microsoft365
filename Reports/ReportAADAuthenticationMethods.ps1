@@ -71,7 +71,7 @@ Write-Host "  Environment: $($S_ActiveContext.Environment)" -ForegroundColor Cya
 Write-Host "  Scopes     : $($S_ActiveContext.Scopes -join ', ')" -ForegroundColor Cyan
 Write-Host ""
 
-$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No"
+$S_ContextConfirmation = (Read-Host "Proceed with this Graph context? [Y] Yes  [N] No").ToUpperInvariant()
 if ($S_ContextConfirmation -ne 'Y')
 {
     throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
@@ -89,7 +89,7 @@ foreach ($S_Member in $S_AllUsers)
     $S_MemberName = $S_Member.DisplayName
     Write-Host "`nWindows Hello for Business Check for $($S_MemberName):"
     Start-Sleep -Milliseconds $S_GraphRequestDelayMilliseconds
-    $S_WHfBAuthMethods = Get-MgUserAuthenticationMethod -UserId $S_MemberId | Where-Object { $_.additionalProperties.'@odata.type' -like "*windowsHelloForBusinessAuthenticationMethod*" }
+    $S_WHfBAuthMethods = Get-MgUserAuthenticationMethod -UserId $S_MemberId | Where-Object {$_.additionalProperties.'@odata.type' -like "*windowsHelloForBusinessAuthenticationMethod*"}
     if ($S_WHfBAuthMethods)
     {
         foreach ($S_Method in $S_WHfBAuthMethods)
@@ -115,7 +115,7 @@ foreach ($S_Member in $S_AllUsers)
 $S_AllData | Export-Csv -Path $OutputPath -NoTypeInformation
 Write-Host "Report exported to: $OutputPath" -ForegroundColor Green
 
-$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph now? [Y] Yes  [N] No  (Default: N)"
+$S_DisconnectChoice = (Read-Host "Disconnect from Microsoft Graph now? [Y] Yes  [N] No  (Default: N)").ToUpperInvariant()
 if ($S_DisconnectChoice -eq 'Y')
 {
     Disconnect-MgGraph | Out-Null
