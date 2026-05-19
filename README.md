@@ -135,8 +135,8 @@ All scripts in this section are located in [`Reports/`](Reports/).
 | [`ReportAuthenticationMethods.ps1`](Reports/ReportAuthenticationMethods.ps1) | Reports authentication methods registered for licensed Entra ID member accounts. Exports to CSV. | `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
 | [`ReportEntraIDApps.ps1`](Reports/ReportEntraIDApps.ps1) | Reports on enterprise applications (service principals) in Entra ID, including sign-in activity. Cross-references app registrations to identify which service principals have a local app registration. Supports an inactivity threshold parameter. Exports to CSV and HTML. | `Microsoft.Graph.Applications`, `Microsoft.Graph.Identity.DirectoryManagement` |
 | [`ReportEntraIDRolesMemberships.ps1`](Reports/ReportEntraIDRolesMemberships.ps1) | Reports on users assigned to administrator or Global Reader directory roles, including last sign-in date. Exports to CSV and HTML. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users`, `Microsoft.Graph.Groups`, `Microsoft.Graph.Identity.DirectoryManagement` |
-| [`ReportInactiveGuestUsers.ps1`](Reports/ReportInactiveGuestUsers.ps1) | Reports on guest users who have not signed in within a configurable number of days. Supports a `Disable` mode to disable accounts after reporting. Exports to CSV and HTML. | `Microsoft.Graph.Users` |
-| [`ReportInactiveMemberUsers.ps1`](Reports/ReportInactiveMemberUsers.ps1) | Reports on member users who have not signed in within a configurable number of days. Supports a `Disable` mode to disable accounts after reporting. Exports to CSV and HTML. | `Microsoft.Graph.Users` |
+| [`ReviewInactiveGuestUsers.ps1`](Reports/ReviewInactiveGuestUsers.ps1) | Reports on guest users who have not signed in within a configurable number of days. Supports a `Disable` mode to disable accounts after reporting. Exports to CSV and HTML. | `Microsoft.Graph.Users` |
+| [`ReviewInactiveMemberUsers.ps1`](Reports/ReviewInactiveMemberUsers.ps1) | Reports on member users who have not signed in within a configurable number of days. Supports a `Disable` mode to disable accounts after reporting. Exports to CSV and HTML. | `Microsoft.Graph.Users` |
 | [`ReportLegacyAuthenticationMethods.ps1`](Reports/ReportLegacyAuthenticationMethods.ps1) | Reports authentication methods for all Entra ID member accounts, classifying each method as Modern or Legacy. Includes licence status and on-premises sync status. Exports to CSV and HTML. | `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
 | [`ReportLegacyAuthenticationMethodsGuests.ps1`](Reports/ReportLegacyAuthenticationMethodsGuests.ps1) | Reports authentication methods for Entra ID guest accounts, classifying each method as Modern or Legacy. Exports to CSV. | `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
 | [`ReportUsersWithManagers.ps1`](Reports/ReportUsersWithManagers.ps1) | Exports Entra ID users who have a manager assigned, including the manager's display name and email. Exports to CSV. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users` |
@@ -288,7 +288,7 @@ These scripts are intended for use during active security investigations. They r
 ## Safe usage notes
 
 - **Scripts are provided as-is without warranty.** Review each script's content before running it in your environment.
-- **Run in report-only mode first.** Scripts that support a `Mode` parameter (such as `ReportInactiveGuestUsers.ps1` and `ReportInactiveMemberUsers.ps1`) default to `ReportOnly`. Always review the report output before switching to `Disable` mode.
+- **Run in report-only mode first.** Scripts that support a `Mode` parameter (such as `ReviewInactiveGuestUsers.ps1` and `ReviewInactiveMemberUsers.ps1`) default to `ReportOnly`. Always review the report output before switching to `Disable` mode.
 - **Validate the active tenant.** Scripts that connect to Microsoft Graph will display the active account and tenant before proceeding. Confirm these match your intended target before continuing.
 - **Do not embed credentials.** Never store tenant IDs, client secrets, certificate thumbprints, or user credentials in script files or commit them to this repository.
 - **Permissions.** Request only the permissions each script actually requires. Avoid broad scopes such as `Directory.ReadWrite.All`.
@@ -303,10 +303,10 @@ These scripts are intended for use during active security investigations. They r
 | Pattern | Purpose | Example |
 |---------|---------|---------|
 | `Report<Subject>.ps1` | Strictly read-only scripts that produce a CSV, HTML, or console summary without making any tenant changes | `ReportLicensing.ps1`, `ReportEntraIDApps.ps1` |
-| `Review<Subject>.ps1` | Scripts that can both report on and make changes to tenant configuration (for example, via a `Disable` or `Remediate` mode) | `ReviewInactiveGuestUsers.ps1` *(pending rename)* |
+| `Review<Subject>.ps1` | Scripts that can both report on and make changes to tenant configuration (for example, via a `Disable` or `Remediate` mode) | `ReviewInactiveGuestUsers.ps1`, `ReviewInactiveMemberUsers.ps1` |
 | `Verb-Noun.ps1` | Action scripts using approved PowerShell verbs | `Get-AuditLogsByIP.ps1`, `Add-AccountToCalendarPermissions.ps1` |
 
-`ReportInactiveGuestUsers.ps1` and `ReportInactiveMemberUsers.ps1` currently use the `Report` prefix but include a `Disable` mode that can modify tenant configuration. These scripts are candidates for renaming to `ReviewInactiveGuestUsers.ps1` and `ReviewInactiveMemberUsers.ps1` in a dedicated rename pass.
+`ReviewInactiveGuestUsers.ps1` and `ReviewInactiveMemberUsers.ps1` use the `Review` prefix because they include a `Disable` mode that can modify tenant configuration.
 
 Several scripts in this repository previously used older naming patterns (`AADAuthenticationMethods.ps1`, `MailboxQuota.ps1`, `UnusedExoMailboxes.PS1`, `Report_CalendarPermissions.ps1`, `VerifyDkimRecords.ps1`, `VerifyDmarcRecords.ps1`, `VerifySPFRecords.ps1`, `Get-NonMFAReport.ps1`). These have been renamed in a dedicated rename pass to align with the `Report<Subject>.ps1` convention. See git history for the old names.
 
