@@ -27,6 +27,7 @@
 ## Contents
 
 - [Repository overview](#repository-overview)
+- [Quick start](#quick-start)
 - [Folder structure](#folder-structure)
 - [Prerequisites](#prerequisites)
 - [Script catalogue](#script-catalogue)
@@ -58,6 +59,16 @@ Scripts cover the following Microsoft 365 workloads:
 - Microsoft Intune — managed application inventory
 - Microsoft 365 licensing — plan and SKU reporting
 - Incident response — audit log analysis and sign-in investigation
+
+---
+
+## Quick start
+
+1. Install the required PowerShell modules listed in [Prerequisites](#prerequisites).
+2. Open PowerShell in the repository root folder.
+3. For Graph reporting scripts, run [`Reports/_ReadOnlyConnectionScript.ps1`](Reports/_ReadOnlyConnectionScript.ps1) once to establish a read-only Graph session.
+4. Run the script you need from the [Script catalogue](#script-catalogue).
+5. Confirm expected output (CSV, HTML, or console summary) has been generated.
 
 ---
 
@@ -173,7 +184,7 @@ All scripts in this section are located in [`Reports/`](Reports/).
 
 | Script | Description | Key permissions / modules |
 |--------|-------------|--------------------------|
-| [`ReportIntuneApps.ps1`](Reports/ReportIntuneApps.ps1) | Reports on applications managed by Microsoft Intune. Filterable by platform (Windows, Android, iOS, or All). Exports to CSV. | `Microsoft.Graph.DeviceManagement.Apps` *(inferred)* |
+| [`ReportIntuneApps.ps1`](Reports/ReportIntuneApps.ps1) | Reports on applications managed by Microsoft Intune. Filterable by platform (Windows, Android, iOS, or All). Exports to CSV and HTML. | `Microsoft.Graph.Authentication`; `DeviceManagementApps.Read.All`, `Group.Read.All`, `Organization.Read.All` |
 
 </details>
 
@@ -293,6 +304,33 @@ These scripts are intended for use during active security investigations. They r
 - **Do not embed credentials.** Never store tenant IDs, client secrets, certificate thumbprints, or user credentials in script files or commit them to this repository.
 - **Permissions.** Request only the permissions each script actually requires. Avoid broad scopes such as `Directory.ReadWrite.All`.
 - **Incident response scripts.** Audit log and sign-in data queries are subject to Microsoft 365 retention limits. Ensure your tenant has the appropriate Purview or Entra ID licence for the log retention window you need.
+
+---
+
+## Validation and testing
+
+- There is currently no dedicated automated test suite in this repository.
+- Validate documentation updates by checking:
+  - relative links resolve correctly from `README.md`;
+  - script and folder references match the current repository structure;
+  - module/scope references in documentation match script headers where stated.
+
+---
+
+## Troubleshooting
+
+- **Module import failures:** Install missing modules from [Prerequisites](#prerequisites) in the current PowerShell user scope.
+- **Graph connection prompt loops:** Re-run [`Reports/_ReadOnlyConnectionScript.ps1`](Reports/_ReadOnlyConnectionScript.ps1) and use `-Force` if you need to reset the existing context.
+- **Missing output files:** Verify write access to the current working directory or provide the relevant output path parameter where supported.
+- **No data returned:** Confirm the connected account has the required delegated permissions and that the selected time range is valid for available audit/sign-in retention.
+
+---
+
+## Known limitations
+
+- Script output and available properties depend on Microsoft 365 service APIs and tenant licensing.
+- Audit log and sign-in investigations are constrained by Microsoft 365 and Entra ID retention windows.
+- Some script permission notes in this README are high-level; always treat each script header as the authoritative source.
 
 ---
 
