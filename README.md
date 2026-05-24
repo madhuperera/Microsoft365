@@ -76,6 +76,9 @@ Scripts cover the following Microsoft 365 workloads:
 
 ```
 Microsoft365/
+├── .github/                     Repository automation and contributor guidance
+│   ├── workflows/               Scheduled Copilot documentation/compliance checks
+│   └── instructions/            Repository coding and documentation instruction files
 ├── Reports/                     All reporting scripts across all workloads
 ├── Exchange/
 │   ├── AntiMalwarePolicy/       Anti-malware policy reference files
@@ -89,6 +92,7 @@ Microsoft365/
 
 | Folder | Purpose |
 |--------|---------|
+| `.github/` | Repository workflow automation and instruction files used to guide maintenance tasks. |
 | `Reports/` | All reporting scripts for every Microsoft 365 workload. Scripts produce CSV or HTML output suitable for review or client delivery. |
 | `Exchange/` | Exchange Online operational scripts and supporting assets. Workload-specific non-reporting tooling lives here. |
 | `Exchange/AntiMalwarePolicy/` | Reference files for Microsoft Defender anti-malware policy configuration, including a curated list of file types to block. |
