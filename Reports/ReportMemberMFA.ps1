@@ -1,4 +1,4 @@
-#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.Users, Microsoft.Graph.Reports
+#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.Users, Microsoft.Graph.Reports, Microsoft.Graph.Identity.SignIns
 
 <#
 .SYNOPSIS
@@ -61,6 +61,7 @@ $S_RequiredGraphScopes = @(
     'User.Read.All'
     'AuditLog.Read.All'
     'UserAuthenticationMethod.Read.All'
+    'Policy.Read.All'
 )
 
 $S_ExistingContext = Get-MgContext
@@ -90,6 +91,252 @@ else {
 }
 
 try {
+    # ── Check Security Defaults Status ─────────────────────────────────────────
+    Write-Host "Checking Security Defaults status..." -ForegroundColor Cyan
+    $Script:S_SecurityDefaultsEnabled = $null
+    try {
+        $S_SecDefaultsPolicy = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/policies/identitySecurityDefaultsEnforcementPolicy'
+        $Script:S_SecurityDefaultsEnabled = [bool]$S_SecDefaultsPolicy.isEnabled
+        Write-Host "Security Defaults Enabled: $Script:S_SecurityDefaultsEnabled" -ForegroundColor (if ($Script:S_SecurityDefaultsEnabled) { 'Red' } else { 'Green' })
+    }
+    catch {
+        Write-Warning "Could not retrieve Security Defaults policy: $_"
+    }
+
+    # ── Conditional Access — MFA-enforcing policies (only when Security Defaults is OFF) ─────────
+    $Script:S_MfaCaPolicies = @()
+    if ($Script:S_SecurityDefaultsEnabled -eq $false) {
+        Write-Host "Retrieving enabled Conditional Access policies..." -ForegroundColor Cyan
+        try {
+            $S_EnabledCaPolicies = Get-MgIdentityConditionalAccessPolicy -All `
+                -Filter "State eq 'enabled'" `
+                -Property "id,displayName,state,grantControls,conditions"
+
+            # Keep only policies whose grant controls require MFA (built-in) OR an Authentication Strength.
+            # NOTE: The Graph SDK returns a non-null but empty AuthenticationStrength placeholder on
+            # policies that don't actually configure one (e.g. Sign-In Frequency, Block policies).
+            # We must validate that the AuthenticationStrength.Id is populated.
+            $S_FilteredCaPolicies = @(
+                $S_EnabledCaPolicies | Where-Object {
+                    $S_Grant = $_.GrantControls
+                    if ($null -eq $S_Grant) { return $false }
+                    $S_HasMfaBuiltIn = ($S_Grant.BuiltInControls -contains 'mfa')
+                    $S_HasAuthStrength = (
+                        $null -ne $S_Grant.AuthenticationStrength -and
+                        -not [string]::IsNullOrWhiteSpace([string]$S_Grant.AuthenticationStrength.Id)
+                    )
+                    $S_HasMfaBuiltIn -or $S_HasAuthStrength
+                }
+            )
+
+            # ── Resolver caches (avoid repeat Graph calls) ─────────────────────────
+            $S_UserCache  = @{}
+            $S_GroupCache = @{}
+            $S_RoleCache  = @{}
+
+            function Resolve-CaUserId {
+                param([string]$Id)
+                if ([string]::IsNullOrWhiteSpace($Id)) { return $null }
+                if ($Id -in @('All', 'None', 'GuestsOrExternalUsers')) { return $Id }
+                if ($S_UserCache.ContainsKey($Id)) { return $S_UserCache[$Id] }
+                try {
+                    $u = Get-MgUser -UserId $Id -Property Id,DisplayName,UserPrincipalName -ErrorAction Stop
+                    $label = "$($u.DisplayName) <$($u.UserPrincipalName)>"
+                }
+                catch { $label = "<unresolved:$Id>" }
+                $S_UserCache[$Id] = $label
+                return $label
+            }
+
+            function Resolve-CaGroupId {
+                param([string]$Id)
+                if ([string]::IsNullOrWhiteSpace($Id)) { return $null }
+                if ($S_GroupCache.ContainsKey($Id)) { return $S_GroupCache[$Id] }
+                try {
+                    $g = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/groups/$Id`?`$select=id,displayName" -ErrorAction Stop
+                    $label = "$($g.displayName) [group]"
+                }
+                catch { $label = "<unresolved:$Id>" }
+                $S_GroupCache[$Id] = $label
+                return $label
+            }
+
+            function Resolve-CaRoleId {
+                param([string]$Id)
+                if ([string]::IsNullOrWhiteSpace($Id)) { return $null }
+                if ($S_RoleCache.ContainsKey($Id)) { return $S_RoleCache[$Id] }
+                try {
+                    $r = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/directoryRoleTemplates/$Id" -ErrorAction Stop
+                    $label = "$($r.displayName) [role]"
+                }
+                catch { $label = "<unresolved:$Id>" }
+                $S_RoleCache[$Id] = $label
+                return $label
+            }
+
+            $S_LocationCache = @{}
+            function Resolve-CaLocationId {
+                param([string]$Id)
+                if ([string]::IsNullOrWhiteSpace($Id)) { return $null }
+                if ($Id -in @('All', 'AllTrusted', 'MultiFactorAuthentication')) { return $Id }
+                if ($S_LocationCache.ContainsKey($Id)) { return $S_LocationCache[$Id] }
+                try {
+                    $l = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/identity/conditionalAccess/namedLocations/$Id" -ErrorAction Stop
+                    $label = "$($l.displayName) [location]"
+                }
+                catch { $label = "<unresolved:$Id>" }
+                $S_LocationCache[$Id] = $label
+                return $label
+            }
+
+            # ── Project enriched policy objects ────────────────────────────────────
+            $Script:S_MfaCaPolicies = @(
+                foreach ($p in $S_FilteredCaPolicies) {
+                    $apps  = $p.Conditions.Applications
+                    $usrs  = $p.Conditions.Users                    
+                    $plat  = $p.Conditions.Platforms
+                    $locs  = $p.Conditions.Locations
+                    $S_GrantTypes = @()
+                    if ($p.GrantControls.BuiltInControls -contains 'mfa') { $S_GrantTypes += 'MFA' }
+                    $S_HasAuthStr = (
+                        $null -ne $p.GrantControls.AuthenticationStrength -and
+                        -not [string]::IsNullOrWhiteSpace([string]$p.GrantControls.AuthenticationStrength.Id)
+                    )
+                    if ($S_HasAuthStr) { $S_GrantTypes += 'AuthStrength' }
+
+                    # ── Grant operator & companion controls ──────────────────────
+                    # Operator is 'AND' or 'OR'. With OR + other controls present,
+                    # a user can satisfy the policy WITHOUT MFA (e.g. compliant
+                    # device alone) — a potential MFA gap we must flag.
+                    $S_GrantOperator = $p.GrantControls.Operator   # 'AND' | 'OR' | $null
+                    $S_AllBuiltIn    = @($p.GrantControls.BuiltInControls)
+                    $S_OtherBuiltIn  = @($S_AllBuiltIn | Where-Object { $_ -ne 'mfa' })
+
+                    # Companion controls = everything in the grant besides MFA / AuthStrength
+                    $S_CompanionControls = @($S_OtherBuiltIn)
+
+                    # Bypassable if: operator is OR and there is at least one
+                    # other grant control that could satisfy the policy alone.
+                    $S_MfaIsBypassable = (
+                        $S_GrantOperator -eq 'OR' -and
+                        $S_CompanionControls.Count -gt 0
+                    )
+
+                    [PSCustomObject]@{
+                        Id                         = $p.Id
+                        DisplayName                = $p.DisplayName
+                        State                      = $p.State
+                        GrantType                  = ($S_GrantTypes -join ' + ')
+                        AuthenticationStrengthId   = $p.GrantControls.AuthenticationStrength.Id
+                        AuthenticationStrengthName = $p.GrantControls.AuthenticationStrength.DisplayName
+                        GrantOperator              = $S_GrantOperator
+                        AllBuiltInControls         = $S_AllBuiltIn
+                        CompanionControls          = $S_CompanionControls
+                        HasAuthenticationStrength  = $S_HasAuthStr
+                        MfaIsBypassable            = $S_MfaIsBypassable
+                        IncludeApplications        = @($apps.IncludeApplications)
+                        ExcludeApplications        = @($apps.ExcludeApplications)
+                        IncludeUserActions         = @($apps.IncludeUserActions)
+                        IncludeUsers               = @($usrs.IncludeUsers  | ForEach-Object { Resolve-CaUserId  $_ })
+                        ExcludeUsers               = @($usrs.ExcludeUsers  | ForEach-Object { Resolve-CaUserId  $_ })
+                        IncludeGroups              = @($usrs.IncludeGroups | ForEach-Object { Resolve-CaGroupId $_ })
+                        ExcludeGroups              = @($usrs.ExcludeGroups | ForEach-Object { Resolve-CaGroupId $_ })
+                        IncludeRoles               = @($usrs.IncludeRoles  | ForEach-Object { Resolve-CaRoleId  $_ })
+                        ExcludeRoles               = @($usrs.ExcludeRoles  | ForEach-Object { Resolve-CaRoleId  $_ })
+                        IncludePlatforms           = @($plat.IncludePlatforms)
+                        ExcludePlatforms           = @($plat.ExcludePlatforms)
+                        IncludeLocations           = @($locs.IncludeLocations | ForEach-Object { Resolve-CaLocationId $_ })
+                        ExcludeLocations           = @($locs.ExcludeLocations | ForEach-Object { Resolve-CaLocationId $_ })
+                        ClientAppTypes             = @($p.Conditions.ClientAppTypes)
+                        SignInRiskLevels           = @($p.Conditions.SignInRiskLevels)
+                        UserRiskLevels             = @($p.Conditions.UserRiskLevels)
+                    }
+                }
+            )
+
+            Write-Host ("Found {0} enabled CA policy(ies) requiring MFA or Authentication Strength." -f $Script:S_MfaCaPolicies.Count) -ForegroundColor Green
+        }
+        catch {
+            Write-Warning "Could not retrieve Conditional Access policies: $_"
+        }
+    }
+    else {
+        Write-Host "Skipping Conditional Access policy query (Security Defaults is enabled or unknown)." -ForegroundColor DarkGray
+    }
+
+    # ── Authentication Strength policies referenced by kept CA policies ────────────────────────
+    # We deliberately only resolve the AuthenticationStrengths that are actually
+    # wired into one of the MFA-enforcing CA policies — anything else in the
+    # tenant is noise for gap-analysis purposes.
+    $Script:S_ReferencedAuthStrengths = @{}   # Keyed by Id for O(1) lookup later
+    $S_ReferencedAuthStrengthIds = @(
+        $Script:S_MfaCaPolicies |
+            Where-Object { $_.HasAuthenticationStrength -and $_.AuthenticationStrengthId } |
+            Select-Object -ExpandProperty AuthenticationStrengthId -Unique
+    )
+
+    if ($S_ReferencedAuthStrengthIds.Count -gt 0) {
+        Write-Host ("Resolving {0} referenced Authentication Strength policy(ies)..." -f $S_ReferencedAuthStrengthIds.Count) -ForegroundColor Cyan
+
+        # Single-factor combination tokens that do NOT satisfy MFA on their own.
+        $S_SingleFactorTokens = @('password', 'federatedSingleFactor')
+
+        foreach ($S_AuthStrId in $S_ReferencedAuthStrengthIds) {
+            try {
+                $a = Invoke-MgGraphRequest -Method GET `
+                    -Uri "https://graph.microsoft.com/v1.0/policies/authenticationStrengthPolicies/$S_AuthStrId"
+
+                $combos = @($a.allowedCombinations)
+
+                # MFA-capable if at least one combo has >1 factor, or its single
+                # token is not in the single-factor list.
+                $mfaCombos = @(
+                    $combos | Where-Object {
+                        $parts = ($_ -split ',') | ForEach-Object { $_.Trim() }
+                        if ($parts.Count -gt 1) { return $true }
+                        return ($parts[0] -notin $S_SingleFactorTokens)
+                    }
+                )
+
+                $Script:S_ReferencedAuthStrengths[$S_AuthStrId] = [PSCustomObject]@{
+                    Id                    = $a.id
+                    DisplayName           = $a.displayName
+                    Description           = $a.description
+                    PolicyType            = $a.policyType        # builtIn | custom
+                    RequirementsSatisfied = $a.requirementsSatisfied
+                    AllowedCombinations   = $combos
+                    MfaCombinations       = $mfaCombos
+                    IsMfaCapable          = ($mfaCombos.Count -gt 0)
+                }
+            }
+            catch {
+                Write-Warning "Could not retrieve Authentication Strength '$S_AuthStrId': $_"
+                $Script:S_ReferencedAuthStrengths[$S_AuthStrId] = [PSCustomObject]@{
+                    Id                    = $S_AuthStrId
+                    DisplayName           = '<unresolved>'
+                    Description           = $null
+                    PolicyType            = $null
+                    RequirementsSatisfied = $null
+                    AllowedCombinations   = @()
+                    MfaCombinations       = @()
+                    IsMfaCapable          = $null
+                }
+            }
+        }
+
+        $mfaCapableCount    = @($Script:S_ReferencedAuthStrengths.Values | Where-Object { $_.IsMfaCapable -eq $true  }).Count
+        $notMfaCapableCount = @($Script:S_ReferencedAuthStrengths.Values | Where-Object { $_.IsMfaCapable -eq $false }).Count
+        Write-Host ("Resolved {0} Authentication Strength policy(ies): {1} MFA-capable, {2} not MFA-capable." -f `
+            $Script:S_ReferencedAuthStrengths.Count, $mfaCapableCount, $notMfaCapableCount) -ForegroundColor Green
+
+        if ($notMfaCapableCount -gt 0) {
+            Write-Warning "One or more CA policies reference an Authentication Strength that is NOT MFA-capable."
+        }
+    }
+    else {
+        Write-Host "No CA policies reference an Authentication Strength — skipping." -ForegroundColor DarkGray
+    }
+
     # ── Retrieve Member Users (Guests excluded) ────────────────────────────────
     $userProperties = @(
         'Id'
@@ -249,9 +496,103 @@ try {
         "        <tr><td>$([System.Web.HttpUtility]::HtmlEncode($_.DisplayName))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.UserPrincipalName))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.Mail))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.Domain))</td><td>$($_.ActiveAccount)</td><td>$($_.IsLicensed)</td><td>$($_.IsOnPremSynced)</td></tr>"
     }) -join "`n"
 
+    # ── Build CA Policy table rows ──────────────────────────────────────
+    function Format-CaList {
+        param([object[]]$Items)
+        if ($null -eq $Items -or $Items.Count -eq 0) { return '<span style="color:#999">—</span>' }
+        ($Items | ForEach-Object { [System.Web.HttpUtility]::HtmlEncode([string]$_) }) -join '<br>'
+    }
+
+    $S_CaPolicyRows = if ($Script:S_MfaCaPolicies.Count -eq 0) {
+        '        <tr><td colspan="9" style="text-align:center;color:#999">No MFA-enforcing Conditional Access policies were found.</td></tr>'
+    }
+    else {
+        ($Script:S_MfaCaPolicies | ForEach-Object {
+            $S_Included = @()
+            $S_Included += $_.IncludeUsers
+            $S_Included += $_.IncludeGroups
+            $S_Included += $_.IncludeRoles
+            $S_Excluded = @()
+            $S_Excluded += $_.ExcludeUsers
+            $S_Excluded += $_.ExcludeGroups
+            $S_Excluded += $_.ExcludeRoles
+
+            $S_Workloads = @()
+            $S_Workloads += $_.IncludeApplications
+            if ($_.IncludeUserActions.Count -gt 0) {
+                $S_Workloads += ($_.IncludeUserActions | ForEach-Object { "action: $_" })
+            }
+            if ($_.ExcludeApplications.Count -gt 0) {
+                $S_Workloads += ($_.ExcludeApplications | ForEach-Object { "exclude: $_" })
+            }
+
+            $S_GrantParts = @()
+            if ($_.AllBuiltInControls.Count -gt 0) { $S_GrantParts += ($_.AllBuiltInControls -join " $($_.GrantOperator) ") }
+            if ($_.HasAuthenticationStrength) {
+                $S_AsName = if ($_.AuthenticationStrengthName) { $_.AuthenticationStrengthName } else { '<unknown>' }
+                $S_GrantParts += "AuthStrength: $S_AsName"
+            }
+            $S_GrantText = ($S_GrantParts -join '<br>')
+            if ($_.MfaIsBypassable) {
+                $S_GrantText += '<br><span style="color:#d13438;font-weight:600">⚠ MFA bypassable (OR with companion controls)</span>'
+            }
+
+            $S_OtherTargeting = @()
+            if ($_.IncludePlatforms.Count -gt 0) { $S_OtherTargeting += "Platforms incl: $($_.IncludePlatforms -join ', ')" }
+            if ($_.ExcludePlatforms.Count -gt 0) { $S_OtherTargeting += "Platforms excl: $($_.ExcludePlatforms -join ', ')" }
+            if ($_.IncludeLocations.Count -gt 0) { $S_OtherTargeting += "Locations incl: $($_.IncludeLocations -join ', ')" }
+            if ($_.ExcludeLocations.Count -gt 0) { $S_OtherTargeting += "Locations excl: $($_.ExcludeLocations -join ', ')" }
+            if ($_.ClientAppTypes.Count   -gt 0) { $S_OtherTargeting += "Client apps: $($_.ClientAppTypes -join ', ')" }
+            if ($_.SignInRiskLevels.Count -gt 0) { $S_OtherTargeting += "Sign-in risk: $($_.SignInRiskLevels -join ', ')" }
+            if ($_.UserRiskLevels.Count   -gt 0) { $S_OtherTargeting += "User risk: $($_.UserRiskLevels -join ', ')" }
+            $S_OtherText = if ($S_OtherTargeting.Count -gt 0) { Format-CaList $S_OtherTargeting } else { '<span style="color:#999">—</span>' }
+
+            "        <tr><td>$([System.Web.HttpUtility]::HtmlEncode($_.DisplayName))</td>" +
+            "<td>$($_.State)</td>" +
+            "<td>$(Format-CaList $S_Workloads)</td>" +
+            "<td>$(Format-CaList $S_Included)</td>" +
+            "<td>$(Format-CaList $S_Excluded)</td>" +
+            "<td>$S_GrantText</td>" +
+            "<td>$S_OtherText</td></tr>"
+        }) -join "`n"
+    }
+
+    # ── Build Authentication Strength table rows ──────────────────────────────────
+    $S_AuthStrengthRows = if ($null -eq $Script:S_ReferencedAuthStrengths -or $Script:S_ReferencedAuthStrengths.Count -eq 0) {
+        '        <tr><td colspan="6" style="text-align:center;color:#999">No Authentication Strengths referenced by the kept CA policies.</td></tr>'
+    }
+    else {
+        ($Script:S_ReferencedAuthStrengths.Values | ForEach-Object {
+            $S_MfaText = switch ($_.IsMfaCapable) {
+                $true   { '<span style="color:#107c10;font-weight:600">Yes</span>' }
+                $false  { '<span style="color:#d13438;font-weight:600">No</span>' }
+                default { '<span style="color:#999">Unknown</span>' }
+            }
+            "        <tr><td>$([System.Web.HttpUtility]::HtmlEncode($_.DisplayName))</td>" +
+            "<td>$($_.PolicyType)</td>" +
+            "<td>$S_MfaText</td>" +
+            "<td>$(Format-CaList $_.AllowedCombinations)</td>" +
+            "<td>$(Format-CaList $_.MfaCombinations)</td>" +
+            "<td>$([System.Web.HttpUtility]::HtmlEncode([string]$_.Description))</td></tr>"
+        }) -join "`n"
+    }
+
     # ── Generate HTML Report ───────────────────────────────────────────────────
     $reportDate = Get-Date -Format 'dd MMM yyyy HH:mm'
     $S_TenantId = (Get-MgContext).TenantId
+
+    if ($null -eq $Script:S_SecurityDefaultsEnabled) {
+        $S_SecDefaultsText  = 'Security Defaults: Unknown'
+        $S_SecDefaultsClass = 'unknown'
+    }
+    elseif ($Script:S_SecurityDefaultsEnabled) {
+        $S_SecDefaultsText  = 'Security Defaults: ENABLED'
+        $S_SecDefaultsClass = 'enabled'
+    }
+    else {
+        $S_SecDefaultsText  = 'Security Defaults: DISABLED'
+        $S_SecDefaultsClass = 'disabled'
+    }
 
     $html = @"
 <!DOCTYPE html>
@@ -288,9 +629,13 @@ try {
         .breakdown .card .value { font-size: 28px; }
         table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-top: 12px; }
         th { background: #d13438; color: #fff; text-align: left; padding: 10px 14px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.3px; }
-        td { padding: 9px 14px; font-size: 13px; border-bottom: 1px solid #eee; }
+        td { padding: 9px 14px; font-size: 13px; border-bottom: 1px solid #eee; vertical-align: top; }
         tr:hover { background: #fdf2f2; }
         .footer { text-align: center; font-size: 12px; color: #999; margin-top: 32px; }
+        .secdefaults { text-align: center; font-size: 14px; font-weight: 700; padding: 10px 16px; border-radius: 6px; margin: 0 auto 20px; max-width: 480px; }
+        .secdefaults.enabled  { background: #fdecea; color: #d13438; border: 1px solid #d13438; }
+        .secdefaults.disabled { background: #eaf6ec; color: #107c10; border: 1px solid #107c10; }
+        .secdefaults.unknown  { background: #f3f3f3; color: #666;    border: 1px solid #999; }
     </style>
 </head>
 <body>
@@ -298,6 +643,8 @@ try {
         <h1>Member MFA Coverage Report</h1>
         <div class="subtitle">Generated: $reportDate | Tenant: $S_TenantId | Inactive threshold: $InactiveDays days | Guests excluded</div>
     </div>
+
+    <div class="secdefaults $S_SecDefaultsClass">$S_SecDefaultsText</div>
 
     <div class="cards">
         <div class="card blue">
@@ -355,6 +702,30 @@ try {
             </thead>
             <tbody>
 $tableRows
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>MFA-Enforcing Conditional Access Policies</h2>
+        <table>
+            <thead>
+                <tr><th>Name</th><th>State</th><th>Workloads</th><th>Included</th><th>Excluded</th><th>Grants</th><th>Other Conditions</th></tr>
+            </thead>
+            <tbody>
+$S_CaPolicyRows
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Authentication Strengths Referenced by CA Policies</h2>
+        <table>
+            <thead>
+                <tr><th>Name</th><th>Type</th><th>MFA Capable</th><th>Allowed Combinations</th><th>MFA Combinations</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+$S_AuthStrengthRows
             </tbody>
         </table>
     </div>
