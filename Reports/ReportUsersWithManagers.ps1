@@ -64,15 +64,38 @@ else
     Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
 }
 
+$S_ActiveContext = Get-MgContext
+Write-Host ""
+Write-Host "Active Graph context:" -ForegroundColor Cyan
+Write-Host "  Account    : $($S_ActiveContext.Account)" -ForegroundColor Cyan
+Write-Host "  TenantId   : $($S_ActiveContext.TenantId)" -ForegroundColor Cyan
+Write-Host "  Environment: $($S_ActiveContext.Environment)" -ForegroundColor Cyan
+Write-Host "  Scopes     : $($S_ActiveContext.Scopes -join ', ')" -ForegroundColor Cyan
+Write-Host ""
+
+$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
+if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
+{
+    $S_ContextConfirmation = 'N'
+}
+else
+{
+    $S_ContextConfirmation = $S_ContextConfirmation.ToUpperInvariant()
+}
+if ($S_ContextConfirmation -ne 'Y')
+{
+    throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
+}
+
 # Get all users with their manager information
 Write-Host "Retrieving licensed and enabled users from Entra ID..." -ForegroundColor Cyan
 
-$users = Get-MgUser -All -Filter "assignedLicenses/`$count ne 0 and accountEnabled eq true" -ConsistencyLevel eventual -CountVariable Records -Property Id, DisplayName, UserPrincipalName, Mail, JobTitle, Department
+$S_Users = Get-MgUser -All -Filter "assignedLicenses/`$count ne 0 and accountEnabled eq true" -ConsistencyLevel eventual -CountVariable Records -Property Id, DisplayName, UserPrincipalName, Mail, JobTitle, Department
 
-$usersWithManagers = @()
+$S_UsersWithManagers = @()
 
-foreach ($user in $users) {
-    Write-Progress -Activity "Processing users" -Status "Checking $($user.DisplayName)" -PercentComplete (($usersWithManagers.Count / $users.Count) * 100)
+foreach ($user in $S_Users) {
+    Write-Progress -Activity "Processing users" -Status "Checking $($user.DisplayName)" -PercentComplete (($S_UsersWithManagers.Count / $S_Users.Count) * 100)
     
     # Get manager for each user
     try {
@@ -80,7 +103,7 @@ foreach ($user in $users) {
         $manager = Get-MgUserManager -UserId $user.Id -ErrorAction SilentlyContinue
         
         if ($manager) {
-            $usersWithManagers += [PSCustomObject]@{
+            $S_UsersWithManagers += [PSCustomObject]@{
                 DisplayName        = $user.DisplayName
                 UserPrincipalName  = $user.UserPrincipalName
                 Email              = if ($user.Mail) { $user.Mail } else { $user.UserPrincipalName }
@@ -99,10 +122,10 @@ foreach ($user in $users) {
 
 Write-Progress -Activity "Processing users" -Completed
 
-$usersWithManagers | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+$S_UsersWithManagers | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
 
 Write-Host "`nExport complete!" -ForegroundColor Green
-Write-Host "Total users with managers: $($usersWithManagers.Count)" -ForegroundColor Yellow
+Write-Host "Total users with managers: $($S_UsersWithManagers.Count)" -ForegroundColor Yellow
 Write-Host "File saved to: $OutputPath" -ForegroundColor Yellow
 
 $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"

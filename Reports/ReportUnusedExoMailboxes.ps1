@@ -58,11 +58,8 @@ if (-not $OutputPath)
     $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportUnusedExoMailboxes_$S_Timestamp"
 }
 
-$ReportNameTitle = "Unused Mailboxes Report"
-$ReportWorksheetName = "UnusedMailboxes"
-$ReportOutputName = [System.IO.Path]::GetFileNameWithoutExtension($OutputPath)
-
-# Function to convert dates to New Zealand time
+$S_ReportNameTitle = "Unused Mailboxes Report"
+$S_ReportWorksheetName = "UnusedMailboxes"
 
 try
 {
@@ -94,6 +91,29 @@ catch
   exit
 }
 
+$S_ActiveContext = Get-MgContext
+Write-Host ""
+Write-Host "Active Graph context:" -ForegroundColor Cyan
+Write-Host "  Account    : $($S_ActiveContext.Account)" -ForegroundColor Cyan
+Write-Host "  TenantId   : $($S_ActiveContext.TenantId)" -ForegroundColor Cyan
+Write-Host "  Environment: $($S_ActiveContext.Environment)" -ForegroundColor Cyan
+Write-Host "  Scopes     : $($S_ActiveContext.Scopes -join ', ')" -ForegroundColor Cyan
+Write-Host ""
+
+$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
+if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
+{
+    $S_ContextConfirmation = 'N'
+}
+else
+{
+    $S_ContextConfirmation = $S_ContextConfirmation.ToUpperInvariant()
+}
+if ($S_ContextConfirmation -ne 'Y')
+{
+    throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
+}
+
 try
 {
   # Check for Exchange Online
@@ -112,7 +132,7 @@ catch
 
 
 # Find mailboxes and check if they are unused
-$Now = Get-Date -format s
+$S_Now = Get-Date -format s
 [int]$i = 0
 Write-Host "Looking for User Mailboxes..."
 [array]$Mbx = Get-ExoMailbox -RecipientTypeDetails UserMailbox -ResultSize Unlimited | `
@@ -147,7 +167,7 @@ Write-Host "Looking for User Mailboxes..."
     }
     If ($LastActiveDateTime) 
     {
-        $DaysSinceActive = (New-TimeSpan -Start $LastActiveDateTime -End $Now).Days 
+        $DaysSinceActive = (New-TimeSpan -Start $LastActiveDateTime -End $S_Now).Days 
     }
   
     # Get Mailbox statistics
@@ -196,7 +216,7 @@ if ($ReportInExcel)
     { 
         Import-Module ImportExcel -ErrorAction SilentlyContinue 
         $ExcelOutputFile = "$OutputPath.xlsx"
-        $Report | Export-Excel -Path $ExcelOutputFile -WorksheetName $ReportWorksheetName -Title ("$ReportNameTitle {0}" -f (Get-Date -format 'dd-MMM-yyyy')) -TitleBold -TableName $ReportWorksheetName
+        $Report | Export-Excel -Path $ExcelOutputFile -WorksheetName $S_ReportWorksheetName -Title ("$S_ReportNameTitle {0}" -f (Get-Date -format 'dd-MMM-yyyy')) -TitleBold -TableName $S_ReportWorksheetName
         $OutputFile = $ExcelOutputFile 
     }
     else 
@@ -213,3 +233,14 @@ else
     $Outputfile = $CSVOutputFile 
 }
 Write-Host ("Output data is available in {0}" -f $OutputFile)
+
+$S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
+if ($S_DisconnectChoice -eq 'Y')
+{
+    Disconnect-MgGraph | Out-Null
+    Write-Host "Disconnected from Microsoft Graph." -ForegroundColor Yellow
+}
+else
+{
+    Write-Host "Graph session kept alive." -ForegroundColor Green
+}

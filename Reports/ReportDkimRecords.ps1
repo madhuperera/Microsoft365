@@ -5,7 +5,7 @@
     Reports on DKIM DNS record configuration for all accepted domains in Exchange Online.
 
 .DESCRIPTION
-    Retrieves DKIM signing configuration from Exchange Online and verifies DKIM DNS records
+    Connects to Exchange Online, retrieves DKIM signing configuration, and verifies DKIM DNS records
     for all non-onmicrosoft.com domains using the specified DNS resolver.
     Outputs results to the console.
 
@@ -19,9 +19,16 @@ param ()
 $ErrorActionPreference = 'Stop'
 
 $S_DNSServerToUse = "1.1.1.1"
-$DkimConfiguration = Get-DkimSigningConfig | Where-Object {$_.Domain -notlike "*.onmicrosoft.com"}
 
-foreach ($DkimEntry in $DkimConfiguration)
+if (-not (Get-Module -Name ExchangeOnlineManagement -ListAvailable))
+{
+    throw "ExchangeOnlineManagement module is not installed. Install it using: Install-Module ExchangeOnlineManagement -Scope CurrentUser"
+}
+Connect-ExchangeOnline -ShowBanner:$false
+
+$S_DkimConfiguration = Get-DkimSigningConfig | Where-Object {$_.Domain -notlike "*.onmicrosoft.com"}
+
+foreach ($DkimEntry in $S_DkimConfiguration)
 {
     [String] $DomainName = $DkimEntry.Domain
     [bool] $DkimEnabled = $DkimEntry.Enabled

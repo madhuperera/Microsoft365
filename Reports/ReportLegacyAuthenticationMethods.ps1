@@ -65,16 +65,39 @@ else
     Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
 }
 
+$S_ActiveContext = Get-MgContext
+Write-Host ""
+Write-Host "Active Graph context:" -ForegroundColor Cyan
+Write-Host "  Account    : $($S_ActiveContext.Account)" -ForegroundColor Cyan
+Write-Host "  TenantId   : $($S_ActiveContext.TenantId)" -ForegroundColor Cyan
+Write-Host "  Environment: $($S_ActiveContext.Environment)" -ForegroundColor Cyan
+Write-Host "  Scopes     : $($S_ActiveContext.Scopes -join ', ')" -ForegroundColor Cyan
+Write-Host ""
+
+$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
+if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
+{
+    $S_ContextConfirmation = 'N'
+}
+else
+{
+    $S_ContextConfirmation = $S_ContextConfirmation.ToUpperInvariant()
+}
+if ($S_ContextConfirmation -ne 'Y')
+{
+    throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
+}
+
 Write-Host "Finding Azure AD accounts"
-[array]$Users = Get-MgUser -Filter "userType eq 'Member'" -ConsistencyLevel eventual -CountVariable Records -All -Property Id, DisplayName, UserPrincipalName, AccountEnabled, AssignedLicenses, OnPremisesSyncEnabled
-If (!($Users)) { Write-Host "No users found in Azure AD... exiting!"; break }
+[array]$S_Users = Get-MgUser -Filter "userType eq 'Member'" -ConsistencyLevel eventual -CountVariable Records -All -Property Id, DisplayName, UserPrincipalName, AccountEnabled, AssignedLicenses, OnPremisesSyncEnabled
+If (!($S_Users)) { Write-Host "No users found in Azure AD... exiting!"; break }
 
 $i = 0
-$Report = [System.Collections.Generic.List[Object]]::new()
-ForEach ($User in $Users)
+$S_Report = [System.Collections.Generic.List[Object]]::new()
+ForEach ($User in $S_Users)
 {
  $i++
- Write-Host ("Processing user {0} {1}/{2}." -f $User.DisplayName, $i, $Users.Count)
+ Write-Host ("Processing user {0} {1}/{2}." -f $User.DisplayName, $i, $S_Users.Count)
 $AuthMethods = Get-MgUserAuthenticationMethod -UserId $User.Id
 
 $ModernTypes = @()
@@ -140,21 +163,21 @@ $ReportLine = [PSCustomObject]@{
   AccountEnabled = $IsEnabled
   Id     = $User.Id
 }
-$Report.Add($ReportLine)
+$S_Report.Add($ReportLine)
 
 } #End ForEach User
  
    
-$Report = $Report | Sort-Object User 
+$S_Report = $S_Report | Sort-Object User 
 
 # --- CSV Export ---
-$Report | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+$S_Report | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
 
 # --- HTML Report: Enabled Users MFA Status ---
-$totalMembers     = $Report.Count
-$totalEnabled     = ($Report | Where-Object { $_.AccountEnabled -eq "Yes" }).Count
+$totalMembers     = $S_Report.Count
+$totalEnabled     = ($S_Report | Where-Object { $_.AccountEnabled -eq "Yes" }).Count
 $totalDisabled    = $totalMembers - $totalEnabled
-$enabledUsers     = $Report | Where-Object { $_.AccountEnabled -eq "Yes" }
+$enabledUsers     = $S_Report | Where-Object { $_.AccountEnabled -eq "Yes" }
 $enabledLicensed  = ($enabledUsers | Where-Object { $_.Licensed -eq "Yes" }).Count
 
 $mfaModern   = ($enabledUsers | Where-Object { $_.Type -eq "Modern Authentication" }).Count
@@ -188,9 +211,8 @@ $tableRows = ($enabledUsers | Sort-Object User | ForEach-Object {
 		[System.Net.WebUtility]::HtmlEncode($_.OnPremisesSynced)
 }) -join "`n"
 
-$context = Get-MgContext
-$tenantName = if ($context.TenantId) { $context.TenantId } else { "Unknown" }
-$reportDate = Get-Date -Format "dd MMM yyyy HH:mm"
+$S_TenantName = if ($S_ActiveContext.TenantId) { $S_ActiveContext.TenantId } else { "Unknown" }
+$S_ReportDate = Get-Date -Format "dd MMM yyyy HH:mm"
 
 $html = @"
 <!DOCTYPE html>
@@ -241,7 +263,7 @@ $html = @"
 
 <div class="header">
   <h1>Authentication Methods Report — Enabled Users</h1>
-  <p>Tenant: $tenantName &nbsp;|&nbsp; Generated: $reportDate &nbsp;|&nbsp; Focus: Enabled member accounts &amp; MFA status</p>
+  <p>Tenant: $S_TenantName &nbsp;|&nbsp; Generated: $S_ReportDate &nbsp;|&nbsp; Focus: Enabled member accounts &amp; MFA status</p>
 </div>
 
 <div class="summary-cards">

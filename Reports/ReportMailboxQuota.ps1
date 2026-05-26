@@ -54,10 +54,16 @@ if (-not $OutputPath)
 $S_ReportNameTitle = "Mailbox Quota Report"
 $S_ReportWorksheetName = "MailboxQuota"
 
+if (-not (Get-Module -Name ExchangeOnlineManagement -ListAvailable))
+{
+    throw "ExchangeOnlineManagement module is not installed. Install it using: Install-Module ExchangeOnlineManagement -Scope CurrentUser"
+}
+Connect-ExchangeOnline -ShowBanner:$false
+
 Write-Host "Finding mailboxes..." 
-[array]$Mbx = Get-ExoMailbox -RecipientTypeDetails UserMailbox -PropertySet Quota -Properties DisplayName -ResultSize Unlimited 
-$Report = [System.Collections.Generic.List[Object]]::new() # Create output file for report 
-ForEach ($M in $Mbx) 
+[array]$S_Mbx = Get-ExoMailbox -RecipientTypeDetails UserMailbox -PropertySet Quota -Properties DisplayName -ResultSize Unlimited 
+$S_Report = [System.Collections.Generic.List[Object]]::new() # Create output file for report 
+ForEach ($M in $S_Mbx) 
 { 
     # Find current usage 
     Write-Host "`n`nProcessing" $M.DisplayName 
@@ -85,7 +91,7 @@ ForEach ($M in $Mbx)
         QuotaPercentUsed = $QuotaPercentUsed 
         ErrorText        = $ErrorText
     }  
-    $Report.Add($ReportLine) 
+    $S_Report.Add($ReportLine) 
 }  
 
 if ($ReportInExcel) 
@@ -94,20 +100,20 @@ if ($ReportInExcel)
     { 
         Import-Module ImportExcel -ErrorAction SilentlyContinue 
         $ExcelOutputFile = "$OutputPath.xlsx"
-        $Report | Sort-Object Mailbox | Export-Excel -Path $ExcelOutputFile -WorksheetName $S_ReportWorksheetName -Title ("$S_ReportNameTitle {0}" -f (Get-Date -format 'dd-MMM-yyyy')) -TitleBold -TableName $S_ReportWorksheetName
+        $S_Report | Sort-Object Mailbox | Export-Excel -Path $ExcelOutputFile -WorksheetName $S_ReportWorksheetName -Title ("$S_ReportNameTitle {0}" -f (Get-Date -format 'dd-MMM-yyyy')) -TitleBold -TableName $S_ReportWorksheetName
         $OutputFile = $ExcelOutputFile 
     }
     else 
     { 
         $CSVOutputFile = "$OutputPath.csv"
-        $Report | Sort-Object Mailbox | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
+        $S_Report | Sort-Object Mailbox | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
         $Outputfile = $CSVOutputFile 
     } 
 }
 else
 {
     $CSVOutputFile = "$OutputPath.csv"
-    $Report | Sort-Object Mailbox | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
+    $S_Report | Sort-Object Mailbox | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
     $Outputfile = $CSVOutputFile 
 }
 Write-Host ("Output data is available in {0}" -f $OutputFile)
