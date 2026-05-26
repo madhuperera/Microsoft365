@@ -18,8 +18,7 @@
 
 [CmdletBinding()]
 param (
-    [Parameter(Mandatory = $true)]
-    [ValidateNotNullOrEmpty()]
+    [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()]
     [string]$DistributionGroupName
 )
 
