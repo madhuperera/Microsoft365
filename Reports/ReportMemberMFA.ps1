@@ -97,7 +97,7 @@ try {
     try {
         $S_SecDefaultsPolicy = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/policies/identitySecurityDefaultsEnforcementPolicy'
         $Script:S_SecurityDefaultsEnabled = [bool]$S_SecDefaultsPolicy.isEnabled
-        Write-Host "Security Defaults Enabled: $Script:S_SecurityDefaultsEnabled" -ForegroundColor (if ($Script:S_SecurityDefaultsEnabled) { 'Red' } else { 'Green' })
+        Write-Host "Security Defaults Enabled: $Script:S_SecurityDefaultsEnabled" -ForegroundColor $(if ($Script:S_SecurityDefaultsEnabled) { 'Red' } else { 'Green' })
     }
     catch {
         Write-Warning "Could not retrieve Security Defaults policy: $_"
@@ -849,15 +849,35 @@ try {
     $disabledCount  = ($results | Where-Object { $_.ActiveAccount -eq 'Disabled' }).Count
     $enabledCount   = $totalMembers - $disabledCount
 
+    # Active / Inactive split within enabled accounts. ActiveAccount values:
+    #   'Yes'                 -> Active (signed in within InactiveDays)
+    #   'Disabled'            -> Disabled
+    #   'No Sign-In Recorded' -> Inactive (never observed)
+    #   <date string>         -> Inactive (last sign-in older than threshold)
+    $activeCount        = ($results | Where-Object { $_.ActiveAccount -eq 'Yes' }).Count
+    $inactiveCount      = $enabledCount - $activeCount
+
     $enabledUsers       = $results | Where-Object { $_.ActiveAccount -ne 'Disabled' }
     $enabledModernAuth  = ($enabledUsers | Where-Object { $_.MFA_Registered -eq 'Modern Auth' }).Count
     $enabledLegacyAuth  = ($enabledUsers | Where-Object { $_.MFA_Registered -eq 'Legacy Auth' }).Count
     $enabledNoMFA       = ($enabledUsers | Where-Object { $_.MFA_Registered -eq 'No MFA' }).Count
+    $enabledAccessDenied= ($enabledUsers | Where-Object { $_.MFA_Registered -eq 'Access Denied (Privileged Account)' }).Count
     $enabledHasMFA      = $enabledModernAuth + $enabledLegacyAuth
 
     $coveragePercent = if ($enabledCount -gt 0) {
         [math]::Round(($enabledHasMFA / $enabledCount) * 100, 1)
     } else { 0 }
+
+    # Posture distribution across enabled accounts (matches the 9-value taxonomy
+    # rendered as pills in the user table). Disabled accounts are excluded so
+    # the numbers reflect the live attack surface.
+    $S_PostureBuckets = @('Fully Compliant','Weak Factor','Coverage Gap','Unenforced','Weak & Gap','Weak & Unenforced','At Risk','Critical','Unknown')
+    $S_PostureCounts  = @{}
+    foreach ($S_PB in $S_PostureBuckets) { $S_PostureCounts[$S_PB] = 0 }
+    foreach ($S_EU in @($enabledUsers)) {
+        $S_PKey = if ([string]::IsNullOrWhiteSpace([string]$S_EU.MfaPosture)) { 'Unknown' } else { [string]$S_EU.MfaPosture }
+        if ($S_PostureCounts.ContainsKey($S_PKey)) { $S_PostureCounts[$S_PKey]++ } else { $S_PostureCounts['Unknown']++ }
+    }
 
     # Build table rows for ALL Member users (filterable client-side)
     $tableRows = ($results | ForEach-Object {
@@ -890,7 +910,7 @@ try {
                            elseif ($S_RiskNum -le 6)  { 'background:#fff4ce;color:#8a6d00;border:1px solid #bc8000' }
                            elseif ($S_RiskNum -le 8)  { 'background:#ffe8cc;color:#9a4f00;border:1px solid #d83b01' }
                            else                        { 'background:#fdecea;color:#a4262c;border:1px solid #a4262c' }
-        $S_RiskText      = if ($S_RiskNum -lt 0) { '—' } else { "$S_RiskNum/10" }
+        $S_RiskText      = if ($S_RiskNum -lt 0) { '—' } else { "$S_RiskNum" }
         $S_RiskCell      = "<span style=""$S_RiskClass;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700"">$S_RiskText</span>"
         "        <tr data-auth=""$($_.MFA_Registered)"" data-active=""$S_ActiveBucket"" data-licensed=""$($_.IsLicensed)"" data-onprem=""$($_.IsOnPremSynced)"" data-exclusions=""$S_TagsBucket"" data-cacoverage=""$($_.CaCoverage)"" data-posture=""$($_.MfaPosture)"" data-risk=""$S_RiskNum""><td>$([System.Web.HttpUtility]::HtmlEncode($_.DisplayName))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.UserPrincipalName))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.Mail))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.Domain))</td><td>$([System.Web.HttpUtility]::HtmlEncode([string]$_.MFA_Registered))</td><td>$S_CoverageCell</td><td>$S_PostureCell</td><td style=""text-align:center"">$S_RiskCell</td><td>$([System.Web.HttpUtility]::HtmlEncode([string]$_.ActiveAccount))</td><td>$($_.IsLicensed)</td><td>$($_.IsOnPremSynced)</td><td>$S_TagsCell</td></tr>"
     }) -join "`n"
@@ -903,7 +923,7 @@ try {
     }
 
     $S_CaPolicyRows = if ($Script:S_MfaCaPolicies.Count -eq 0) {
-        '        <tr><td colspan="8" style="text-align:center;color:#999">No MFA-enforcing Conditional Access policies were found.</td></tr>'
+        '        <tr><td colspan="9" style="text-align:center;color:#999">No MFA-enforcing Conditional Access policies were found.</td></tr>'
     }
     else {
         ($Script:S_MfaCaPolicies | ForEach-Object {
@@ -985,8 +1005,12 @@ try {
             }
             $S_PersonaBadge = "<span style=""display:inline-block;padding:2px 8px;border-radius:10px;background:$S_PersonaColor;color:#fff;font-size:11px;font-weight:600"">$($_.Persona)</span>"
 
+            # ReportId badge — monospace pill so the per-user CA Exclusions
+            # tags (e.g. "001, 003") can be cross-referenced at a glance.
+            $S_IdCell = "<span style=""display:inline-block;padding:2px 8px;border-radius:6px;background:#1f1f1f;color:#fff;font-family:Consolas,monospace;font-size:12px;font-weight:700"">$([System.Web.HttpUtility]::HtmlEncode([string]$_.ReportId))</span>"
+
             # data-* attributes drive the client-side filter dropdowns above the table.
-            "        <tr data-tier=""$($_.EnforcementTier)"" data-coverage=""$($_.WorkloadCoverage)"" data-posture=""$($_.ConditionsPosture)"" data-persona=""$($_.Persona)""><td>$S_NameCell</td>" +
+            "        <tr data-reportid=""$($_.ReportId)"" data-tier=""$($_.EnforcementTier)"" data-coverage=""$($_.WorkloadCoverage)"" data-posture=""$($_.ConditionsPosture)"" data-persona=""$($_.Persona)""><td style=""text-align:center"">$S_IdCell</td><td>$S_NameCell</td>" +
             "<td>$($_.State)</td>" +
             "<td>$S_PersonaBadge</td>" +
             "<td>$S_WorkloadsHtml</td>" +
@@ -1020,6 +1044,25 @@ try {
     # ── Generate HTML Report ───────────────────────────────────────────────────
     $reportDate = Get-Date -Format 'dd MMM yyyy HH:mm'
     $S_TenantId = (Get-MgContext).TenantId
+    # Tenant display name + primary (initial *.onmicrosoft.com) domain via the
+    # Organization endpoint. Fail-soft so a transient Graph hiccup doesn't kill
+    # the report.
+    $S_TenantName        = $null
+    $S_TenantPrimaryDom  = $null
+    try {
+        $S_OrgResp = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization?$select=displayName,verifiedDomains'
+        $S_Org     = @($S_OrgResp.value)[0]
+        if ($S_Org) {
+            $S_TenantName       = [string]$S_Org.displayName
+            $S_TenantPrimaryDom = ($S_Org.verifiedDomains | Where-Object { $_.isInitial }) | Select-Object -First 1 -ExpandProperty name
+        }
+    }
+    catch {
+        Write-Warning "Could not retrieve tenant display name: $_"
+    }
+    $S_TenantLabel = if ($S_TenantName -and $S_TenantPrimaryDom) { "$S_TenantName ($S_TenantPrimaryDom &middot; $S_TenantId)" }
+                     elseif ($S_TenantName)                       { "$S_TenantName ($S_TenantId)" }
+                     else                                         { "$S_TenantId" }
 
     if ($null -eq $Script:S_SecurityDefaultsEnabled) {
         $S_SecDefaultsText  = 'Security Defaults: Unknown'
@@ -1047,6 +1090,8 @@ try {
         .header { text-align: center; margin-bottom: 32px; }
         .header h1 { font-size: 28px; color: #1a1a2e; margin-bottom: 4px; }
         .header .subtitle { font-size: 14px; color: #666; }
+        .disclaimer { max-width: 880px; margin: 14px auto 0; padding: 10px 16px; background: #fff8e1; border: 1px solid #e0b400; border-left: 4px solid #bc8000; border-radius: 6px; color: #5a4500; font-size: 12.5px; line-height: 1.5; text-align: left; }
+        .disclaimer strong { color: #8a6d00; }
         .cards { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; margin-bottom: 32px; }
         .card {
             background: #fff; border-radius: 12px; padding: 24px 28px; min-width: 220px; flex: 1; max-width: 280px;
@@ -1062,6 +1107,25 @@ try {
         .card.purple  { border-left-color: #8764b8; }
         .card.alert   { border-left-color: #d13438; background: #fdf2f2; }
         .card.alert .value { color: #d13438; }
+        /* Posture cards — colour-banded to match the table pills. */
+        .card.posture-fully       { border-left-color: #107c10; }
+        .card.posture-fully .value{ color: #107c10; }
+        .card.posture-weak        { border-left-color: #7a8c1a; }
+        .card.posture-weak .value { color: #5a6b14; }
+        .card.posture-gap         { border-left-color: #bc8000; }
+        .card.posture-gap .value  { color: #8a6d00; }
+        .card.posture-unenforced  { border-left-color: #d83b01; }
+        .card.posture-unenforced .value { color: #9a4f00; }
+        .card.posture-weakgap     { border-left-color: #d83b01; }
+        .card.posture-weakgap .value    { color: #9a4f00; }
+        .card.posture-weakunenf   { border-left-color: #d83b01; }
+        .card.posture-weakunenf .value  { color: #9a4f00; }
+        .card.posture-atrisk      { border-left-color: #a4262c; }
+        .card.posture-atrisk .value     { color: #a4262c; }
+        .card.posture-critical    { border-left-color: #5c0a12; background: #fdecea; }
+        .card.posture-critical .value   { color: #5c0a12; }
+        .card.posture-unknown     { border-left-color: #999; }
+        .card.posture-unknown .value    { color: #666; }
         .section { margin-bottom: 24px; }
         .section h2 { font-size: 18px; color: #1a1a2e; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; text-align: center; }
         .breakdown { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
@@ -1084,6 +1148,7 @@ try {
     </style>
     <script>
         function caApplyFilters() {
+            var reportId = document.getElementById('caFilterReportId').value.trim().toLowerCase();
             var tier     = document.getElementById('caFilterTier').value;
             var coverage = document.getElementById('caFilterCoverage').value;
             var posture  = document.getElementById('caFilterPosture').value;
@@ -1092,7 +1157,9 @@ try {
             var visible = 0;
             rows.forEach(function (r) {
                 if (!r.hasAttribute('data-tier')) { return; } // skip empty-state placeholder
-                var ok = (tier === '' || r.getAttribute('data-tier') === tier)
+                var rid = (r.getAttribute('data-reportid') || '').toLowerCase();
+                var ok = (reportId === '' || rid.indexOf(reportId) !== -1)
+                      && (tier === '' || r.getAttribute('data-tier') === tier)
                       && (coverage === '' || r.getAttribute('data-coverage') === coverage)
                       && (posture === '' || r.getAttribute('data-posture') === posture)
                       && (persona === '' || r.getAttribute('data-persona') === persona);
@@ -1103,6 +1170,7 @@ try {
             if (count) { count.textContent = visible + ' policy(ies) shown'; }
         }
         function caResetFilters() {
+            document.getElementById('caFilterReportId').value = '';
             document.getElementById('caFilterTier').value = '';
             document.getElementById('caFilterCoverage').value = '';
             document.getElementById('caFilterPosture').value = '';
@@ -1115,55 +1183,116 @@ try {
 <body>
     <div class="header">
         <h1>Member MFA Coverage Report</h1>
-        <div class="subtitle">Generated: $reportDate | Tenant: $S_TenantId | Inactive threshold: $InactiveDays days | Guests excluded</div>
+        <div class="subtitle">Generated: $reportDate | Tenant: $S_TenantLabel | Inactive threshold: $InactiveDays days | Guests excluded</div>
+        <div class="disclaimer">
+            <strong>MFA Reporting Note</strong><br><br>
+            Reporting on Multi-Factor Authentication (MFA) should be treated as an indicative assessment rather than definitive audit evidence. MFA coverage can be affected by several configuration areas, including registered authentication methods, legacy per-user MFA settings, Conditional Access policy scope, authentication strengths, exclusions, break-glass accounts, guest access, and other exception paths.
+            <br><br>
+            This report is intended to help identify potential gaps, highlight areas requiring review, and support prioritisation of follow-up actions. It should not be relied upon as a complete or audit-grade confirmation that MFA is enforced for every user and access scenario.
+        </div>
     </div>
 
     <div class="secdefaults $S_SecDefaultsClass">$S_SecDefaultsText</div>
 
-    <div class="cards">
-        <div class="card blue">
-            <div class="label">Total Member Users</div>
-            <div class="value">$totalMembers</div>
-        </div>
-        <div class="card green">
-            <div class="label">Enabled Accounts</div>
-            <div class="value">$enabledCount</div>
-            <div class="detail">$([math]::Round(($enabledCount / [math]::Max($totalMembers,1)) * 100, 1))% of total</div>
-        </div>
-        <div class="card red">
-            <div class="label">Disabled Accounts</div>
-            <div class="value">$disabledCount</div>
-            <div class="detail">$([math]::Round(($disabledCount / [math]::Max($totalMembers,1)) * 100, 1))% of total</div>
-        </div>
-        <div class="card purple">
-            <div class="label">MFA Coverage (Enabled)</div>
-            <div class="value">$coveragePercent%</div>
-            <div class="detail">$enabledHasMFA of $enabledCount enabled members</div>
+    <div class="section">
+        <h2>Accounts</h2>
+        <div class="breakdown">
+            <div class="card blue">
+                <div class="label">Total Members</div>
+                <div class="value">$totalMembers</div>
+                <div class="detail">Guests excluded</div>
+            </div>
+            <div class="card green">
+                <div class="label">Active</div>
+                <div class="value">$activeCount</div>
+                <div class="detail">$([math]::Round(($activeCount / [math]::Max($totalMembers,1)) * 100, 1))% of total &middot; signed in &lt;${InactiveDays}d</div>
+            </div>
+            <div class="card orange">
+                <div class="label">Inactive</div>
+                <div class="value">$inactiveCount</div>
+                <div class="detail">$([math]::Round(($inactiveCount / [math]::Max($totalMembers,1)) * 100, 1))% of total &middot; stale or no sign-in</div>
+            </div>
+            <div class="card red">
+                <div class="label">Disabled</div>
+                <div class="value">$disabledCount</div>
+                <div class="detail">$([math]::Round(($disabledCount / [math]::Max($totalMembers,1)) * 100, 1))% of total</div>
+            </div>
         </div>
     </div>
 
     <div class="section">
-        <h2>Enabled Accounts &mdash; MFA Breakdown</h2>
+        <h2>Auth Methods &mdash; Enabled Accounts</h2>
         <div class="breakdown">
             <div class="card green">
-                <div class="label">Modern Auth (MFA)</div>
+                <div class="label">Modern Auth</div>
                 <div class="value">$enabledModernAuth</div>
-                <div class="detail">Authenticator / Passkey / TOTP</div>
+                <div class="detail">$([math]::Round(($enabledModernAuth / [math]::Max($enabledCount,1)) * 100, 1))% of enabled &middot; Authenticator / Passkey / TOTP</div>
             </div>
             <div class="card orange">
-                <div class="label">Legacy Auth (MFA)</div>
+                <div class="label">Legacy Auth</div>
                 <div class="value">$enabledLegacyAuth</div>
-                <div class="detail">SMS / Voice</div>
-            </div>
-            <div class="card purple">
-                <div class="label">Total with MFA</div>
-                <div class="value">$enabledHasMFA</div>
-                <div class="detail">$([math]::Round(($enabledHasMFA / [math]::Max($enabledCount,1)) * 100, 1))% of enabled</div>
+                <div class="detail">$([math]::Round(($enabledLegacyAuth / [math]::Max($enabledCount,1)) * 100, 1))% of enabled &middot; SMS / Voice</div>
             </div>
             <div class="card red">
-                <div class="label">No MFA Registered</div>
+                <div class="label">No MFA</div>
                 <div class="value">$enabledNoMFA</div>
-                <div class="detail">$([math]::Round(($enabledNoMFA / [math]::Max($enabledCount,1)) * 100, 1))% of enabled</div>
+                <div class="detail">$([math]::Round(($enabledNoMFA / [math]::Max($enabledCount,1)) * 100, 1))% of enabled &middot; no method registered</div>
+            </div>
+            <div class="card purple">
+                <div class="label">Access Denied</div>
+                <div class="value">$enabledAccessDenied</div>
+                <div class="detail">Privileged accounts &middot; methods not readable</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>MFA Posture &mdash; Enabled Accounts</h2>
+        <div class="breakdown">
+            <div class="card posture-fully">
+                <div class="label">Fully Compliant</div>
+                <div class="value">$($S_PostureCounts['Fully Compliant'])</div>
+                <div class="detail">Modern auth + Full CA coverage</div>
+            </div>
+            <div class="card posture-weak">
+                <div class="label">Weak Factor</div>
+                <div class="value">$($S_PostureCounts['Weak Factor'])</div>
+                <div class="detail">Legacy auth + Full CA coverage</div>
+            </div>
+            <div class="card posture-gap">
+                <div class="label">Coverage Gap</div>
+                <div class="value">$($S_PostureCounts['Coverage Gap'])</div>
+                <div class="detail">Modern auth + Partial CA coverage</div>
+            </div>
+            <div class="card posture-weakgap">
+                <div class="label">Weak &amp; Gap</div>
+                <div class="value">$($S_PostureCounts['Weak & Gap'])</div>
+                <div class="detail">Legacy auth + Partial CA coverage</div>
+            </div>
+            <div class="card posture-unenforced">
+                <div class="label">Unenforced</div>
+                <div class="value">$($S_PostureCounts['Unenforced'])</div>
+                <div class="detail">Modern auth + No CA coverage</div>
+            </div>
+            <div class="card posture-weakunenf">
+                <div class="label">Weak &amp; Unenforced</div>
+                <div class="value">$($S_PostureCounts['Weak & Unenforced'])</div>
+                <div class="detail">Legacy auth + No CA coverage</div>
+            </div>
+            <div class="card posture-atrisk">
+                <div class="label">At Risk</div>
+                <div class="value">$($S_PostureCounts['At Risk'])</div>
+                <div class="detail">No MFA + Full CA coverage</div>
+            </div>
+            <div class="card posture-critical">
+                <div class="label">Critical</div>
+                <div class="value">$($S_PostureCounts['Critical'])</div>
+                <div class="detail">No MFA + No CA coverage</div>
+            </div>
+            <div class="card posture-unknown">
+                <div class="label">Unknown</div>
+                <div class="value">$($S_PostureCounts['Unknown'])</div>
+                <div class="detail">Posture not determined</div>
             </div>
         </div>
     </div>
@@ -1302,6 +1431,8 @@ $tableRows
     <div class="section">
         <h2>MFA-Enforcing Conditional Access Policies</h2>
         <div class="ca-filters">
+            <label for="caFilterReportId">ID:</label>
+            <input type="text" id="caFilterReportId" oninput="caApplyFilters()" placeholder="e.g. 001" style="padding:4px 8px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:80px;font-family:Consolas,monospace">
             <label for="caFilterTier">Tier:</label>
             <select id="caFilterTier" onchange="caApplyFilters()">
                 <option value="">All</option>
@@ -1338,7 +1469,7 @@ $tableRows
         </div>
         <table id="caPolicyTable">
             <thead>
-                <tr><th>Name</th><th>State</th><th>Persona</th><th>Workloads</th><th>Included</th><th>Excluded</th><th>Grants</th><th>Other Conditions</th></tr>
+                <tr><th>ID</th><th>Name</th><th>State</th><th>Persona</th><th>Workloads</th><th>Included</th><th>Excluded</th><th>Grants</th><th>Other Conditions</th></tr>
             </thead>
             <tbody>
 $S_CaPolicyRows
@@ -1369,7 +1500,7 @@ $S_AuthStrengthRows
     Write-Host "HTML report exported to: $S_HtmlPath" -ForegroundColor Green
 }
 catch {
-    Write-Error "An error occurred: $_"
+    Write-Error "An error occurred: $_ at $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)  -> $($_.InvocationInfo.Line.Trim())"
 }
 finally {
     # ── Disconnect ─────────────────────────────────────────────────────────────
