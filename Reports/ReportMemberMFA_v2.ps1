@@ -1167,6 +1167,11 @@ try {
         .ca-filters button, .user-filters button { padding: 4px 12px; border: 1px solid #d13438; background: #fff; color: #d13438; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
         .ca-filters button:hover, .user-filters button:hover { background: #fdecea; }
 
+        /* Snapshot bar — fixed top-right "Save filtered HTML" button. */
+        .snapshot-bar { position: fixed; top: 12px; right: 12px; z-index: 9999; display: flex; gap: 8px; }
+        .snapshot-bar button { padding: 8px 14px; background: #0078d4; color: #fff; border: 1px solid #005a9e; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.18); }
+        .snapshot-bar button:hover { background: #106ebe; }
+
         /* ── Print / PDF layout ─────────────────────────────────────────
            Per design: filters STAY visible in print so a filtered subset
            saved to PDF still shows the active filter selections as evidence.
@@ -1197,6 +1202,8 @@ try {
             .card, .secdefaults, th, code, span[style*="background"] {
                 -webkit-print-color-adjust: exact; print-color-adjust: exact;
             }
+            /* Hide the snapshot button when printing. */
+            .snapshot-bar { display: none !important; }
         }
     </style>
     <script>
@@ -1231,9 +1238,78 @@ try {
             caApplyFilters();
         }
         document.addEventListener('DOMContentLoaded', caApplyFilters);
+
+        /* ── Save filtered HTML ───────────────────────────────────────────────────────────
+           Bakes the current filter state (select values, input values, hidden
+           rows) into the DOM via real attributes, then offers the resulting
+           document as a downloadable .html file. The saved snapshot reopens
+           with exactly the same filter state and the same visible rows.
+        */
+        function saveFilteredHtml() {
+            try {
+                // Re-apply filters first so row display styles are current.
+                if (typeof caApplyFilters === 'function')   { caApplyFilters(); }
+                if (typeof userApplyFilters === 'function') { userApplyFilters(); }
+
+                var clone = document.documentElement.cloneNode(true);
+
+                // Persist <select> selections.
+                clone.querySelectorAll('select').forEach(function (origSel) {
+                    var liveSel = document.getElementById(origSel.id);
+                    if (!liveSel) { return; }
+                    Array.prototype.forEach.call(origSel.options, function (opt) {
+                        if (opt.value === liveSel.value) { opt.setAttribute('selected', 'selected'); }
+                        else                              { opt.removeAttribute('selected'); }
+                    });
+                });
+                // Persist <input> values.
+                clone.querySelectorAll('input').forEach(function (origInp) {
+                    var liveInp = document.getElementById(origInp.id);
+                    if (!liveInp) { return; }
+                    origInp.setAttribute('value', liveInp.value);
+                });
+                // Persist row visibility (display:none for filtered-out rows).
+                ['#userTable tbody tr', '#caPolicyTable tbody tr'].forEach(function (sel) {
+                    var liveRows = document.querySelectorAll(sel);
+                    var cloneRows = clone.querySelectorAll(sel);
+                    liveRows.forEach(function (lr, i) {
+                        if (!cloneRows[i]) { return; }
+                        if (lr.style.display === 'none') {
+                            cloneRows[i].style.display = 'none';
+                        } else {
+                            cloneRows[i].style.removeProperty('display');
+                        }
+                    });
+                });
+                // Stamp the snapshot moment into the subtitle.
+                var stamp = clone.querySelector('.header .subtitle');
+                if (stamp) {
+                    var now = new Date();
+                    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+                    var ts = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+                    stamp.innerHTML += ' &middot; <em>Filtered snapshot saved ' + ts + '</em>';
+                }
+
+                var html = '<!DOCTYPE html>\n' + clone.outerHTML;
+                var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+                var url  = URL.createObjectURL(blob);
+                var a    = document.createElement('a');
+                var ts2  = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
+                a.href     = url;
+                a.download = 'MemberMFAReport-filtered-' + ts2 + '.html';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+            } catch (e) {
+                alert('Snapshot failed: ' + e.message);
+            }
+        }
     </script>
 </head>
 <body>
+    <div class="snapshot-bar">
+        <button type="button" onclick="saveFilteredHtml()" title="Save the current view (with filters applied) as a standalone HTML file">⬇ Save filtered HTML</button>
+    </div>
     <div class="header">
         <h1>Member MFA Coverage Report</h1>
         <div class="subtitle">Generated: $reportDate | Tenant: $S_TenantLabel | Inactive threshold: $InactiveDays days | Guests excluded</div>
