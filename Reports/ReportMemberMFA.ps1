@@ -314,23 +314,9 @@ try {
                         'Unrestricted'
                     }
 
-                    # ── Enforcement tier (gap-engine eligibility) ─────────────
-                    # Pre-computed verdict the per-user MFA gap engine will use
-                    # to decide which CA policies to count as meaningful MFA
-                    # enforcement for an everyday sign-in. Anything classified
-                    # 'Ignored' is still surfaced in the HTML table but will
-                    # NOT contribute to per-user MFA coverage in the next phase.
-                    #   • Ideal      → Full coverage + Unrestricted conditions
-                    #   • Acceptable → (Full|Data) coverage + (Unrestricted|Constrained) conditions
-                    #                  (excluding the Ideal combo)
-                    #   • Ignored    → Partial coverage, or RiskBased posture
-                    $S_EnforcementTier = if ($S_WorkloadCoverage -eq 'Full' -and $S_ConditionsPosture -eq 'Unrestricted') {
-                        'Ideal'
-                    } elseif ($S_WorkloadCoverage -in @('Full','Data') -and $S_ConditionsPosture -in @('Unrestricted','Constrained')) {
-                        'Acceptable'
-                    } else {
-                        'Ignored'
-                    }
+                    # EnforcementTier is computed AFTER Persona (below) because
+                    # 'Ideal' requires a broad audience (AllUsers / Internal) and
+                    # Guests are excluded from tiering entirely.
 
                     # ── Audience classification ──────────────────────────────────
                     # Determine whether this policy can apply to Member users,
@@ -364,6 +350,44 @@ try {
                     }
                     $S_HasIncGuestSpec = $S_IncGuestTypes.Count -gt 0
 
+                    # Mirror for the EXCLUDE side — used by Persona classification
+                    # to detect AllUsers policies that explicitly carve guests out.
+                    $S_ExcGuestObj   = $usrs.ExcludeGuestsOrExternalUsers
+                    $S_ExcGuestTypes = @()
+                    if ($null -ne $S_ExcGuestObj -and -not [string]::IsNullOrWhiteSpace([string]$S_ExcGuestObj.GuestOrExternalUserTypes)) {
+                        $S_ExcGuestTypes = @(([string]$S_ExcGuestObj.GuestOrExternalUserTypes -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+                    }
+                    $S_HasExcGuestSpec = $S_ExcGuestTypes.Count -gt 0
+                    $S_HasExcRoles     = @($usrs.ExcludeRoles).Count -gt 0
+
+                    # ── Persona ─────────────────────────────────────────────────
+                    # Classify the AUDIENCE shape of the policy. Conditions like
+                    # apps/locations/risk are NOT considered here — they live in
+                    # WorkloadCoverage / ConditionsPosture. Persona is purely
+                    # about who the policy is targeting.
+                    #   • AllUsers — IncludeUsers='All' with no admin/guest carve-out
+                    #                (user/group excludes don't change this verdict)
+                    #   • Internal — IncludeUsers='All' AND (ExcludeRoles OR ExcludeGuests)
+                    #   • Admins   — role-only include scope
+                    #   • Guests   — guest-only include scope
+                    #   • Targeted — specific users and/or groups only
+                    #   • Mixed    — combinations that don't cleanly match above
+                    $S_Persona = if ($S_HasUsersAll) {
+                        if ($S_HasExcRoles -or $S_HasExcGuestSpec) { 'Internal' } else { 'AllUsers' }
+                    }
+                    elseif ($S_HasIncRoles -and -not $S_HasSpecificUsers -and -not $S_HasIncGroups -and -not $S_HasIncGuestSpec -and -not $S_HasUsersGuestToken) {
+                        'Admins'
+                    }
+                    elseif (($S_HasIncGuestSpec -or $S_HasUsersGuestToken) -and -not $S_HasSpecificUsers -and -not $S_HasIncGroups -and -not $S_HasIncRoles) {
+                        'Guests'
+                    }
+                    elseif (($S_HasSpecificUsers -or $S_HasIncGroups) -and -not $S_HasIncRoles -and -not $S_HasIncGuestSpec -and -not $S_HasUsersGuestToken) {
+                        'Targeted'
+                    }
+                    else {
+                        'Mixed'
+                    }
+
                     $S_TargetsMembers = (
                         $S_HasUsersAll -or
                         $S_HasSpecificUsers -or
@@ -378,6 +402,26 @@ try {
                         $S_HasIncGuestSpec -or
                         $S_HasUsersGuestToken
                     )
+
+                    # ── Enforcement tier (gap-engine eligibility) ─────────────
+                    # Pre-computed verdict the per-user MFA gap engine will use
+                    # to decide which CA policies to count as meaningful MFA
+                    # enforcement for an everyday Member sign-in. Persona-aware:
+                    #   • Ideal      → Full coverage + Unrestricted conditions
+                    #                  AND Persona ∈ (AllUsers, Internal)
+                    #   • Ignored    → Persona = Guests (out of scope for member MFA)
+                    #                  OR Partial coverage / RiskBased posture
+                    #   • Acceptable → everything in between (Full|Data) +
+                    #                  (Unrestricted|Constrained), non-Guest persona
+                    $S_EnforcementTier = if ($S_Persona -eq 'Guests') {
+                        'Ignored'
+                    } elseif ($S_WorkloadCoverage -eq 'Full' -and $S_ConditionsPosture -eq 'Unrestricted' -and $S_Persona -in @('AllUsers','Internal')) {
+                        'Ideal'
+                    } elseif ($S_WorkloadCoverage -in @('Full','Data') -and $S_ConditionsPosture -in @('Unrestricted','Constrained')) {
+                        'Acceptable'
+                    } else {
+                        'Ignored'
+                    }
 
                     [PSCustomObject]@{
                         Id                         = $p.Id
@@ -394,6 +438,7 @@ try {
                         WorkloadCoverage           = $S_WorkloadCoverage
                         ConditionsPosture          = $S_ConditionsPosture
                         EnforcementTier            = $S_EnforcementTier
+                        Persona                    = $S_Persona
                         TargetsMembers             = $S_TargetsMembers
                         TargetsGuests              = $S_TargetsGuests
                         IncludeApplications        = @($apps.IncludeApplications)
@@ -406,6 +451,7 @@ try {
                         IncludeRoles               = @($usrs.IncludeRoles  | ForEach-Object { Resolve-CaRoleId  $_ })
                         ExcludeRoles               = @($usrs.ExcludeRoles  | ForEach-Object { Resolve-CaRoleId  $_ })
                         IncludeGuestsOrExternalUserTypes = $S_IncGuestTypes
+                        ExcludeGuestsOrExternalUserTypes = $S_ExcGuestTypes
                         IncludePlatforms           = @($plat.IncludePlatforms | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
                         ExcludePlatforms           = @($plat.ExcludePlatforms | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
                         IncludeLocations           = @($locs.IncludeLocations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { Resolve-CaLocationId $_ })
@@ -435,6 +481,14 @@ try {
             $S_IgnoredN    = if ($S_TierCounts -and $S_TierCounts['Ignored'])    { @($S_TierCounts['Ignored']).Count }    else { 0 }
             Write-Host ("  Enforcement tiers — Ideal: {0}, Acceptable: {1}, Ignored: {2} (gap engine will skip Ignored)." -f `
                 $S_IdealN, $S_AcceptableN, $S_IgnoredN) -ForegroundColor Cyan
+
+            # ── Persona summary (audience shape) ───────────────────────
+            $S_PersonaCounts = $Script:S_MfaCaPolicies | Group-Object Persona -AsHashTable -AsString
+            $S_PersonaParts = foreach ($S_PName in 'AllUsers','Internal','Admins','Guests','Targeted','Mixed') {
+                $S_PN = if ($S_PersonaCounts -and $S_PersonaCounts[$S_PName]) { @($S_PersonaCounts[$S_PName]).Count } else { 0 }
+                "{0}: {1}" -f $S_PName, $S_PN
+            }
+            Write-Host ("  Personas — " + ($S_PersonaParts -join ', ')) -ForegroundColor Cyan
         }
         catch {
             Write-Warning "Could not retrieve Conditional Access policies: $_"
@@ -684,7 +738,7 @@ try {
     }
 
     $S_CaPolicyRows = if ($Script:S_MfaCaPolicies.Count -eq 0) {
-        '        <tr><td colspan="9" style="text-align:center;color:#999">No MFA-enforcing Conditional Access policies were found.</td></tr>'
+        '        <tr><td colspan="8" style="text-align:center;color:#999">No MFA-enforcing Conditional Access policies were found.</td></tr>'
     }
     else {
         ($Script:S_MfaCaPolicies | ForEach-Object {
@@ -754,9 +808,22 @@ try {
             $S_TierBadge = "<span style=""display:inline-block;padding:2px 8px;border-radius:10px;background:$S_TierColor;color:#fff;font-size:11px;font-weight:600;margin-bottom:4px"">$($_.EnforcementTier)</span>"
             $S_NameCell  = $S_TierBadge + '<br>' + [System.Web.HttpUtility]::HtmlEncode($_.DisplayName)
 
+            # Persona badge — audience shape (used by the gap engine to skip
+            # Admin-only policies; Guests already filtered upstream).
+            $S_PersonaColor = switch ($_.Persona) {
+                'AllUsers' { '#0078d4' }   # blue
+                'Internal' { '#107c10' }   # green
+                'Admins'   { '#8764b8' }   # purple
+                'Guests'   { '#ff8c00' }   # orange
+                'Targeted' { '#6b6b6b' }   # gray
+                default    { '#d13438' }   # red (Mixed — sanity flag)
+            }
+            $S_PersonaBadge = "<span style=""display:inline-block;padding:2px 8px;border-radius:10px;background:$S_PersonaColor;color:#fff;font-size:11px;font-weight:600"">$($_.Persona)</span>"
+
             # data-* attributes drive the client-side filter dropdowns above the table.
-            "        <tr data-tier=""$($_.EnforcementTier)"" data-coverage=""$($_.WorkloadCoverage)"" data-posture=""$($_.ConditionsPosture)""><td>$S_NameCell</td>" +
+            "        <tr data-tier=""$($_.EnforcementTier)"" data-coverage=""$($_.WorkloadCoverage)"" data-posture=""$($_.ConditionsPosture)"" data-persona=""$($_.Persona)""><td>$S_NameCell</td>" +
             "<td>$($_.State)</td>" +
+            "<td>$S_PersonaBadge</td>" +
             "<td>$S_WorkloadsHtml</td>" +
             "<td>$(Format-CaList $S_Included)</td>" +
             "<td>$(Format-CaList $S_Excluded)</td>" +
@@ -855,13 +922,15 @@ try {
             var tier     = document.getElementById('caFilterTier').value;
             var coverage = document.getElementById('caFilterCoverage').value;
             var posture  = document.getElementById('caFilterPosture').value;
+            var persona  = document.getElementById('caFilterPersona').value;
             var rows = document.querySelectorAll('#caPolicyTable tbody tr');
             var visible = 0;
             rows.forEach(function (r) {
                 if (!r.hasAttribute('data-tier')) { return; } // skip empty-state placeholder
                 var ok = (tier === '' || r.getAttribute('data-tier') === tier)
                       && (coverage === '' || r.getAttribute('data-coverage') === coverage)
-                      && (posture === '' || r.getAttribute('data-posture') === posture);
+                      && (posture === '' || r.getAttribute('data-posture') === posture)
+                      && (persona === '' || r.getAttribute('data-persona') === persona);
                 r.style.display = ok ? '' : 'none';
                 if (ok) { visible++; }
             });
@@ -872,6 +941,7 @@ try {
             document.getElementById('caFilterTier').value = '';
             document.getElementById('caFilterCoverage').value = '';
             document.getElementById('caFilterPosture').value = '';
+            document.getElementById('caFilterPersona').value = '';
             caApplyFilters();
         }
         document.addEventListener('DOMContentLoaded', caApplyFilters);
@@ -969,12 +1039,22 @@ $tableRows
                 <option value="Constrained">Constrained</option>
                 <option value="RiskBased">RiskBased</option>
             </select>
+            <label for="caFilterPersona">Persona:</label>
+            <select id="caFilterPersona" onchange="caApplyFilters()">
+                <option value="">All</option>
+                <option value="AllUsers">AllUsers</option>
+                <option value="Internal">Internal</option>
+                <option value="Admins">Admins</option>
+                <option value="Guests">Guests</option>
+                <option value="Targeted">Targeted</option>
+                <option value="Mixed">Mixed</option>
+            </select>
             <button type="button" onclick="caResetFilters()">Reset</button>
             <span id="caFilterCount" style="color:#666;font-size:12px;"></span>
         </div>
         <table id="caPolicyTable">
             <thead>
-                <tr><th>Name</th><th>State</th><th>Workloads</th><th>Included</th><th>Excluded</th><th>Grants</th><th>Other Conditions</th></tr>
+                <tr><th>Name</th><th>State</th><th>Persona</th><th>Workloads</th><th>Included</th><th>Excluded</th><th>Grants</th><th>Other Conditions</th></tr>
             </thead>
             <tbody>
 $S_CaPolicyRows
