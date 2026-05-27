@@ -104,7 +104,8 @@ try {
     }
 
     # ── Conditional Access — MFA-enforcing policies (only when Security Defaults is OFF) ─────────
-    $Script:S_MfaCaPolicies = @()
+    $Script:S_MfaCaPolicies     = @()
+    $Script:S_UserExclusionMap  = @{}   # UserId -> List[string] of Ideal-policy ReportIds excluding the user
     if ($Script:S_SecurityDefaultsEnabled -eq $false) {
         Write-Host "Retrieving enabled Conditional Access policies..." -ForegroundColor Cyan
         try {
@@ -446,8 +447,10 @@ try {
                         IncludeUserActions         = @($apps.IncludeUserActions)
                         IncludeUsers               = @($usrs.IncludeUsers  | ForEach-Object { Resolve-CaUserId  $_ })
                         ExcludeUsers               = @($usrs.ExcludeUsers  | ForEach-Object { Resolve-CaUserId  $_ })
+                        ExcludeUserIds             = @($usrs.ExcludeUsers  | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
                         IncludeGroups              = @($usrs.IncludeGroups | ForEach-Object { Resolve-CaGroupId $_ })
                         ExcludeGroups              = @($usrs.ExcludeGroups | ForEach-Object { Resolve-CaGroupId $_ })
+                        ExcludeGroupIds            = @($usrs.ExcludeGroups | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
                         IncludeRoles               = @($usrs.IncludeRoles  | ForEach-Object { Resolve-CaRoleId  $_ })
                         ExcludeRoles               = @($usrs.ExcludeRoles  | ForEach-Object { Resolve-CaRoleId  $_ })
                         IncludeGuestsOrExternalUserTypes = $S_IncGuestTypes
@@ -489,6 +492,74 @@ try {
                 "{0}: {1}" -f $S_PName, $S_PN
             }
             Write-Host ("  Personas — " + ($S_PersonaParts -join ', ')) -ForegroundColor Cyan
+
+            # ── Assign Report IDs (sequential, zero-padded 3 digits) ─────────
+            # Stable label per policy for cross-referencing from the per-user
+            # exclusion column (e.g. CaExclusionTags = "001, 003").
+            $S_ReportIdx = 0
+            foreach ($S_Pol in $Script:S_MfaCaPolicies) {
+                $S_ReportIdx++
+                $S_Pol | Add-Member -NotePropertyName ReportId -NotePropertyValue ('{0:D3}' -f $S_ReportIdx) -Force
+            }
+
+            # ── Per-user exclusion resolution (Ideal policies only) ─────────
+            # For each Ideal-tier policy, expand:
+            #   • ExcludeUsers  (direct user GUIDs)
+            #   • ExcludeGroups (transitive members — nested groups handled
+            #                     server-side by Graph's transitiveMembers)
+            # Producing a map: UserId -> @(ReportId,...). Only Member users that
+            # are AccountEnabled are recorded (matches the user-base filter used
+            # later when iterating $users). PIM-eligible role members and
+            # PIM-for-Groups eligible assignees are NOT included — transitiveMembers
+            # only returns active members. That gap will be addressed by a future
+            # ReportAdminMFA.ps1 pipeline.
+            $S_IdealPolicies = @($Script:S_MfaCaPolicies | Where-Object { $_.EnforcementTier -eq 'Ideal' })
+            if ($S_IdealPolicies.Count -gt 0) {
+                Write-Host ("Resolving exclusions for {0} Ideal policy(ies)..." -f $S_IdealPolicies.Count) -ForegroundColor Cyan
+                $S_GroupMemberCache = @{}   # GroupId -> List[string] of member UserIds
+                foreach ($S_IP in $S_IdealPolicies) {
+                    $S_ExclUserIds = New-Object 'System.Collections.Generic.HashSet[string]'
+
+                    # Direct user exclusions
+                    foreach ($S_Uid in @($S_IP.ExcludeUserIds | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })) {
+                        [void]$S_ExclUserIds.Add([string]$S_Uid)
+                    }
+
+                    # Group exclusions — transitively expanded
+                    foreach ($S_Gid in @($S_IP.ExcludeGroupIds | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })) {
+                        if (-not $S_GroupMemberCache.ContainsKey($S_Gid)) {
+                            $S_Members = New-Object 'System.Collections.Generic.List[string]'
+                            try {
+                                $S_Uri = "https://graph.microsoft.com/v1.0/groups/$S_Gid/transitiveMembers/microsoft.graph.user`?`$select=id,userType,accountEnabled&`$top=999"
+                                do {
+                                    $S_Resp = Invoke-MgGraphRequest -Method GET -Uri $S_Uri -ErrorAction Stop
+                                    foreach ($S_M in @($S_Resp.value)) {
+                                        if ($S_M.userType -eq 'Member' -and $S_M.accountEnabled -eq $true) {
+                                            $S_Members.Add([string]$S_M.id)
+                                        }
+                                    }
+                                    $S_Uri = $S_Resp.'@odata.nextLink'
+                                } while ($S_Uri)
+                            }
+                            catch {
+                                Write-Warning ("Could not expand group {0} for policy {1}: {2}" -f $S_Gid, $S_IP.ReportId, $_)
+                            }
+                            $S_GroupMemberCache[$S_Gid] = $S_Members
+                        }
+                        foreach ($S_Mid in $S_GroupMemberCache[$S_Gid]) {
+                            [void]$S_ExclUserIds.Add($S_Mid)
+                        }
+                    }
+
+                    foreach ($S_Uid in $S_ExclUserIds) {
+                        if (-not $Script:S_UserExclusionMap.ContainsKey($S_Uid)) {
+                            $Script:S_UserExclusionMap[$S_Uid] = New-Object 'System.Collections.Generic.List[string]'
+                        }
+                        $Script:S_UserExclusionMap[$S_Uid].Add($S_IP.ReportId)
+                    }
+                }
+                Write-Host ("  {0} user(s) tagged with Ideal-policy exclusions." -f $Script:S_UserExclusionMap.Count) -ForegroundColor Cyan
+            }
         }
         catch {
             Write-Warning "Could not retrieve Conditional Access policies: $_"
@@ -587,8 +658,9 @@ try {
     Write-Host "Retrieving member users (Guests excluded)..." -ForegroundColor Cyan
 
     if ($Test) {
-        Write-Host "[TEST MODE] Limiting to first 10 Member users." -ForegroundColor Yellow
-        $users = Get-MgUser -Filter "userType eq 'Member'" -Property $userProperties -Top 10
+        Write-Host "[TEST MODE] Selecting 10 random Member users." -ForegroundColor Yellow
+        $S_AllMembers = Get-MgUser -Filter "userType eq 'Member'" -Property $userProperties -All
+        $users = @($S_AllMembers | Get-Random -Count ([Math]::Min(10, ($S_AllMembers | Measure-Object).Count)))
     }
     else {
         $users = Get-MgUser -Filter "userType eq 'Member'" -Property $userProperties -All
@@ -607,16 +679,11 @@ try {
         # ── Authentication Methods ─────────────────────────────────────────────
         $authMethodError = $false
         try {
-            $authMethods = Get-MgUserAuthenticationMethod -UserId $user.Id
+            $authMethods = Get-MgUserAuthenticationMethod -UserId $user.Id -ErrorAction Stop
         }
         catch {
-            if ($_ -match 'accessDenied|403|Forbidden|Authorization failed') {
-                Write-Warning "Access denied reading auth methods for $($user.UserPrincipalName) (privileged account?)"
-                $authMethodError = $true
-            }
-            else {
-                Write-Warning "Could not retrieve auth methods for $($user.UserPrincipalName): $_"
-            }
+            Write-Warning "Could not retrieve auth methods for $($user.UserPrincipalName): $($_.Exception.Message)"
+            $authMethodError = $true
             $authMethods = @()
         }
 
@@ -688,6 +755,70 @@ try {
             ($user.UserPrincipalName -split '@')[1]
         }
 
+        # ── CA Exclusion Tags ──────────────────────────────────────────────────
+        # Comma-joined list of Ideal-policy ReportIds (e.g. "001, 003") that
+        # exclude this user via ExcludeUsers or transitively via ExcludeGroups.
+        # Empty when the user is not on any Ideal exclusion list.
+        $caExclusionTags = if ($Script:S_UserExclusionMap.ContainsKey($user.Id)) {
+            (@($Script:S_UserExclusionMap[$user.Id]) | Sort-Object -Unique) -join ', '
+        } else { '' }
+
+        # ── CA Coverage (Ideal-policy perspective) ─────────────────────────────
+        # Full    : >=1 Ideal policy exists AND user is on zero Ideal exclusion lists
+        # Partial : user is excluded from at least one Ideal policy (Phase 2 will
+        #           split Partial vs None once we evaluate per-policy inclusion)
+        # None    : no Ideal CA policy exists in the tenant
+        $caCoverage = if (($S_IdealPolicies | Measure-Object).Count -eq 0) {
+            'None'
+        }
+        elseif ([string]::IsNullOrWhiteSpace($caExclusionTags)) {
+            'Full'
+        }
+        else {
+            'Partial'
+        }
+
+        # ── MFA Posture & Risk Score ───────────────────────────────────────────
+        # Posture / Risk matrix (locked):
+        #   Modern Auth + Full    -> Fully Compliant     (0)
+        #   Legacy Auth + Full    -> Weak Factor         (2)
+        #   Modern Auth + Partial -> Coverage Gap        (3)
+        #   Legacy Auth + Partial -> Weak & Gap          (5)
+        #   Modern Auth + None    -> Unenforced          (6)
+        #   Legacy Auth + None    -> Weak & Unenforced   (7)
+        #   No MFA      + Full    -> At Risk             (8)
+        #   No MFA      + Partial -> Coverage Gap        (9)
+        #   No MFA      + None    -> Critical            (10)
+        #   Unknown     + any     -> Unknown             (blank)
+        # Disabled accounts always score 0 (not a live attack surface);
+        # Posture is still computed so cleanup candidates remain visible.
+        $S_PostureKey = "$mfaRegistered|$caCoverage"
+        $mfaPosture = switch ($S_PostureKey) {
+            'Modern Auth|Full'    { 'Fully Compliant' }
+            'Modern Auth|Partial' { 'Coverage Gap' }
+            'Modern Auth|None'    { 'Unenforced' }
+            'Legacy Auth|Full'    { 'Weak Factor' }
+            'Legacy Auth|Partial' { 'Weak & Gap' }
+            'Legacy Auth|None'    { 'Weak & Unenforced' }
+            'No MFA|Full'         { 'At Risk' }
+            'No MFA|Partial'      { 'Coverage Gap' }
+            'No MFA|None'         { 'Critical' }
+            default               { 'Unknown' }
+        }
+        $riskScoreRaw = switch ($S_PostureKey) {
+            'Modern Auth|Full'    { 0 }
+            'Legacy Auth|Full'    { 2 }
+            'Modern Auth|Partial' { 3 }
+            'Legacy Auth|Partial' { 5 }
+            'Modern Auth|None'    { 6 }
+            'Legacy Auth|None'    { 7 }
+            'No MFA|Full'         { 8 }
+            'No MFA|Partial'      { 9 }
+            'No MFA|None'         { 10 }
+            default               { $null }
+        }
+        $riskScore = if ($activeAccount -eq 'Disabled') { 0 } else { $riskScoreRaw }
+
         # ── Build result row ───────────────────────────────────────────────────
         $results.Add([PSCustomObject]@{
             DisplayName       = $user.DisplayName
@@ -699,6 +830,10 @@ try {
             ActiveAccount     = $activeAccount
             IsLicensed        = $isLicensed
             IsOnPremSynced    = $isOnPremSynced
+            CaExclusionTags   = $caExclusionTags
+            CaCoverage        = $caCoverage
+            MfaPosture        = $mfaPosture
+            RiskScore         = $riskScore
         })
     }
 
@@ -724,10 +859,40 @@ try {
         [math]::Round(($enabledHasMFA / $enabledCount) * 100, 1)
     } else { 0 }
 
-    # Build table rows for enabled users without MFA
-    $noMfaUsers = $enabledUsers | Where-Object { $_.MFA_Registered -eq 'No MFA' }
-    $tableRows = ($noMfaUsers | ForEach-Object {
-        "        <tr><td>$([System.Web.HttpUtility]::HtmlEncode($_.DisplayName))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.UserPrincipalName))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.Mail))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.Domain))</td><td>$($_.ActiveAccount)</td><td>$($_.IsLicensed)</td><td>$($_.IsOnPremSynced)</td></tr>"
+    # Build table rows for ALL Member users (filterable client-side)
+    $tableRows = ($results | ForEach-Object {
+        $S_TagsCell      = if ([string]::IsNullOrWhiteSpace($_.CaExclusionTags)) { '<span style="color:#999">—</span>' } else { [System.Web.HttpUtility]::HtmlEncode($_.CaExclusionTags) }
+        $S_TagsBucket    = if ([string]::IsNullOrWhiteSpace($_.CaExclusionTags)) { 'None' } else { 'Has' }
+        $S_ActiveBucket  = if ($_.ActiveAccount -eq 'Disabled') { 'Disabled' } elseif ($_.ActiveAccount -eq 'Yes') { 'Active' } elseif ($_.ActiveAccount -eq 'No Sign-In Recorded') { 'NoSignIn' } else { 'Stale' }
+        $S_CoverageClass = switch ($_.CaCoverage) {
+            'Full'    { 'background:#eaf6ec;color:#107c10;border:1px solid #107c10' }
+            'Partial' { 'background:#fff4ce;color:#8a6d00;border:1px solid #c0a000' }
+            default   { 'background:#f3f3f3;color:#666;border:1px solid #999' }
+        }
+        $S_CoverageCell  = "<span style=""$S_CoverageClass;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600"">$([System.Web.HttpUtility]::HtmlEncode([string]$_.CaCoverage))</span>"
+        $S_PostureClass  = switch ($_.MfaPosture) {
+            'Fully Compliant'    { 'background:#eaf6ec;color:#107c10;border:1px solid #107c10' }
+            'Weak Factor'        { 'background:#fff4ce;color:#8a6d00;border:1px solid #c0a000' }
+            'Coverage Gap'       { 'background:#fff4ce;color:#8a6d00;border:1px solid #c0a000' }
+            'Unenforced'         { 'background:#ffe8cc;color:#9a4f00;border:1px solid #d83b01' }
+            'Weak & Gap'         { 'background:#ffe8cc;color:#9a4f00;border:1px solid #d83b01' }
+            'Weak & Unenforced'  { 'background:#ffe8cc;color:#9a4f00;border:1px solid #d83b01' }
+            'At Risk'            { 'background:#fdecea;color:#a4262c;border:1px solid #a4262c' }
+            'Critical'           { 'background:#5c0a12;color:#fff;border:1px solid #3d0008' }
+            default              { 'background:#f3f3f3;color:#666;border:1px solid #999' }
+        }
+        $S_PostureCell   = "<span style=""$S_PostureClass;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600"">$([System.Web.HttpUtility]::HtmlEncode([string]$_.MfaPosture))</span>"
+        # Risk pill: numeric, colour-banded; '—' when Unknown
+        $S_RiskNum       = if ($null -eq $_.RiskScore) { -1 } else { [int]$_.RiskScore }
+        $S_RiskClass     = if     ($S_RiskNum -lt 0)  { 'background:#f3f3f3;color:#666;border:1px solid #999' }
+                           elseif ($S_RiskNum -le 2)  { 'background:#eaf6ec;color:#107c10;border:1px solid #107c10' }
+                           elseif ($S_RiskNum -le 4)  { 'background:#f3f9d8;color:#5a6b14;border:1px solid #7a8c1a' }
+                           elseif ($S_RiskNum -le 6)  { 'background:#fff4ce;color:#8a6d00;border:1px solid #bc8000' }
+                           elseif ($S_RiskNum -le 8)  { 'background:#ffe8cc;color:#9a4f00;border:1px solid #d83b01' }
+                           else                        { 'background:#fdecea;color:#a4262c;border:1px solid #a4262c' }
+        $S_RiskText      = if ($S_RiskNum -lt 0) { '—' } else { "$S_RiskNum/10" }
+        $S_RiskCell      = "<span style=""$S_RiskClass;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700"">$S_RiskText</span>"
+        "        <tr data-auth=""$($_.MFA_Registered)"" data-active=""$S_ActiveBucket"" data-licensed=""$($_.IsLicensed)"" data-onprem=""$($_.IsOnPremSynced)"" data-exclusions=""$S_TagsBucket"" data-cacoverage=""$($_.CaCoverage)"" data-posture=""$($_.MfaPosture)"" data-risk=""$S_RiskNum""><td>$([System.Web.HttpUtility]::HtmlEncode($_.DisplayName))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.UserPrincipalName))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.Mail))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.Domain))</td><td>$([System.Web.HttpUtility]::HtmlEncode([string]$_.MFA_Registered))</td><td>$S_CoverageCell</td><td>$S_PostureCell</td><td style=""text-align:center"">$S_RiskCell</td><td>$([System.Web.HttpUtility]::HtmlEncode([string]$_.ActiveAccount))</td><td>$($_.IsLicensed)</td><td>$($_.IsOnPremSynced)</td><td>$S_TagsCell</td></tr>"
     }) -join "`n"
 
     # ── Build CA Policy table rows ──────────────────────────────────────
@@ -911,11 +1076,11 @@ try {
         .secdefaults.enabled  { background: #fdecea; color: #d13438; border: 1px solid #d13438; }
         .secdefaults.disabled { background: #eaf6ec; color: #107c10; border: 1px solid #107c10; }
         .secdefaults.unknown  { background: #f3f3f3; color: #666;    border: 1px solid #999; }
-        .ca-filters { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center; margin: 8px 0 4px; font-size: 13px; }
-        .ca-filters label { font-weight: 600; color: #555; margin-right: 4px; }
-        .ca-filters select { padding: 4px 8px; border: 1px solid #ccc; border-radius: 6px; background: #fff; font-size: 13px; cursor: pointer; }
-        .ca-filters button { padding: 4px 12px; border: 1px solid #d13438; background: #fff; color: #d13438; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
-        .ca-filters button:hover { background: #fdecea; }
+        .ca-filters, .user-filters { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center; margin: 8px 0 4px; font-size: 13px; }
+        .ca-filters label, .user-filters label { font-weight: 600; color: #555; margin-right: 4px; }
+        .ca-filters select, .user-filters select { padding: 4px 8px; border: 1px solid #ccc; border-radius: 6px; background: #fff; font-size: 13px; cursor: pointer; }
+        .ca-filters button, .user-filters button { padding: 4px 12px; border: 1px solid #d13438; background: #fff; color: #d13438; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .ca-filters button:hover, .user-filters button:hover { background: #fdecea; }
     </style>
     <script>
         function caApplyFilters() {
@@ -1004,10 +1169,129 @@ try {
     </div>
 
     <div class="section">
-        <h2>Enabled Member Users without MFA</h2>
-        <table>
+        <h2>Member Users</h2>
+        <div class="user-filters">
+            <label for="userFltAuth">Auth Method:</label>
+            <select id="userFltAuth" onchange="userApplyFilters()">
+                <option value="">All</option>
+                <option value="Modern Auth">Modern Auth</option>
+                <option value="Legacy Auth">Legacy Auth</option>
+                <option value="No MFA">No MFA</option>
+                <option value="Access Denied (Privileged Account)">Access Denied</option>
+            </select>
+            <label for="userFltCoverage">CA Coverage:</label>
+            <select id="userFltCoverage" onchange="userApplyFilters()">
+                <option value="">All</option>
+                <option value="Full">Full</option>
+                <option value="Partial">Partial</option>
+                <option value="None">None</option>
+            </select>
+            <label for="userFltPosture">MFA Posture:</label>
+            <select id="userFltPosture" onchange="userApplyFilters()">
+                <option value="">All</option>
+                <option value="Fully Compliant">Fully Compliant</option>
+                <option value="Weak Factor">Weak Factor</option>
+                <option value="Coverage Gap">Coverage Gap</option>
+                <option value="Unenforced">Unenforced</option>
+                <option value="Weak &amp; Gap">Weak &amp; Gap</option>
+                <option value="Weak &amp; Unenforced">Weak &amp; Unenforced</option>
+                <option value="At Risk">At Risk</option>
+                <option value="Critical">Critical</option>
+                <option value="Unknown">Unknown</option>
+            </select>
+            <label for="userFltRisk">Min Risk:</label>
+            <select id="userFltRisk" onchange="userApplyFilters()">
+                <option value="">Any</option>
+                <option value="3">&ge; 3</option>
+                <option value="5">&ge; 5</option>
+                <option value="7">&ge; 7</option>
+                <option value="9">&ge; 9</option>
+            </select>
+            <label for="userFltActive">Active:</label>
+            <select id="userFltActive" onchange="userApplyFilters()">
+                <option value="">All</option>
+                <option value="Active">Active (signed in &lt;${InactiveDays}d)</option>
+                <option value="Stale">Stale</option>
+                <option value="NoSignIn">No Sign-In Recorded</option>
+                <option value="Disabled">Disabled</option>
+            </select>
+            <label for="userFltLicensed">Licensed:</label>
+            <select id="userFltLicensed" onchange="userApplyFilters()">
+                <option value="">All</option>
+                <option value="True">True</option>
+                <option value="False">False</option>
+            </select>
+            <label for="userFltOnPrem">On-Prem Synced:</label>
+            <select id="userFltOnPrem" onchange="userApplyFilters()">
+                <option value="">All</option>
+                <option value="True">True</option>
+                <option value="False">False</option>
+            </select>
+            <label for="userFltExclusions">CA Exclusions:</label>
+            <select id="userFltExclusions" onchange="userApplyFilters()">
+                <option value="">All</option>
+                <option value="Has">Has tags</option>
+                <option value="None">None</option>
+            </select>
+            <button type="button" onclick="userResetFilters()">Reset</button>
+            <span id="userFilterCount" style="color:#666;font-size:12px;"></span>
+        </div>
+        <script>
+        var userSortDir = 1; // 1 asc, -1 desc
+        function userApplyFilters() {
+            var fau = document.getElementById('userFltAuth').value;
+            var fc  = document.getElementById('userFltCoverage').value;
+            var fp  = document.getElementById('userFltPosture').value;
+            var frv = document.getElementById('userFltRisk').value;
+            var fr  = frv === '' ? null : parseInt(frv, 10);
+            var fa  = document.getElementById('userFltActive').value;
+            var fl  = document.getElementById('userFltLicensed').value;
+            var fo  = document.getElementById('userFltOnPrem').value;
+            var fx  = document.getElementById('userFltExclusions').value;
+            var rows = document.querySelectorAll('#userTable tbody tr');
+            var shown = 0;
+            rows.forEach(function(r){
+                var risk = parseInt(r.dataset.risk, 10);
+                var ok = (!fau || r.dataset.auth === fau)
+                      && (!fc || r.dataset.cacoverage === fc)
+                      && (!fp || r.dataset.posture === fp)
+                      && (fr === null || (risk >= 0 && risk >= fr))
+                      && (!fa || r.dataset.active === fa)
+                      && (!fl || r.dataset.licensed === fl)
+                      && (!fo || r.dataset.onprem === fo)
+                      && (!fx || r.dataset.exclusions === fx);
+                r.style.display = ok ? '' : 'none';
+                if (ok) shown++;
+            });
+            document.getElementById('userFilterCount').textContent = shown + ' user(s) shown';
+        }
+        function userResetFilters() {
+            document.getElementById('userFltAuth').value = '';
+            document.getElementById('userFltCoverage').value = '';
+            document.getElementById('userFltPosture').value = '';
+            document.getElementById('userFltRisk').value = '';
+            document.getElementById('userFltActive').value = '';
+            document.getElementById('userFltLicensed').value = '';
+            document.getElementById('userFltOnPrem').value = '';
+            document.getElementById('userFltExclusions').value = '';
+            userApplyFilters();
+        }
+        function userSortByRisk() {
+            var tbody = document.querySelector('#userTable tbody');
+            var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+            userSortDir = -userSortDir;
+            rows.sort(function(a, b){
+                var ra = parseInt(a.dataset.risk, 10); if (isNaN(ra) || ra < 0) ra = -1;
+                var rb = parseInt(b.dataset.risk, 10); if (isNaN(rb) || rb < 0) rb = -1;
+                return (ra - rb) * userSortDir;
+            });
+            rows.forEach(function(r){ tbody.appendChild(r); });
+        }
+        document.addEventListener('DOMContentLoaded', userApplyFilters);
+        </script>
+        <table id="userTable">
             <thead>
-                <tr><th>Display Name</th><th>UPN</th><th>Mail</th><th>Domain</th><th>Active</th><th>Licensed</th><th>On-Prem Synced</th></tr>
+                <tr><th>Display Name</th><th>UPN</th><th>Mail</th><th>Domain</th><th>Auth Method</th><th>CA Coverage</th><th>MFA Posture</th><th style="cursor:pointer" onclick="userSortByRisk()" title="Click to sort">Risk &#x21C5;</th><th>Active</th><th>Licensed</th><th>On-Prem Synced</th><th>CA Exclusions</th></tr>
             </thead>
             <tbody>
 $tableRows
