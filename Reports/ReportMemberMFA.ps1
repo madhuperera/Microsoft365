@@ -190,7 +190,12 @@ try {
             }
 
             # ── Project enriched policy objects ────────────────────────────────────
-            $Script:S_MfaCaPolicies = @(
+            # Enrich EVERY MFA-enforcing policy first (regardless of audience).
+            # The audience filter (Members vs Guests) is applied AFTER enrichment
+            # so that a future guest-focused script can reuse the same projection
+            # by simply flipping the filter predicate from TargetsMembers to
+            # TargetsGuests — no rewrite of the resolver/enrichment code required.
+            $S_EnrichedCaPolicies = @(
                 foreach ($p in $S_FilteredCaPolicies) {
                     $apps  = $p.Conditions.Applications
                     $usrs  = $p.Conditions.Users                    
@@ -222,6 +227,158 @@ try {
                         $S_CompanionControls.Count -gt 0
                     )
 
+                    # ── Workload (application) coverage tier ─────────────────────
+                    # Classify how broadly the policy covers cloud apps. Used by
+                    # the gap engine to weight whether a user is meaningfully
+                    # protected for everyday sign-ins.
+                    #   • Full    → IncludeApplications contains 'All'
+                    #   • Data    → IncludeApplications contains 'Office365'
+                    #               (Exchange / SharePoint / Teams / etc. — the
+                    #               primary data plane in most M365 tenants)
+                    #   • Partial → specific app GUIDs only, user-action-only,
+                    #               or empty include scope
+                    $S_IncAppsRaw = @($apps.IncludeApplications)
+                    $S_WorkloadCoverage = if ($S_IncAppsRaw -contains 'All') {
+                        'Full'
+                    } elseif ($S_IncAppsRaw -contains 'Office365') {
+                        'Data'
+                    } else {
+                        'Partial'
+                    }
+
+                    # ── Other-conditions posture ───────────────────────────────
+                    # Summarise the "Other Conditions" tab in one value. Used
+                    # by the gap engine together with WorkloadCoverage.
+                    #   • RiskBased    → policy is gated on sign-in or user risk
+                    #                    — only fires on risky sessions, so it is
+                    #                    intentionally NOT an everyday MFA control.
+                    #                    Takes precedence (the headline trait).
+                    #   • Constrained  → narrowing conditions present that prevent
+                    #                    the policy from firing on every sign-in:
+                    #                    excluded apps, platform scope, location
+                    #                    scope, or ClientAppTypes is anything other
+                    #                    than 'all' / empty.
+                    #   • Unrestricted → nothing in the Conditions tab narrows when
+                    #                    the policy fires — the cleanest shape.
+                    # NOTE: user/group/role excludes live in Assignments, not
+                    # Conditions, so they are deliberately NOT considered here.
+                    $S_HasRisk = (
+                        @($p.Conditions.SignInRiskLevels | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0 -or
+                        @($p.Conditions.UserRiskLevels   | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0
+                    )
+                    $S_ClientAppsRaw = @($p.Conditions.ClientAppTypes | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                    $S_ClientAppsIsAll = (
+                        $S_ClientAppsRaw.Count -eq 0 -or
+                        ($S_ClientAppsRaw.Count -eq 1 -and $S_ClientAppsRaw[0] -eq 'all')
+                    )
+                    $S_HasExcludedApps  = @($apps.ExcludeApplications | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0
+                    # An Include* array is "Any" (not narrowing) when it is empty
+                    # or contains the single sentinel 'all'/'All'. Graph returns
+                    # IncludePlatforms = ['all'] for "Any device platform" and
+                    # IncludeLocations = ['All'] for "Any location" — both of
+                    # which are the default scopes and must NOT be flagged.
+                    # We also strip nulls/blanks because `@($plat.IncludePlatforms)`
+                    # becomes `@($null)` (Count=1) when the Platforms condition
+                    # block itself is absent.
+                    $S_IncPlat = @($plat.IncludePlatforms | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                    $S_IncLoc  = @($locs.IncludeLocations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                    $S_ExcPlat = @($plat.ExcludePlatforms | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                    $S_ExcLoc  = @($locs.ExcludeLocations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                    $S_PlatIncludeIsAny = (
+                        $S_IncPlat.Count -eq 0 -or
+                        ($S_IncPlat.Count -eq 1 -and $S_IncPlat[0] -in @('all','All'))
+                    )
+                    $S_LocIncludeIsAny = (
+                        $S_IncLoc.Count -eq 0 -or
+                        ($S_IncLoc.Count -eq 1 -and $S_IncLoc[0] -in @('all','All'))
+                    )
+                    $S_HasPlatformScope = (
+                        -not $S_PlatIncludeIsAny -or
+                        $S_ExcPlat.Count -gt 0
+                    )
+                    $S_HasLocationScope = (
+                        -not $S_LocIncludeIsAny -or
+                        $S_ExcLoc.Count -gt 0
+                    )
+                    $S_HasNarrowing = (
+                        -not $S_ClientAppsIsAll -or
+                        $S_HasExcludedApps -or
+                        $S_HasPlatformScope -or
+                        $S_HasLocationScope
+                    )
+                    $S_ConditionsPosture = if ($S_HasRisk) {
+                        'RiskBased'
+                    } elseif ($S_HasNarrowing) {
+                        'Constrained'
+                    } else {
+                        'Unrestricted'
+                    }
+
+                    # ── Enforcement tier (gap-engine eligibility) ─────────────
+                    # Pre-computed verdict the per-user MFA gap engine will use
+                    # to decide which CA policies to count as meaningful MFA
+                    # enforcement for an everyday sign-in. Anything classified
+                    # 'Ignored' is still surfaced in the HTML table but will
+                    # NOT contribute to per-user MFA coverage in the next phase.
+                    #   • Ideal      → Full coverage + Unrestricted conditions
+                    #   • Acceptable → (Full|Data) coverage + (Unrestricted|Constrained) conditions
+                    #                  (excluding the Ideal combo)
+                    #   • Ignored    → Partial coverage, or RiskBased posture
+                    $S_EnforcementTier = if ($S_WorkloadCoverage -eq 'Full' -and $S_ConditionsPosture -eq 'Unrestricted') {
+                        'Ideal'
+                    } elseif ($S_WorkloadCoverage -in @('Full','Data') -and $S_ConditionsPosture -in @('Unrestricted','Constrained')) {
+                        'Acceptable'
+                    } else {
+                        'Ignored'
+                    }
+
+                    # ── Audience classification ──────────────────────────────────
+                    # Determine whether this policy can apply to Member users,
+                    # Guest users, or both. Rules:
+                    #   • IncludeUsers = 'All'        → both audiences
+                    #   • Specific user GUIDs         → assume both (a GUID may be
+                    #     a member or a guest; we don't pre-resolve userType here)
+                    #   • IncludeGroups               → assume both (group can mix
+                    #     member + guest members)
+                    #   • IncludeRoles                → assume both (directory
+                    #     roles CAN be assigned to B2B guests, so a role-targeted
+                    #     policy applies to whichever members/guests hold the role)
+                    #   • IncludeGuestsOrExternalUsers (new model w/ GuestOrExternalUserTypes)
+                    #                                 → Guests only
+                    #   • Legacy 'GuestsOrExternalUsers' token in IncludeUsers
+                    #                                 → Guests only
+                    $S_IncUsersRaw   = @($usrs.IncludeUsers)
+                    $S_HasUsersAll   = ($S_IncUsersRaw -contains 'All')
+                    $S_HasUsersGuestToken = ($S_IncUsersRaw -contains 'GuestsOrExternalUsers')
+                    $S_HasSpecificUsers   = @(
+                        $S_IncUsersRaw | Where-Object {
+                            $_ -and $_ -notin @('All', 'None', 'GuestsOrExternalUsers')
+                        }
+                    ).Count -gt 0
+                    $S_HasIncGroups  = @($usrs.IncludeGroups).Count -gt 0
+                    $S_HasIncRoles   = @($usrs.IncludeRoles).Count  -gt 0
+                    $S_IncGuestObj   = $usrs.IncludeGuestsOrExternalUsers
+                    $S_IncGuestTypes = @()
+                    if ($null -ne $S_IncGuestObj -and -not [string]::IsNullOrWhiteSpace([string]$S_IncGuestObj.GuestOrExternalUserTypes)) {
+                        $S_IncGuestTypes = @(([string]$S_IncGuestObj.GuestOrExternalUserTypes -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+                    }
+                    $S_HasIncGuestSpec = $S_IncGuestTypes.Count -gt 0
+
+                    $S_TargetsMembers = (
+                        $S_HasUsersAll -or
+                        $S_HasSpecificUsers -or
+                        $S_HasIncGroups -or
+                        $S_HasIncRoles
+                    )
+                    $S_TargetsGuests = (
+                        $S_HasUsersAll -or
+                        $S_HasSpecificUsers -or
+                        $S_HasIncGroups -or
+                        $S_HasIncRoles -or
+                        $S_HasIncGuestSpec -or
+                        $S_HasUsersGuestToken
+                    )
+
                     [PSCustomObject]@{
                         Id                         = $p.Id
                         DisplayName                = $p.DisplayName
@@ -234,6 +391,11 @@ try {
                         CompanionControls          = $S_CompanionControls
                         HasAuthenticationStrength  = $S_HasAuthStr
                         MfaIsBypassable            = $S_MfaIsBypassable
+                        WorkloadCoverage           = $S_WorkloadCoverage
+                        ConditionsPosture          = $S_ConditionsPosture
+                        EnforcementTier            = $S_EnforcementTier
+                        TargetsMembers             = $S_TargetsMembers
+                        TargetsGuests              = $S_TargetsGuests
                         IncludeApplications        = @($apps.IncludeApplications)
                         ExcludeApplications        = @($apps.ExcludeApplications)
                         IncludeUserActions         = @($apps.IncludeUserActions)
@@ -243,18 +405,36 @@ try {
                         ExcludeGroups              = @($usrs.ExcludeGroups | ForEach-Object { Resolve-CaGroupId $_ })
                         IncludeRoles               = @($usrs.IncludeRoles  | ForEach-Object { Resolve-CaRoleId  $_ })
                         ExcludeRoles               = @($usrs.ExcludeRoles  | ForEach-Object { Resolve-CaRoleId  $_ })
-                        IncludePlatforms           = @($plat.IncludePlatforms)
-                        ExcludePlatforms           = @($plat.ExcludePlatforms)
-                        IncludeLocations           = @($locs.IncludeLocations | ForEach-Object { Resolve-CaLocationId $_ })
-                        ExcludeLocations           = @($locs.ExcludeLocations | ForEach-Object { Resolve-CaLocationId $_ })
-                        ClientAppTypes             = @($p.Conditions.ClientAppTypes)
-                        SignInRiskLevels           = @($p.Conditions.SignInRiskLevels)
-                        UserRiskLevels             = @($p.Conditions.UserRiskLevels)
+                        IncludeGuestsOrExternalUserTypes = $S_IncGuestTypes
+                        IncludePlatforms           = @($plat.IncludePlatforms | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                        ExcludePlatforms           = @($plat.ExcludePlatforms | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                        IncludeLocations           = @($locs.IncludeLocations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { Resolve-CaLocationId $_ })
+                        ExcludeLocations           = @($locs.ExcludeLocations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { Resolve-CaLocationId $_ })
+                        ClientAppTypes             = @($p.Conditions.ClientAppTypes | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                        SignInRiskLevels           = @($p.Conditions.SignInRiskLevels | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                        UserRiskLevels             = @($p.Conditions.UserRiskLevels | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
                     }
                 }
             )
 
-            Write-Host ("Found {0} enabled CA policy(ies) requiring MFA or Authentication Strength." -f $Script:S_MfaCaPolicies.Count) -ForegroundColor Green
+            # ── Audience filter ────────────────────────────────────────────────────
+            # This script reports on MEMBER MFA coverage, so we keep only the
+            # policies that can apply to Member users. A future guest-targeted
+            # script should re-use the enrichment above and swap this predicate
+            # to `$_.TargetsGuests`.
+            $S_GuestOnlyPolicies = @($S_EnrichedCaPolicies | Where-Object { -not $_.TargetsMembers })
+            $Script:S_MfaCaPolicies = @($S_EnrichedCaPolicies | Where-Object { $_.TargetsMembers })
+
+            Write-Host ("Found {0} enabled CA policy(ies) requiring MFA or Authentication Strength; {1} apply to Members, {2} are guest-only (excluded)." -f `
+                $S_EnrichedCaPolicies.Count, $Script:S_MfaCaPolicies.Count, $S_GuestOnlyPolicies.Count) -ForegroundColor Green
+
+            # ── Enforcement-tier summary (member-scoped) ────────────────────
+            $S_TierCounts = $Script:S_MfaCaPolicies | Group-Object EnforcementTier -AsHashTable -AsString
+            $S_IdealN      = if ($S_TierCounts -and $S_TierCounts['Ideal'])      { @($S_TierCounts['Ideal']).Count }      else { 0 }
+            $S_AcceptableN = if ($S_TierCounts -and $S_TierCounts['Acceptable']) { @($S_TierCounts['Acceptable']).Count } else { 0 }
+            $S_IgnoredN    = if ($S_TierCounts -and $S_TierCounts['Ignored'])    { @($S_TierCounts['Ignored']).Count }    else { 0 }
+            Write-Host ("  Enforcement tiers — Ideal: {0}, Acceptable: {1}, Ignored: {2} (gap engine will skip Ignored)." -f `
+                $S_IdealN, $S_AcceptableN, $S_IgnoredN) -ForegroundColor Cyan
         }
         catch {
             Write-Warning "Could not retrieve Conditional Access policies: $_"
@@ -525,6 +705,14 @@ try {
             if ($_.ExcludeApplications.Count -gt 0) {
                 $S_Workloads += ($_.ExcludeApplications | ForEach-Object { "exclude: $_" })
             }
+            # Coverage-tier badge prepended to the Workloads cell
+            $S_CoverageColor = switch ($_.WorkloadCoverage) {
+                'Full'    { '#107c10' }   # green
+                'Data'    { '#0078d4' }   # blue
+                default   { '#ff8c00' }   # orange (Partial)
+            }
+            $S_CoverageBadge = "<span style=""display:inline-block;padding:2px 8px;border-radius:10px;background:$S_CoverageColor;color:#fff;font-size:11px;font-weight:600;margin-bottom:4px"">$($_.WorkloadCoverage) coverage</span>"
+            $S_WorkloadsHtml = $S_CoverageBadge + '<br>' + (Format-CaList $S_Workloads)
 
             $S_GrantParts = @()
             if ($_.AllBuiltInControls.Count -gt 0) { $S_GrantParts += ($_.AllBuiltInControls -join " $($_.GrantOperator) ") }
@@ -545,11 +733,31 @@ try {
             if ($_.ClientAppTypes.Count   -gt 0) { $S_OtherTargeting += "Client apps: $($_.ClientAppTypes -join ', ')" }
             if ($_.SignInRiskLevels.Count -gt 0) { $S_OtherTargeting += "Sign-in risk: $($_.SignInRiskLevels -join ', ')" }
             if ($_.UserRiskLevels.Count   -gt 0) { $S_OtherTargeting += "User risk: $($_.UserRiskLevels -join ', ')" }
-            $S_OtherText = if ($S_OtherTargeting.Count -gt 0) { Format-CaList $S_OtherTargeting } else { '<span style="color:#999">—</span>' }
+            # Conditions-posture badge prepended to the Other Conditions cell.
+            # RiskBased = neutral gray (de-emphasised — gap engine ignores these).
+            $S_PostureColor = switch ($_.ConditionsPosture) {
+                'Unrestricted' { '#107c10' }   # green
+                'Constrained'  { '#ff8c00' }   # amber
+                default        { '#6b6b6b' }   # neutral gray (RiskBased)
+            }
+            $S_PostureBadge = "<span style=""display:inline-block;padding:2px 8px;border-radius:10px;background:$S_PostureColor;color:#fff;font-size:11px;font-weight:600;margin-bottom:4px"">$($_.ConditionsPosture)</span>"
+            $S_OtherInner   = if ($S_OtherTargeting.Count -gt 0) { Format-CaList $S_OtherTargeting } else { '<span style="color:#999">—</span>' }
+            $S_OtherText    = $S_PostureBadge + '<br>' + $S_OtherInner
 
-            "        <tr><td>$([System.Web.HttpUtility]::HtmlEncode($_.DisplayName))</td>" +
+            # Enforcement-tier badge under the policy name. Gray = Ignored by gap engine.
+            $S_TierColor = switch ($_.EnforcementTier) {
+                'Ideal'      { '#107c10' }   # green
+                'Acceptable' { '#ff8c00' }   # amber
+                default      { '#6b6b6b' }   # neutral gray (Ignored)
+            }
+            # Place the tier badge ABOVE the name for consistency with Workloads and Conditions columns.
+            $S_TierBadge = "<span style=""display:inline-block;padding:2px 8px;border-radius:10px;background:$S_TierColor;color:#fff;font-size:11px;font-weight:600;margin-bottom:4px"">$($_.EnforcementTier)</span>"
+            $S_NameCell  = $S_TierBadge + '<br>' + [System.Web.HttpUtility]::HtmlEncode($_.DisplayName)
+
+            # data-* attributes drive the client-side filter dropdowns above the table.
+            "        <tr data-tier=""$($_.EnforcementTier)"" data-coverage=""$($_.WorkloadCoverage)"" data-posture=""$($_.ConditionsPosture)""><td>$S_NameCell</td>" +
             "<td>$($_.State)</td>" +
-            "<td>$(Format-CaList $S_Workloads)</td>" +
+            "<td>$S_WorkloadsHtml</td>" +
             "<td>$(Format-CaList $S_Included)</td>" +
             "<td>$(Format-CaList $S_Excluded)</td>" +
             "<td>$S_GrantText</td>" +
@@ -636,7 +844,38 @@ try {
         .secdefaults.enabled  { background: #fdecea; color: #d13438; border: 1px solid #d13438; }
         .secdefaults.disabled { background: #eaf6ec; color: #107c10; border: 1px solid #107c10; }
         .secdefaults.unknown  { background: #f3f3f3; color: #666;    border: 1px solid #999; }
+        .ca-filters { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center; margin: 8px 0 4px; font-size: 13px; }
+        .ca-filters label { font-weight: 600; color: #555; margin-right: 4px; }
+        .ca-filters select { padding: 4px 8px; border: 1px solid #ccc; border-radius: 6px; background: #fff; font-size: 13px; cursor: pointer; }
+        .ca-filters button { padding: 4px 12px; border: 1px solid #d13438; background: #fff; color: #d13438; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .ca-filters button:hover { background: #fdecea; }
     </style>
+    <script>
+        function caApplyFilters() {
+            var tier     = document.getElementById('caFilterTier').value;
+            var coverage = document.getElementById('caFilterCoverage').value;
+            var posture  = document.getElementById('caFilterPosture').value;
+            var rows = document.querySelectorAll('#caPolicyTable tbody tr');
+            var visible = 0;
+            rows.forEach(function (r) {
+                if (!r.hasAttribute('data-tier')) { return; } // skip empty-state placeholder
+                var ok = (tier === '' || r.getAttribute('data-tier') === tier)
+                      && (coverage === '' || r.getAttribute('data-coverage') === coverage)
+                      && (posture === '' || r.getAttribute('data-posture') === posture);
+                r.style.display = ok ? '' : 'none';
+                if (ok) { visible++; }
+            });
+            var count = document.getElementById('caFilterCount');
+            if (count) { count.textContent = visible + ' policy(ies) shown'; }
+        }
+        function caResetFilters() {
+            document.getElementById('caFilterTier').value = '';
+            document.getElementById('caFilterCoverage').value = '';
+            document.getElementById('caFilterPosture').value = '';
+            caApplyFilters();
+        }
+        document.addEventListener('DOMContentLoaded', caApplyFilters);
+    </script>
 </head>
 <body>
     <div class="header">
@@ -708,7 +947,32 @@ $tableRows
 
     <div class="section">
         <h2>MFA-Enforcing Conditional Access Policies</h2>
-        <table>
+        <div class="ca-filters">
+            <label for="caFilterTier">Tier:</label>
+            <select id="caFilterTier" onchange="caApplyFilters()">
+                <option value="">All</option>
+                <option value="Ideal">Ideal</option>
+                <option value="Acceptable">Acceptable</option>
+                <option value="Ignored">Ignored</option>
+            </select>
+            <label for="caFilterCoverage">Workloads:</label>
+            <select id="caFilterCoverage" onchange="caApplyFilters()">
+                <option value="">All</option>
+                <option value="Full">Full coverage</option>
+                <option value="Data">Data coverage</option>
+                <option value="Partial">Partial coverage</option>
+            </select>
+            <label for="caFilterPosture">Conditions:</label>
+            <select id="caFilterPosture" onchange="caApplyFilters()">
+                <option value="">All</option>
+                <option value="Unrestricted">Unrestricted</option>
+                <option value="Constrained">Constrained</option>
+                <option value="RiskBased">RiskBased</option>
+            </select>
+            <button type="button" onclick="caResetFilters()">Reset</button>
+            <span id="caFilterCount" style="color:#666;font-size:12px;"></span>
+        </div>
+        <table id="caPolicyTable">
             <thead>
                 <tr><th>Name</th><th>State</th><th>Workloads</th><th>Included</th><th>Excluded</th><th>Grants</th><th>Other Conditions</th></tr>
             </thead>
