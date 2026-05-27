@@ -1637,6 +1637,203 @@ $S_AuthStrengthRows
 
     $html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
     Write-Host "HTML report exported to: $S_HtmlPath" -ForegroundColor Green
+
+    # ── Summary HTML (header + disclaimer + 3 card sections only; no tables) ──
+    # Reuses the same <style> block so the look is identical. The snapshot bar,
+    # TOC, table sections, and per-table scripts are omitted because there is
+    # nothing to filter / save in the summary view.
+    $S_SummaryPath = [System.IO.Path]::Combine(
+        [System.IO.Path]::GetDirectoryName($S_HtmlPath),
+        [System.IO.Path]::GetFileNameWithoutExtension($S_HtmlPath) + '-Summary.html'
+    )
+    $summaryHtml = @"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Member MFA Coverage Report &mdash; Summary</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; color: #333; padding: 24px; }
+        .header { text-align: center; margin-bottom: 32px; }
+        .header h1 { font-size: 28px; color: #1a1a2e; margin-bottom: 4px; }
+        .header .subtitle { font-size: 14px; color: #666; }
+        .disclaimer { max-width: 880px; margin: 14px auto 0; padding: 10px 16px; background: #fff8e1; border: 1px solid #e0b400; border-left: 4px solid #bc8000; border-radius: 6px; color: #5a4500; font-size: 12.5px; line-height: 1.5; text-align: left; }
+        .disclaimer strong { color: #8a6d00; }
+        .card { background: #fff; border-radius: 12px; padding: 24px 28px; min-width: 220px; flex: 1; max-width: 280px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 5px solid #0078d4; position: relative; }
+        .card .label { font-size: 13px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .card .value { font-size: 36px; font-weight: 700; color: #1a1a2e; }
+        .card .detail { font-size: 12px; color: #888; margin-top: 6px; }
+        .card.blue    { border-left-color: #0078d4; }
+        .card.red     { border-left-color: #d13438; }
+        .card.green   { border-left-color: #107c10; }
+        .card.orange  { border-left-color: #ff8c00; }
+        .card.purple  { border-left-color: #8764b8; }
+        .card.posture-fully       { border-left-color: #107c10; }
+        .card.posture-fully .value{ color: #107c10; }
+        .card.posture-weak        { border-left-color: #7a8c1a; }
+        .card.posture-weak .value { color: #5a6b14; }
+        .card.posture-gap         { border-left-color: #bc8000; }
+        .card.posture-gap .value  { color: #8a6d00; }
+        .card.posture-unenforced  { border-left-color: #d83b01; }
+        .card.posture-unenforced .value { color: #9a4f00; }
+        .card.posture-weakgap     { border-left-color: #d83b01; }
+        .card.posture-weakgap .value    { color: #9a4f00; }
+        .card.posture-weakunenf   { border-left-color: #d83b01; }
+        .card.posture-weakunenf .value  { color: #9a4f00; }
+        .card.posture-atrisk      { border-left-color: #a4262c; }
+        .card.posture-atrisk .value     { color: #a4262c; }
+        .card.posture-critical    { border-left-color: #5c0a12; background: #fdecea; }
+        .card.posture-critical .value   { color: #5c0a12; }
+        .card.posture-unknown     { border-left-color: #999; }
+        .card.posture-unknown .value    { color: #666; }
+        .section { margin-bottom: 24px; }
+        .section h2 { font-size: 18px; color: #1a1a2e; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; text-align: center; }
+        .breakdown { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
+        .breakdown .card { min-width: 180px; max-width: 240px; padding: 18px 22px; }
+        .breakdown .card .value { font-size: 28px; }
+        .secdefaults { text-align: center; font-size: 14px; font-weight: 700; padding: 10px 16px; border-radius: 6px; margin: 0 auto 20px; max-width: 480px; }
+        .secdefaults.enabled  { background: #fdecea; color: #d13438; border: 1px solid #d13438; }
+        .secdefaults.disabled { background: #eaf6ec; color: #107c10; border: 1px solid #107c10; }
+        .secdefaults.unknown  { background: #f3f3f3; color: #666;    border: 1px solid #999; }
+        .footer { text-align: center; font-size: 12px; color: #999; margin-top: 32px; }
+        @page { size: A4; margin: 14mm 12mm; }
+        @media print {
+            body { background: #fff; padding: 0; color: #000; }
+            .card { box-shadow: none !important; }
+            .disclaimer, .secdefaults, .card, .breakdown .card { page-break-inside: avoid; break-inside: avoid; }
+            .section h2 { page-break-after: avoid; break-after: avoid-page; }
+            .card, .secdefaults { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Member MFA Coverage Report &mdash; Summary</h1>
+        <div class="subtitle">Generated: $reportDate | Tenant: $S_TenantLabel | Inactive threshold: $InactiveDays days | Guests excluded</div>
+        <div class="disclaimer">
+            <strong>MFA Reporting Note</strong><br><br>
+            Reporting on Multi-Factor Authentication (MFA) should be treated as an indicative assessment rather than definitive audit evidence. MFA coverage can be affected by several configuration areas, including registered authentication methods, legacy per-user MFA settings, Conditional Access policy scope, authentication strengths, exclusions, break-glass accounts, guest access, and other exception paths.
+            <br><br>
+            This report is intended to help identify potential gaps, highlight areas requiring review, and support prioritisation of follow-up actions. It should not be relied upon as a complete or audit-grade confirmation that MFA is enforced for every user and access scenario.
+        </div>
+    </div>
+
+    <div class="secdefaults $S_SecDefaultsClass">$S_SecDefaultsText</div>
+
+    <div class="section">
+        <h2>Accounts</h2>
+        <div class="breakdown">
+            <div class="card blue">
+                <div class="label">Total Members</div>
+                <div class="value">$totalMembers</div>
+                <div class="detail">Guests excluded</div>
+            </div>
+            <div class="card green">
+                <div class="label">Active</div>
+                <div class="value">$activeCount</div>
+                <div class="detail">$([math]::Round(($activeCount / [math]::Max($totalMembers,1)) * 100, 1))% of total &middot; signed in &lt;${InactiveDays}d</div>
+            </div>
+            <div class="card orange">
+                <div class="label">Inactive</div>
+                <div class="value">$inactiveCount</div>
+                <div class="detail">$([math]::Round(($inactiveCount / [math]::Max($totalMembers,1)) * 100, 1))% of total &middot; stale or no sign-in</div>
+            </div>
+            <div class="card red">
+                <div class="label">Disabled</div>
+                <div class="value">$disabledCount</div>
+                <div class="detail">$([math]::Round(($disabledCount / [math]::Max($totalMembers,1)) * 100, 1))% of total</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Auth Methods &mdash; Enabled Accounts</h2>
+        <div class="breakdown">
+            <div class="card green">
+                <div class="label">Modern Auth</div>
+                <div class="value">$enabledModernAuth</div>
+                <div class="detail">$([math]::Round(($enabledModernAuth / [math]::Max($enabledCount,1)) * 100, 1))% of enabled &middot; Authenticator / Passkey / TOTP</div>
+            </div>
+            <div class="card orange">
+                <div class="label">Legacy Auth</div>
+                <div class="value">$enabledLegacyAuth</div>
+                <div class="detail">$([math]::Round(($enabledLegacyAuth / [math]::Max($enabledCount,1)) * 100, 1))% of enabled &middot; SMS / Voice</div>
+            </div>
+            <div class="card red">
+                <div class="label">No MFA</div>
+                <div class="value">$enabledNoMFA</div>
+                <div class="detail">$([math]::Round(($enabledNoMFA / [math]::Max($enabledCount,1)) * 100, 1))% of enabled &middot; no method registered</div>
+            </div>
+            <div class="card purple">
+                <div class="label">Access Denied</div>
+                <div class="value">$enabledAccessDenied</div>
+                <div class="detail">Privileged accounts &middot; methods not readable</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>MFA Posture &mdash; Enabled Accounts</h2>
+        <div class="breakdown">
+            <div class="card posture-fully">
+                <div class="label">Fully Compliant</div>
+                <div class="value">$($S_PostureCounts['Fully Compliant'])</div>
+                <div class="detail">Modern auth + Full CA coverage</div>
+            </div>
+            <div class="card posture-weak">
+                <div class="label">Weak Factor</div>
+                <div class="value">$($S_PostureCounts['Weak Factor'])</div>
+                <div class="detail">Legacy auth + Full CA coverage</div>
+            </div>
+            <div class="card posture-gap">
+                <div class="label">Coverage Gap</div>
+                <div class="value">$($S_PostureCounts['Coverage Gap'])</div>
+                <div class="detail">Modern auth + Partial CA coverage</div>
+            </div>
+            <div class="card posture-weakgap">
+                <div class="label">Weak &amp; Gap</div>
+                <div class="value">$($S_PostureCounts['Weak & Gap'])</div>
+                <div class="detail">Legacy auth + Partial CA coverage</div>
+            </div>
+            <div class="card posture-unenforced">
+                <div class="label">Unenforced</div>
+                <div class="value">$($S_PostureCounts['Unenforced'])</div>
+                <div class="detail">Modern auth + No CA coverage</div>
+            </div>
+            <div class="card posture-weakunenf">
+                <div class="label">Weak &amp; Unenforced</div>
+                <div class="value">$($S_PostureCounts['Weak & Unenforced'])</div>
+                <div class="detail">Legacy auth + No CA coverage</div>
+            </div>
+            <div class="card posture-atrisk">
+                <div class="label">At Risk</div>
+                <div class="value">$($S_PostureCounts['At Risk'])</div>
+                <div class="detail">No MFA + Full CA coverage</div>
+            </div>
+            <div class="card posture-critical">
+                <div class="label">Critical</div>
+                <div class="value">$($S_PostureCounts['Critical'])</div>
+                <div class="detail">No MFA + No CA coverage</div>
+            </div>
+            <div class="card posture-unknown">
+                <div class="label">Unknown</div>
+                <div class="value">$($S_PostureCounts['Unknown'])</div>
+                <div class="detail">Posture not determined</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        Summary view &middot; full report: $(Split-Path $S_HtmlPath -Leaf) &middot; generated by ReportMemberMFA.ps1
+    </div>
+</body>
+</html>
+"@
+
+    $summaryHtml | Out-File -FilePath $S_SummaryPath -Encoding UTF8
+    Write-Host "Summary HTML exported to: $S_SummaryPath" -ForegroundColor Green
 }
 catch {
     Write-Error "An error occurred: $_ at $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)  -> $($_.InvocationInfo.Line.Trim())"
