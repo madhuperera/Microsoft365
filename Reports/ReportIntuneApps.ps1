@@ -49,7 +49,7 @@ $S_RequiredGraphScopes = @(
 $S_GraphRequestDelayMilliseconds = 5
 
 # --- @odata.type maps for platform filtering ---
-$platformTypeMap = @{
+$S_PlatformTypeMap = @{
 	Windows = @(
 		'#microsoft.graph.win32LobApp',
 		'#microsoft.graph.windowsMobileMSI',
@@ -82,8 +82,8 @@ $platformTypeMap = @{
 
 function Get-AppPlatform {
 	param([string]$OdataType)
-	foreach ($plat in $platformTypeMap.Keys) {
-		if ($platformTypeMap[$plat] -contains $OdataType) { return $plat }
+	foreach ($plat in $S_PlatformTypeMap.Keys) {
+		if ($S_PlatformTypeMap[$plat] -contains $OdataType) { return $plat }
 	}
 	return 'Other'
 }
@@ -125,6 +125,27 @@ try {
 		Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
 	}
 	$S_ExistingContext = Get-MgContext
+	Write-Host ""
+	Write-Host "Active Graph context:" -ForegroundColor Cyan
+	Write-Host "  Account    : $($S_ExistingContext.Account)" -ForegroundColor Cyan
+	Write-Host "  TenantId   : $($S_ExistingContext.TenantId)" -ForegroundColor Cyan
+	Write-Host "  Environment: $($S_ExistingContext.Environment)" -ForegroundColor Cyan
+	Write-Host "  Scopes     : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Cyan
+	Write-Host ""
+
+	$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
+	if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
+	{
+		$S_ContextConfirmation = 'N'
+	}
+	else
+	{
+		$S_ContextConfirmation = $S_ContextConfirmation.ToUpperInvariant()
+	}
+	if ($S_ContextConfirmation -ne 'Y')
+	{
+		throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
+	}
 
 	# --- Tenant info ---
 	$tenantDisplayName = $null
@@ -150,7 +171,7 @@ try {
 
 	# --- Filter by platform ---
 	if ($Platform -ne 'All') {
-		$wanted = $platformTypeMap[$Platform]
+		$wanted = $S_PlatformTypeMap[$Platform]
 		$apps = $apps | Where-Object { $wanted -contains $_.'@odata.type' }
 		Write-Host ("  After {0} filter: {1} apps" -f $Platform, $apps.Count) -ForegroundColor Green
 	}

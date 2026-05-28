@@ -5,7 +5,7 @@
     Reports on SPF DNS record configuration for all accepted domains in Exchange Online.
 
 .DESCRIPTION
-    Retrieves all accepted domains from Exchange Online and queries SPF TXT records
+    Connects to Exchange Online and retrieves all accepted domains, then queries SPF TXT records
     for each non-onmicrosoft.com domain using the specified DNS resolver.
     Outputs results to the console.
 
@@ -19,9 +19,16 @@ param ()
 $ErrorActionPreference = 'Stop'
 
 $S_DNSServerToUse = "1.1.1.1"
-$AllDomains = (Get-AcceptedDomain | Where-Object {$_.DomainName -notlike "*.onmicrosoft.com"}).DomainName
 
-foreach ($Domain in $AllDomains)
+if (-not (Get-Module -Name ExchangeOnlineManagement -ListAvailable))
+{
+    throw "ExchangeOnlineManagement module is not installed. Install it using: Install-Module ExchangeOnlineManagement -Scope CurrentUser"
+}
+Connect-ExchangeOnline -ShowBanner:$false
+
+$S_AllDomains = (Get-AcceptedDomain | Where-Object {$_.DomainName -notlike "*.onmicrosoft.com"}).DomainName
+
+foreach ($Domain in $S_AllDomains)
 {
     Write-Output "`nReport on $Domain"
 

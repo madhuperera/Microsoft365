@@ -63,15 +63,38 @@ else
     Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
 }
 
+$S_ActiveContext = Get-MgContext
+Write-Host ""
+Write-Host "Active Graph context:" -ForegroundColor Cyan
+Write-Host "  Account    : $($S_ActiveContext.Account)" -ForegroundColor Cyan
+Write-Host "  TenantId   : $($S_ActiveContext.TenantId)" -ForegroundColor Cyan
+Write-Host "  Environment: $($S_ActiveContext.Environment)" -ForegroundColor Cyan
+Write-Host "  Scopes     : $($S_ActiveContext.Scopes -join ', ')" -ForegroundColor Cyan
+Write-Host ""
+
+$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
+if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
+{
+    $S_ContextConfirmation = 'N'
+}
+else
+{
+    $S_ContextConfirmation = $S_ContextConfirmation.ToUpperInvariant()
+}
+if ($S_ContextConfirmation -ne 'Y')
+{
+    throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
+}
+
 Write-Host "Finding licensed Azure AD accounts"
-[array]$Users = Get-MgUser -Filter "assignedLicenses/`$count ne 0 and userType eq 'Member'" -ConsistencyLevel eventual -CountVariable Records -All
-If (!($Users)) { Write-Host "No licensed users found in Azure AD... exiting!"; break }
+[array]$S_Users = Get-MgUser -Filter "assignedLicenses/`$count ne 0 and userType eq 'Member'" -ConsistencyLevel eventual -CountVariable Records -All
+If (!($S_Users)) { Write-Host "No licensed users found in Azure AD... exiting!"; break }
 
 $i = 0
-$Report = [System.Collections.Generic.List[Object]]::new()
-ForEach ($User in $Users) {
+$S_Report = [System.Collections.Generic.List[Object]]::new()
+ForEach ($User in $S_Users) {
  $i++
- Write-Host ("Processing user {0} {1}/{2}." -f $User.DisplayName, $i, $Users.Count)
+ Write-Host ("Processing user {0} {1}/{2}." -f $User.DisplayName, $i, $S_Users.Count)
  $AuthMethods = Get-MgUserAuthenticationMethod -UserId $User.Id
  ForEach ($AuthMethod in $AuthMethods) {
   $P1 = $Null; $P2 = $Null
@@ -118,20 +141,20 @@ ForEach ($User in $Users) {
      P1     = $P1
      P2     = $P2 
      UserId = $User.Id }
-  $Report.Add($ReportLine)
+  $S_Report.Add($ReportLine)
  } #End ForEach Authentication Method
 } #End ForEach User
    
-$Report = $Report | Sort-Object User 
+$S_Report = $S_Report | Sort-Object User 
 Write-Host ""
 Write-Host "Authentication Methods found"
 Write-Host "----------------------------"
 Write-Host ""
-$Report | Group-Object Method | Sort-Object Count -Descending | Select Name, Count
+$S_Report | Group-Object Method | Sort-Object Count -Descending | Select Name, Count
 
-$Report | Out-GridView
+$S_Report | Out-GridView
 
-$Report | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+$S_Report | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
 Write-Host "Report exported to: $OutputPath" -ForegroundColor Green
 
 $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"

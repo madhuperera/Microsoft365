@@ -65,6 +65,7 @@ $S_ReadOnlyGraphScopes = @(
     'Device.Read.All'
     'DeviceManagementApps.Read.All'
     'Directory.Read.All'
+    'Domain.Read.All'
     'Group.Read.All'
     'GroupMember.Read.All'
     'Organization.Read.All'
