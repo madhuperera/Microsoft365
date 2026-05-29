@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reading the Member MFA Coverage Report &mdash; Summary Cards Guide</title>
+    <style>
+        /* ── Base ─────────────────────────────────────────────────────────── */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f2f5;
+            color: #1a1a2e;
+            padding: 24px;
+            line-height: 1.55;
+        }
+        .page { max-width: 980px; margin: 0 auto; }
+
+        /* ── Header ───────────────────────────────────────────────────────── */
+        .header { text-align: center; margin-bottom: 18px; }
+        .header h1 { font-size: 26px; margin-bottom: 4px; }
+        .header .subtitle { font-size: 13.5px; color: #666; }
+        .version-tag {
+            display: inline-block; margin-left: 6px;
+            padding: 1px 8px; border-radius: 10px;
+            background: #1a1a2e; color: #fff;
+            font-size: 11px; font-weight: 700; letter-spacing: 0.3px;
+        }
+
+        /* ── Framework warning ────────────────────────────────────────────── */
+        .framework-warning {
+            margin: 16px 0 20px;
+            padding: 14px 18px;
+            background: #fff4e5;
+            border: 1px solid #d88600;
+            border-left: 5px solid #d88600;
+            border-radius: 6px;
+            color: #5a4500;
+            font-size: 13.5px;
+        }
+        .framework-warning strong { color: #8a5a00; display: block; margin-bottom: 4px; font-size: 14px; }
+
+        /* ── TOC ──────────────────────────────────────────────────────────── */
+        .toc {
+            margin: 16px 0 24px;
+            padding: 12px 18px;
+            background: #fafafa;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .toc strong { display: block; margin-bottom: 6px; font-size: 13.5px; }
+        .toc ol { list-style: decimal inside; margin: 0; padding: 0; columns: 2; column-gap: 28px; }
+        .toc ol li { padding: 2px 0; }
+        .toc a { color: #0078d4; text-decoration: none; }
+        .toc a:hover { text-decoration: underline; }
+
+        /* ── Sections & headings ──────────────────────────────────────────── */
+        section { margin-bottom: 28px; }
+        h2 {
+            font-size: 19px;
+            margin-bottom: 8px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #d13438;
+        }
+        h3 { font-size: 15.5px; margin: 14px 0 6px; }
+        p { margin-bottom: 8px; }
+        ul, ol.body-list { margin: 0 0 8px 22px; }
+        ul li, ol.body-list li { padding: 2px 0; }
+
+        /* ── Inline code ──────────────────────────────────────────────────── */
+        code {
+            font-family: Consolas, 'Cascadia Mono', 'Courier New', monospace;
+            font-size: 0.92em;
+            background: #f3f3f3;
+            color: #1a1a2e;
+            padding: 1px 5px;
+            border: 1px solid #e0e0e0;
+            border-radius: 3px;
+            word-break: break-word;
+        }
+
+        /* ── Tables ───────────────────────────────────────────────────────── */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            overflow: hidden;
+            margin: 10px 0;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        }
+        thead { border-bottom: 2px solid #a52428; }
+        th {
+            background: #d13438; color: #fff; text-align: left;
+            padding: 8px 12px; font-size: 12.5px;
+            text-transform: uppercase; letter-spacing: 0.3px;
+        }
+        td {
+            padding: 8px 12px; font-size: 13px;
+            border-bottom: 1px solid #eee; vertical-align: top;
+        }
+        tbody tr:nth-child(even) { background: #fafafa; }
+        tbody tr:last-child td { border-bottom: 1px solid #ccc; }
+        tr:hover { background: #fdf2f2; }
+
+        /* ── Persona pills (Internal / Guest / Admins) ────────────────────── */
+        .persona {
+            display: inline-block; padding: 1px 8px; border-radius: 10px;
+            font-size: 11.5px; font-weight: 700; color: #fff;
+        }
+        .persona.internal { background: #107c10; }
+        .persona.admin    { background: #8764b8; }
+        .persona.guest    { background: #ff8c00; }
+
+        /* ── Posture pills ────────────────────────────────────────────────── */
+        .pill {
+            display: inline-block; padding: 2px 9px; border-radius: 10px;
+            font-size: 12px; font-weight: 700; white-space: nowrap;
+        }
+        .pill.fully       { background:#eaf6ec; color:#107c10; border:1px solid #107c10; }
+        .pill.weak        { background:#f3f9d8; color:#5a6b14; border:1px solid #7a8c1a; }
+        .pill.gap         { background:#fff4ce; color:#8a6d00; border:1px solid #c0a000; }
+        .pill.weakgap     { background:#ffe8cc; color:#9a4f00; border:1px solid #d83b01; }
+        .pill.unenforced  { background:#ffe8cc; color:#9a4f00; border:1px solid #d83b01; }
+        .pill.weakunenf   { background:#ffe8cc; color:#9a4f00; border:1px solid #d83b01; }
+        .pill.atrisk      { background:#fdecea; color:#a4262c; border:1px solid #a4262c; }
+        .pill.critical    { background:#5c0a12; color:#fff;    border:1px solid #3d0008; }
+        .pill.unknown     { background:#f3f3f3; color:#666;    border:1px solid #999; }
+
+        /* ── Tier pills ───────────────────────────────────────────────────── */
+        .tier { display:inline-block; padding:2px 9px; border-radius:10px; font-size:12px; font-weight:700; color:#fff; }
+        .tier.ideal      { background:#107c10; }
+        .tier.acceptable { background:#ff8c00; }
+        .tier.ignored    { background:#6b6b6b; }
+
+        /* ── Sample preview cards (mini versions of the real report cards) ── */
+        .preview {
+            display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-start;
+            margin: 10px 0 14px;
+        }
+        .preview .card {
+            background: #fff; border-radius: 8px; padding: 12px 14px;
+            min-width: 150px; max-width: 200px; flex: 1;
+            border-left: 4px solid #0078d4;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            font-size: 12px;
+        }
+        .preview .card .label { font-size: 10.5px; color: #666; text-transform: uppercase; letter-spacing: 0.4px; }
+        .preview .card .value { font-size: 22px; font-weight: 700; color: #1a1a2e; margin: 3px 0; }
+        .preview .card .detail { font-size: 10.5px; color: #888; }
+        .preview .card.blue        { border-left-color: #0078d4; }
+        .preview .card.green       { border-left-color: #107c10; }
+        .preview .card.orange      { border-left-color: #ff8c00; }
+        .preview .card.red         { border-left-color: #d13438; }
+        .preview .card.purple      { border-left-color: #8764b8; }
+        .preview .card.fully       { border-left-color: #107c10; } .preview .card.fully .value       { color: #107c10; }
+        .preview .card.weak        { border-left-color: #7a8c1a; } .preview .card.weak .value        { color: #5a6b14; }
+        .preview .card.gap         { border-left-color: #bc8000; } .preview .card.gap .value         { color: #8a6d00; }
+        .preview .card.weakgap     { border-left-color: #d83b01; } .preview .card.weakgap .value     { color: #9a4f00; }
+        .preview .card.unenforced  { border-left-color: #d83b01; } .preview .card.unenforced .value  { color: #9a4f00; }
+        .preview .card.weakunenf   { border-left-color: #d83b01; } .preview .card.weakunenf .value   { color: #9a4f00; }
+        .preview .card.atrisk      { border-left-color: #a4262c; } .preview .card.atrisk .value      { color: #a4262c; }
+        .preview .card.critical    { border-left-color: #5c0a12; background: #fdecea; } .preview .card.critical .value { color: #5c0a12; }
+        .preview .card.unknown     { border-left-color: #999; }    .preview .card.unknown .value     { color: #666; }
+        .preview-caption {
+            font-size: 11.5px; color: #777; font-style: italic;
+            margin: -4px 0 12px;
+        }
+
+        /* ── Decision flow chart ──────────────────────────────────────────── */
+        .flow {
+            margin: 16px 0 6px;
+            padding: 20px 14px;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+        }
+        .flow .arrow { font-size: 20px; color: #999; line-height: 1; }
+        .flow .label { font-size: 11px; color: #555; font-style: italic; margin: -2px 0; }
+
+        /* Shapes */
+        .node {
+            text-align: center;
+            font-size: 12.5px;
+            font-weight: 600;
+            padding: 8px 14px;
+            min-width: 150px;
+            max-width: 240px;
+            line-height: 1.35;
+        }
+        /* Start / End  → pill (terminator) */
+        .node.terminator {
+            background: #1a1a2e; color: #fff;
+            border-radius: 999px;
+            padding: 8px 22px;
+            border: 2px solid #1a1a2e;
+        }
+        .node.terminator.end-disabled { background: #6b6b6b; border-color: #6b6b6b; }
+        .node.terminator.end-final    { background: #003e7a; border-color: #003e7a; }
+        /* Process → rectangle */
+        .node.process {
+            background: #f3f9ff; color: #003e7a;
+            border: 2px solid #0078d4;
+            border-radius: 4px;
+        }
+        /* Decision → hexagon via clip-path */
+        .node.decision {
+            background: #fff8e1; color: #5a4500;
+            border: 2px solid #d88600;
+            clip-path: polygon(12% 0, 88% 0, 100% 50%, 88% 100%, 12% 100%, 0 50%);
+            padding: 10px 28px;
+            min-width: 200px;
+        }
+        /* Outcome → bold coloured rectangle */
+        .node.outcome {
+            border-radius: 6px;
+            border-width: 3px; border-style: solid;
+            font-weight: 700;
+        }
+        .node.outcome.full    { background:#eaf6ec; border-color:#107c10; color:#0a5c0a; }
+        .node.outcome.partial { background:#fff4ce; border-color:#bc8000; color:#7a5e00; }
+        .node.outcome.none    { background:#fdecea; border-color:#a4262c; color:#a4262c; }
+        .node.outcome.auth    { background:#eef6ff; border-color:#0078d4; color:#003e7a; }
+
+        /* Parallel branches */
+        .flow .parallel {
+            display: flex; gap: 28px; justify-content: center; align-items: flex-start;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+        .flow .col {
+            flex: 1; min-width: 260px;
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+            border-left: 2px dashed #ccc; border-right: 2px dashed #ccc;
+            padding: 8px 6px;
+        }
+        .flow .col .col-title {
+            font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.6px;
+            color: #666; font-weight: 700; margin-bottom: 2px;
+        }
+        .flow .row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+
+        /* Legend under the flow */
+        .flow-legend {
+            display: flex; flex-wrap: wrap; gap: 16px; justify-content: center;
+            font-size: 11.5px; color: #555;
+            margin: 4px 0 14px;
+        }
+        .flow-legend .lk { display: inline-flex; align-items: center; gap: 5px; }
+        .flow-legend .swatch {
+            display: inline-block; width: 18px; height: 12px; border: 2px solid;
+        }
+        .flow-legend .swatch.terminator { background: #1a1a2e; border-color: #1a1a2e; border-radius: 999px; }
+        .flow-legend .swatch.process    { background: #f3f9ff; border-color: #0078d4; border-radius: 2px; }
+        .flow-legend .swatch.decision   { background: #fff8e1; border-color: #d88600; clip-path: polygon(12% 0, 88% 0, 100% 50%, 88% 100%, 12% 100%, 0 50%); }
+        .flow-legend .swatch.outcome    { background: #eaf6ec; border-color: #107c10; border-radius: 3px; }
+
+        /* ── Matrix ───────────────────────────────────────────────────────── */
+        .matrix th, .matrix td { text-align: center; }
+        .matrix th.row-h { background: #1a1a2e; }
+        .matrix td.row-h { background: #1a1a2e; color: #fff; font-weight: 700; text-align: left; }
+
+        /* ── Callouts ─────────────────────────────────────────────────────── */
+        .callout {
+            margin: 12px 0; padding: 11px 16px; border-radius: 6px;
+            font-size: 13px; border-left: 4px solid;
+        }
+        .callout.info  { background:#eef6ff; border-color:#0078d4; color:#003e7a; }
+        .callout.warn  { background:#fff4e5; border-color:#d88600; color:#5a4500; }
+        .callout.tip   { background:#eaf6ec; border-color:#107c10; color:#0a5c0a; }
+        .callout strong { display:block; margin-bottom:3px; }
+
+        /* ── Footer ───────────────────────────────────────────────────────── */
+        .footer { text-align: center; font-size: 11.5px; color: #999; margin-top: 28px; padding-top: 14px; border-top: 1px solid #ddd; }
+
+        /* ── FAQ speech bubbles ───────────────────────────────────────────── */
+        .faq { margin: 10px 0 6px; }
+        .faq-item { margin: 0 0 18px; }
+        .bubble {
+            position: relative;
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 10px 14px 10px 12px;
+            border-radius: 10px;
+            font-size: 13px;
+            line-height: 1.5;
+            max-width: 92%;
+        }
+        .bubble .badge {
+            flex: 0 0 auto;
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 26px; height: 26px;
+            border-radius: 50%;
+            font-weight: 700; font-size: 13px;
+            color: #fff;
+        }
+        .bubble .body { flex: 1 1 auto; }
+        .bubble.q {
+            background: #eef6ff;
+            border: 1px solid #b6d8f5;
+            color: #003e7a;
+            margin-right: auto;
+        }
+        .bubble.q .badge { background: #0078d4; }
+        .bubble.a {
+            background: #f3f3f3;
+            border: 1px solid #d8d8d8;
+            color: #1a1a2e;
+            margin-left: 32px;
+            margin-top: 6px;
+        }
+        .bubble.a .badge { background: #555; }
+        /* Little tail on the Q bubble */
+        .bubble.q::after {
+            content: '';
+            position: absolute;
+            left: 18px; bottom: -7px;
+            width: 12px; height: 12px;
+            background: #eef6ff;
+            border-right: 1px solid #b6d8f5;
+            border-bottom: 1px solid #b6d8f5;
+            transform: rotate(45deg);
+        }
+
+        /* ── Print / PDF ──────────────────────────────────────────────────── */
+        @page { size: A4; margin: 14mm 12mm; }
+        @media print {
+            body { background: #fff; padding: 0; color: #000; }
+            .page { max-width: none; }
+            .header h1 { font-size: 20px; }
+            table, .flow, .preview .card, .framework-warning, .toc, .callout { box-shadow: none !important; }
+            tr:hover { background: transparent !important; }
+            thead { display: table-header-group; }
+            tfoot { display: table-footer-group; }
+            .framework-warning, .callout, .toc, .flow, .matrix, .preview { page-break-inside: avoid; break-inside: avoid; }
+            h2, h3 { page-break-after: avoid; break-after: avoid-page; }
+            section.page-break { page-break-before: always; }
+            .pill, .tier, .persona, th, code, .node, .framework-warning, .callout, .preview .card, .version-tag, .bubble, .bubble .badge {
+                -webkit-print-color-adjust: exact; print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="page">
+
+    <!-- ═══ Header ══════════════════════════════════════════════════════ -->
+    <div class="header">
+        <h1>Reading the Member MFA Coverage Report</h1>
+        <div class="subtitle">
+            A guide to the Summary Cards on the report
+            <span class="version-tag">Scoring v1.0</span>
+        </div>
+    </div>
+
+    <!-- ═══ Framework warning ═══════════════════════════════════════════ -->
+    <div class="framework-warning">
+        <strong>&#9888; This report uses our Conditional Access (CA) Policy Framework &mdash; Scoring v1.0</strong>
+        All numbers in the &ldquo;MFA Posture&rdquo; section depend on which CA policies the framework classifies as <span class="tier ideal">Ideal</span>, <span class="tier acceptable">Acceptable</span>, or <span class="tier ignored">Ignored</span>. Other tools may score the same policies differently &mdash; that's expected. Section&nbsp;4 explains exactly how a policy earns each tier in this version of the framework.
+    </div>
+
+    <!-- ═══ TOC ═════════════════════════════════════════════════════════ -->
+    <div class="toc" aria-label="Table of contents">
+        <strong>Contents</strong>
+        <ol>
+            <li><a href="#sec-1">How to read this report</a></li>
+            <li><a href="#sec-2">Accounts cards</a></li>
+            <li><a href="#sec-3">Auth Methods cards (Axis&nbsp;1)</a></li>
+            <li><a href="#sec-4">The CA Policy Framework &mdash; Ideal, Acceptable, Ignored</a></li>
+            <li><a href="#sec-5">CA Coverage (Axis&nbsp;2)</a></li>
+            <li><a href="#sec-6">Decision flow &mdash; the two axes meet</a></li>
+            <li><a href="#sec-7">MFA Posture cards &mdash; the 9 outcomes</a></li>
+            <li><a href="#sec-8">Quick action guide</a></li>
+        </ol>
+    </div>
+
+    <!-- ═══ 1. How to read ══════════════════════════════════════════════ -->
+    <section id="sec-1">
+        <h2>1. How to read this report</h2>
+        <p>The report answers one question for every member account in the tenant:</p>
+        <p style="margin-left:14px;font-style:italic;color:#003e7a;">
+            &ldquo;If this person tries to sign in &mdash; under any combination of device, network, application, location, or risk &mdash; are they covered by MFA as much as our Conditional Access policies can guarantee?&rdquo;
+        </p>
+
+        <h3>1.1 Personas the report deals with</h3>
+        <ul>
+            <li><span class="persona internal">Internal</span> &mdash; a Member account inside this Microsoft&nbsp;365 tenant. Regular staff. <strong>This is who the cards count.</strong></li>
+            <li><span class="persona admin">Admins</span> &mdash; a Member account that currently holds an active Entra&nbsp;ID admin role. They are still members, but their auth methods often cannot be read by the script (see &ldquo;Access Denied&rdquo; in Section&nbsp;3).</li>
+            <li><span class="persona guest">Guests</span> &mdash; external user accounts (B2B). Excluded from this report entirely &mdash; they sit under a different control set.</li>
+        </ul>
+
+        <h3>1.2 Three groups of cards, in the order they appear</h3>
+        <ol class="body-list">
+            <li><strong>Accounts</strong> &mdash; how many member accounts exist and which are alive.</li>
+            <li><strong>Auth Methods</strong> &mdash; for the live accounts, what kind of MFA each user has registered (Axis&nbsp;1).</li>
+            <li><strong>MFA Posture</strong> &mdash; combines Axis&nbsp;1 with Axis&nbsp;2 (CA coverage) to produce a verdict per user.</li>
+        </ol>
+    </section>
+
+    <!-- ═══ 2. Accounts ═════════════════════════════════════════════════ -->
+    <section id="sec-2" class="page-break">
+        <h2>2. Accounts cards</h2>
+        <p>The first row of cards on the report. Guests are excluded everywhere.</p>
+
+        <div class="preview" aria-hidden="true">
+            <div class="card blue"><div class="label">Total Members</div><div class="value">482</div><div class="detail">Guests excluded</div></div>
+            <div class="card green"><div class="label">Active</div><div class="value">391</div><div class="detail">81.1% &middot; signed in &lt;90d</div></div>
+            <div class="card orange"><div class="label">Inactive</div><div class="value">62</div><div class="detail">12.9% &middot; stale or no sign-in</div></div>
+            <div class="card red"><div class="label">Disabled</div><div class="value">29</div><div class="detail">6.0% of total</div></div>
+        </div>
+        <div class="preview-caption">Example values shown for illustration only.</div>
+
+        <table>
+            <thead><tr><th>Card</th><th>Counts</th><th>How we decide</th></tr></thead>
+            <tbody>
+                <tr><td><strong>Total Members</strong></td><td>Every member account.</td><td>All accounts where <code>userType = Member</code>.</td></tr>
+                <tr><td><strong>Active</strong></td><td>Enabled accounts that signed in recently.</td><td>Most recent sign-in (interactive or background) is within the last <code>InactiveDays</code> days.</td></tr>
+                <tr><td><strong>Inactive</strong></td><td>Enabled accounts that haven't signed in recently.</td><td>Account is enabled but the most recent sign-in is older than the cutoff &mdash; or Entra has no sign-in record at all.</td></tr>
+                <tr><td><strong>Disabled</strong></td><td>Accounts that cannot sign in.</td><td><code>AccountEnabled = false</code>. <strong>Disabled accounts are excluded from every later card</strong> &mdash; they are not a live attack surface.</td></tr>
+            </tbody>
+        </table>
+        <div class="callout tip"><strong>Sanity check.</strong> Active + Inactive + Disabled = Total Members.</div>
+    </section>
+
+    <!-- ═══ 3. Auth Methods (Axis 1) ════════════════════════════════════ -->
+    <section id="sec-3" class="page-break">
+        <h2>3. Auth Methods cards (Axis&nbsp;1)</h2>
+        <p>For every <em>enabled</em> member, the report asks Entra ID what authentication methods that person has registered, and drops them into one of four buckets. These are the four Auth Methods cards &mdash; and they form one half of the MFA Posture calculation later.</p>
+
+        <div class="preview" aria-hidden="true">
+            <div class="card green"><div class="label">Modern Auth</div><div class="value">312</div><div class="detail">68.9% &middot; Authenticator / Passkey / TOTP</div></div>
+            <div class="card orange"><div class="label">Legacy Auth</div><div class="value">94</div><div class="detail">20.8% &middot; SMS / Voice</div></div>
+            <div class="card red"><div class="label">No MFA</div><div class="value">38</div><div class="detail">8.4% &middot; no method registered</div></div>
+            <div class="card purple"><div class="label">Access Denied</div><div class="value">9</div><div class="detail">Privileged accounts &middot; methods not readable</div></div>
+        </div>
+        <div class="preview-caption">Example values shown for illustration only.</div>
+
+        <table>
+            <thead><tr><th>Bucket</th><th>What's registered</th><th>Why it matters</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><strong>Modern Auth</strong></td>
+                    <td>Microsoft Authenticator (push or passwordless), FIDO2 security key, or a TOTP app.</td>
+                    <td>The preferred state. Phishing-resistant or app-based, not interceptable by SIM-swap.</td>
+                </tr>
+                <tr>
+                    <td><strong>Legacy Auth</strong></td>
+                    <td>Only SMS or voice MFA.</td>
+                    <td>Counts as MFA, but it's the weakest kind &mdash; phishable and SIM-swappable. Should be upgraded.</td>
+                </tr>
+                <tr>
+                    <td><strong>No MFA</strong></td>
+                    <td>Nothing additional &mdash; password only. <strong>This bucket also includes Windows Hello for Business</strong>, which we treat as a <em>single-factor</em> sign-in for this report (it replaces the password, it doesn't add a second factor).</td>
+                    <td>If a CA policy requires MFA, this user cannot satisfy it until they enrol a real second factor.</td>
+                </tr>
+                <tr>
+                    <td><strong>Access Denied</strong></td>
+                    <td>Unknown. We could not read the user's methods.</td>
+                    <td>Usually accounts with an active <span class="persona admin">Admins</span> role &mdash; the script's identity is not allowed to read privileged users' methods. <em>This is not the same as &ldquo;No MFA&rdquo;.</em></td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="callout info"><strong>Tie-breaker.</strong> A user with both Modern and Legacy methods registered is counted under <strong>Modern Auth</strong>. Modern wins.</div>
+    </section>
+
+    <!-- ═══ 4. CA Policy Framework ══════════════════════════════════════ -->
+    <section id="sec-4" class="page-break">
+        <h2>4. The CA Policy Framework &mdash; Ideal, Acceptable, Ignored</h2>
+        <p>
+            Before we can talk about the third group of cards, we need to talk about Conditional Access (CA) policies. The framework looks at every MFA-enforcing CA policy in the tenant <em>once</em> and assigns it to a tier. This happens independently of any user.
+        </p>
+        <p>
+            <strong>In Scoring v1.0, only <span class="tier ideal">Ideal</span> policies count towards user coverage.</strong> The other tiers are listed in the CA Policies table on the full report for transparency, but they do not move the posture numbers. This is deliberate &mdash; the framework's goal is to start from a baseline we can prove, then expand in later versions.
+        </p>
+
+        <h3>4.1 <span class="tier ideal">Ideal</span> &mdash; counts toward coverage</h3>
+        <p>
+            An Ideal policy enforces MFA in a way we can rely on across <em>every</em> sign-in scenario for the users it targets. To earn Ideal in v1.0, a policy must satisfy <strong>all</strong> of the following:
+        </p>
+        <ul>
+            <li>State is <code>Enabled</code> (not Report-only, not Off).</li>
+            <li>The grant control requires MFA &mdash; either directly (<code>mfa</code>) or via an MFA-capable Authentication Strength.</li>
+            <li>If multiple grant controls are listed, they are joined with <code>AND</code>, not <code>OR</code>. (An <code>OR</code> with a non-MFA companion control means the user can sign in without doing MFA.)</li>
+            <li>It fires unconditionally &mdash; it is <em>not</em> gated by sign-in risk or user risk. (Risk-based policies are valuable, but they only kick in some of the time.)</li>
+            <li>The audience is a broad user scope &mdash; <code>All users</code> or a baseline group covering all <span class="persona internal">Internal</span> members. <span class="persona admin">Admins</span>-only and <span class="persona guest">Guests</span>-only policies are out of scope here; they are scored separately.</li>
+            <li><strong>No narrowing conditions are present.</strong> Specifically: no <em>conditional exclusions</em> (e.g. excluding an office IP location), and no <em>explicit inclusions that act as filters</em> (e.g. ticking specific Device Platforms, Client Apps, or named locations).</li>
+        </ul>
+
+        <div class="callout warn">
+            <strong>Why &ldquo;no narrowing conditions&rdquo; matters.</strong>
+            Conditions such as &ldquo;apply only to Windows and macOS&rdquo; or &ldquo;exclude trusted office IPs&rdquo; create gaps a determined attacker can drive a truck through. For example, a policy that targets only specific Device Platforms can be bypassed by a client that reports an unrecognised platform &mdash; Conditional Access doesn't evaluate the policy at all, and the user signs in with just a password. The same logic applies to client-app filters and location exclusions: any control point an attacker can spoof or move around weakens the guarantee. In v1.0 we don't try to model which conditions are &ldquo;safe&rdquo; &mdash; we just require there are none, so the result is honest.
+        </div>
+
+        <h3>4.2 <span class="tier acceptable">Acceptable</span> &mdash; visible, not counted in v1.0</h3>
+        <p>
+            An Acceptable policy enforces MFA but uses narrowing conditions that mean we cannot claim universal coverage from it &mdash; the very things called out in 4.1 above. Typical examples:
+        </p>
+        <ul>
+            <li>Targets only specific Device Platforms or Client App types.</li>
+            <li>Excludes named locations such as office IPs.</li>
+            <li>Scoped to a single application instead of <code>All cloud apps</code>.</li>
+            <li>Scoped to a specific department or team rather than a baseline group.</li>
+        </ul>
+        <p>
+            These policies probably <em>are</em> doing real work in the tenant. The framework just cannot assume the work is universal, so v1.0 does not credit them in the coverage maths. A future scoring version will revisit them with finer-grained logic.
+        </p>
+
+        <h3>4.3 <span class="tier ignored">Ignored</span> &mdash; visible, deliberately discarded</h3>
+        <p>The framework cannot trust an Ignored policy to enforce MFA at all. Examples:</p>
+        <ul>
+            <li>Risk-based only &mdash; fires only when Entra ID detects elevated risk.</li>
+            <li>Grant control uses <code>OR</code> with a non-MFA companion control &mdash; MFA can be bypassed.</li>
+            <li>The user can satisfy the grant control with something other than MFA (e.g. compliant device only).</li>
+            <li>Targets <span class="persona admin">Admins</span> only &mdash; doesn't apply to regular members.</li>
+            <li>Targets <span class="persona guest">Guests</span> only &mdash; guests are out of scope for this report.</li>
+        </ul>
+        <div class="callout info">
+            <strong>&ldquo;Ignored&rdquo; does not mean &ldquo;useless&rdquo;.</strong>
+            Risk-based and admin policies are valuable security controls. &ldquo;Ignored&rdquo; in this framework only means we will not count them as evidence that a regular Internal member is MFA-protected on every sign-in.
+        </div>
+
+        <h3>4.4 What this means for the MFA Posture cards</h3>
+        <p>
+            When the report decides whether a user has <strong>Full</strong> CA coverage in v1.0, it only consults <span class="tier ideal">Ideal</span> policies. If the tenant has zero Ideal policies, every user is recorded as having <strong>None</strong> coverage &mdash; regardless of how many Acceptable or Ignored policies exist.
+        </p>
+        <p>
+            This is intentional for v1.0. CA policy logic is complex and exhaustively modelling every combination of conditions is a much larger piece of work. We have started from the ideal state because that's where we can produce a result that is both meaningful and impactful &mdash; an answer the report can <em>prove</em> rather than estimate.
+        </p>
+    </section>
+
+    <!-- ═══ 5. CA Coverage (Axis 2) ═════════════════════════════════════ -->
+    <section id="sec-5" class="page-break">
+        <h2>5. CA Coverage (Axis&nbsp;2)</h2>
+        <p>For each enabled member, the report asks: <em>do any <span class="tier ideal">Ideal</span> policies actually apply to this person?</em> The answer is one of three values. This is the second half of the MFA Posture calculation.</p>
+
+        <table>
+            <thead><tr><th>Bucket</th><th>What it means</th><th>How we decide (v1.0)</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td><strong>Full</strong></td>
+                    <td>At least one Ideal policy exists and the user is on none of its exclusion lists.</td>
+                    <td>Tenant has &ge;&nbsp;1 <span class="tier ideal">Ideal</span> policy <em>and</em> the user does not appear on any Ideal policy's <code>ExcludeUsers</code>, <code>ExcludeGroups</code> (resolved transitively), or <code>ExcludeRoles</code>.</td>
+                </tr>
+                <tr>
+                    <td><strong>Partial</strong></td>
+                    <td>Ideal policies exist, but this user has been excluded from at least one.</td>
+                    <td>The user's <code>CaExclusionTags</code> field on the full report lists the IDs of the Ideal policies that exclude them.</td>
+                </tr>
+                <tr>
+                    <td><strong>None</strong></td>
+                    <td>The tenant has zero Ideal policies. No coverage can be claimed for anyone.</td>
+                    <td>No CA policy in the tenant satisfies the Ideal criteria in Section&nbsp;4.1.</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- ═══ 6. Flow chart ═══════════════════════════════════════════════ -->
+    <section id="sec-6" class="page-break">
+        <h2>6. Decision flow &mdash; the two axes meet</h2>
+        <p>Axis&nbsp;1 (Auth Method) and Axis&nbsp;2 (CA Coverage) are <strong>independent</strong>. The report calculates them in parallel for every enabled user, then looks up the combination in the posture matrix.</p>
+
+        <div class="flow" role="img" aria-label="Decision flow chart for MFA posture">
+
+            <div class="node terminator">Start &mdash; every Member account</div>
+            <div class="arrow">&darr;</div>
+
+            <div class="node decision">Is the account Enabled?</div>
+            <div class="arrow">&darr;</div>
+
+            <div class="parallel">
+                <div class="col" style="border:none;flex:0 0 auto;">
+                    <div class="label">No</div>
+                    <div class="node terminator end-disabled">End &mdash; counted under <strong>Disabled</strong> only.<br>Excluded from posture.</div>
+                </div>
+                <div class="col" style="border:none;flex:0 0 auto;">
+                    <div class="label">Yes &mdash; continue</div>
+                    <div class="node process">Evaluate the two axes in parallel</div>
+                </div>
+            </div>
+
+            <div class="arrow">&darr;</div>
+
+            <div class="parallel">
+
+                <!-- Axis 1 column -->
+                <div class="col">
+                    <div class="col-title">Axis&nbsp;1 &mdash; Auth Method</div>
+                    <div class="node decision">What auth methods are registered for this user?</div>
+                    <div class="arrow">&darr;</div>
+                    <div class="row">
+                        <div class="node outcome auth">Modern Auth</div>
+                        <div class="node outcome auth">Legacy Auth</div>
+                        <div class="node outcome auth">No&nbsp;MFA<br><span style="font-weight:400;font-size:11px">(incl. WHfB)</span></div>
+                        <div class="node outcome auth">Access<br>Denied</div>
+                    </div>
+                </div>
+
+                <!-- Axis 2 column -->
+                <div class="col">
+                    <div class="col-title">Axis&nbsp;2 &mdash; CA Coverage</div>
+                    <div class="node decision">Does the tenant have any <span class="tier ideal">Ideal</span> CA policy?</div>
+                    <div class="arrow">&darr;</div>
+                    <div class="parallel">
+                        <div class="col" style="border:none;flex:0 0 auto;">
+                            <div class="label">No</div>
+                            <div class="node outcome none">None</div>
+                        </div>
+                        <div class="col" style="border:none;flex:0 0 auto;">
+                            <div class="label">Yes</div>
+                            <div class="node decision">Is the user on any Ideal policy's exclusion list?</div>
+                            <div class="arrow">&darr;</div>
+                            <div class="row">
+                                <div class="node outcome partial">Partial<br><span style="font-weight:400;font-size:11px">(Yes)</span></div>
+                                <div class="node outcome full">Full<br><span style="font-weight:400;font-size:11px">(No)</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="arrow">&darr;</div>
+            <div class="node terminator end-final">Combine Axis&nbsp;1 &times; Axis&nbsp;2 &rarr; look up posture in Section&nbsp;7</div>
+
+        </div>
+
+        <div class="flow-legend" aria-label="Shape legend">
+            <span class="lk"><span class="swatch terminator"></span>Start / End</span>
+            <span class="lk"><span class="swatch process"></span>Process step</span>
+            <span class="lk"><span class="swatch decision"></span>Decision</span>
+            <span class="lk"><span class="swatch outcome"></span>Outcome value</span>
+        </div>
+    </section>
+
+    <!-- ═══ 7. Posture cards ════════════════════════════════════════════ -->
+    <section id="sec-7" class="page-break">
+        <h2>7. MFA Posture cards &mdash; the 9 outcomes</h2>
+        <p>The third group of cards on the report. Each enabled member lands in exactly one cell of the matrix below. The Risk Level (0&ndash;10, where 10 is worst) is shown beneath each posture pill &mdash; it is a <em>score</em>, not an identifier.</p>
+
+        <table class="matrix">
+            <thead>
+                <tr>
+                    <th class="row-h">Auth&nbsp;Method &darr; / CA&nbsp;Coverage &rarr;</th>
+                    <th>Full</th><th>Partial</th><th>None</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="row-h">Modern Auth</td>
+                    <td><span class="pill fully">Fully Compliant</span><br>Risk Level&nbsp;0</td>
+                    <td><span class="pill gap">Coverage Gap</span><br>Risk Level&nbsp;3</td>
+                    <td><span class="pill unenforced">Unenforced</span><br>Risk Level&nbsp;6</td>
+                </tr>
+                <tr>
+                    <td class="row-h">Legacy Auth</td>
+                    <td><span class="pill weak">Weak Factor</span><br>Risk Level&nbsp;2</td>
+                    <td><span class="pill weakgap">Weak &amp; Gap</span><br>Risk Level&nbsp;5</td>
+                    <td><span class="pill weakunenf">Weak &amp; Unenforced</span><br>Risk Level&nbsp;7</td>
+                </tr>
+                <tr>
+                    <td class="row-h">No MFA (incl. WHfB)</td>
+                    <td><span class="pill atrisk">At Risk</span><br>Risk Level&nbsp;8</td>
+                    <td><span class="pill gap">Coverage Gap</span><br>Risk Level&nbsp;9</td>
+                    <td><span class="pill critical">Critical</span><br>Risk Level&nbsp;10</td>
+                </tr>
+                <tr>
+                    <td class="row-h">Access Denied</td>
+                    <td colspan="3"><span class="pill unknown">Unknown</span> &mdash; posture cannot be determined</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p>What each card looks like on the report, in the same order the report displays them (best to worst):</p>
+
+        <div class="preview" aria-hidden="true">
+            <div class="card fully"><div class="label">Fully Compliant</div><div class="value">234</div><div class="detail">Modern + Full CA coverage</div></div>
+            <div class="card weak"><div class="label">Weak Factor</div><div class="value">73</div><div class="detail">Legacy + Full CA coverage</div></div>
+            <div class="card gap"><div class="label">Coverage Gap</div><div class="value">19</div><div class="detail">Modern or No MFA + Partial</div></div>
+            <div class="card weakgap"><div class="label">Weak &amp; Gap</div><div class="value">5</div><div class="detail">Legacy + Partial CA coverage</div></div>
+            <div class="card unenforced"><div class="label">Unenforced</div><div class="value">28</div><div class="detail">Modern + No CA coverage</div></div>
+            <div class="card weakunenf"><div class="label">Weak &amp; Unenforced</div><div class="value">11</div><div class="detail">Legacy + No CA coverage</div></div>
+            <div class="card atrisk"><div class="label">At Risk</div><div class="value">7</div><div class="detail">No MFA + Full CA coverage</div></div>
+            <div class="card critical"><div class="label">Critical</div><div class="value">14</div><div class="detail">No MFA + No CA coverage</div></div>
+            <div class="card unknown"><div class="label">Unknown</div><div class="value">9</div><div class="detail">Posture not determined</div></div>
+        </div>
+        <div class="preview-caption">Example values shown for illustration only.</div>
+    </section>
+
+    <!-- ═══ 8. Quick action guide ═══════════════════════════════════════ -->
+    <section id="sec-8" class="page-break">
+        <h2>8. Quick action guide</h2>
+
+        <table>
+            <thead><tr><th>Card</th><th>First action</th></tr></thead>
+            <tbody>
+                <tr><td><span class="pill critical">Critical</span></td><td>This account currently has <strong>no MFA methods registered</strong> and we found <strong>no Conditional Access policy</strong> that would force MFA. An attacker who obtains the password can sign in with that password alone &mdash; no second factor, no challenge. Register Modern MFA on the account and enable an Ideal baseline CA policy.</td></tr>
+                <tr><td><span class="pill atrisk">At Risk</span></td><td>Same as Critical &mdash; <strong>no MFA methods registered</strong> &mdash; <em>except</em> there is a CA policy in place that will force MFA at next sign-in. The risk is that an attacker holding the password could be the first to reach the MFA registration prompt, enrol <em>their own</em> device, and stay undetected behind a credential that now looks fully compliant. Contact the user and have them register Modern MFA before someone else does.</td></tr>
+                <tr><td><span class="pill weakunenf">Weak &amp; Unenforced</span></td><td>Review the tenant's Conditional Access policies and adopt our recommended baselines to minimise the attack footprint.</td></tr>
+                <tr><td><span class="pill weakgap">Weak &amp; Gap</span></td><td>Review the tenant's Conditional Access policies and adopt our recommended baselines to minimise the attack footprint.</td></tr>
+                <tr><td><span class="pill unenforced">Unenforced</span></td><td>Review the tenant's Conditional Access policies and adopt our recommended baselines to minimise the attack footprint.</td></tr>
+                <tr><td><span class="pill gap">Coverage Gap</span></td><td>Review the tenant's Conditional Access policies and adopt our recommended baselines to minimise the attack footprint.</td></tr>
+                <tr><td><span class="pill weak">Weak Factor</span></td><td>Ask the user to add Authenticator or a passkey. Once added they auto-promote to Fully Compliant.</td></tr>
+                <tr><td><span class="pill unknown">Unknown</span></td><td>Re-run the script with an identity that can read privileged users' authentication methods.</td></tr>
+                <tr><td><span class="pill fully">Fully Compliant</span></td><td>No action. Target state.</td></tr>
+            </tbody>
+        </table>
+
+        <h3>8.1 Frequently asked questions</h3>
+        <div class="faq">
+
+            <div class="faq-item">
+                <div class="bubble q">
+                    <span class="badge">Q1</span>
+                    <div class="body">The tenant has a working MFA policy &mdash; why does the report still show <span class="pill unenforced">Unenforced</span> or <span class="pill critical">Critical</span>?</div>
+                </div>
+                <div class="bubble a">
+                    <span class="badge">A1</span>
+                    <div class="body">Because that policy did not qualify as <span class="tier ideal">Ideal</span> in v1.0. Open the CA Policies table on the full report and look at the policy's tier badge. The Conditions and Workloads columns usually show why &mdash; commonly: risk-based, narrow audience, narrow Device Platforms, or an excluded named location.</div>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <div class="bubble q">
+                    <span class="badge">Q2</span>
+                    <div class="body">Why does an admin show as <span class="pill unknown">Unknown</span> / Access Denied?</div>
+                </div>
+                <div class="bubble a">
+                    <span class="badge">A2</span>
+                    <div class="body">Reading authentication methods for a privileged account requires elevated Graph permissions that the running identity may not hold. It is a permissions question, not an MFA gap.</div>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <div class="footer">
+        Companion document to <code>ReportMemberMFA_v2.ps1</code> &middot; Scoring v1.0 &middot; the matrix and tier definitions in this guide are authoritative &mdash; the script enforces them.
+    </div>
+
+</div>
+</body>
+</html>
