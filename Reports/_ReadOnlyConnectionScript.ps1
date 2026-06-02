@@ -59,7 +59,7 @@ $ErrorActionPreference = 'Stop'
 # *.ReadBasic.All scopes are listed. Write, update, delete, manage, assign,
 # and modify scopes are intentionally excluded.
 # ---------------------------------------------------------------------------
-$S_ReadOnlyGraphScopes = @(
+$S_RequiredGraphScopes = @(
     'Application.Read.All'
     'AuditLog.Read.All'
     'Device.Read.All'
@@ -133,7 +133,7 @@ elseif ($S_ExistingContext -and $Force)
 Write-Host "Connecting to Microsoft Graph with the read-only scope set..." -ForegroundColor Cyan
 try
 {
-    Connect-MgGraph -Scopes $S_ReadOnlyGraphScopes -NoWelcome
+    Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
 }
 catch
 {
