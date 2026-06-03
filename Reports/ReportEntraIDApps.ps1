@@ -149,6 +149,61 @@ try {
 		}
 	}
 
+	# --- Fetch enhanced SP sign-in activity (beta report) ---
+	# servicePrincipal.signInActivity only covers user-driven sign-ins, so daemons,
+	# managed identities and SAML-only apps look perpetually inactive. The dedicated
+	# report endpoint exposes delegated + application-auth (client-credential) buckets.
+	Write-Host "Fetching service principal sign-in activity report (beta)..." -ForegroundColor Cyan
+	$signInLookup = @{}
+	try {
+		$uri = 'https://graph.microsoft.com/beta/reports/servicePrincipalSignInActivities?$top=999'
+		do {
+			$resp = Invoke-MgGraphRequest -Method GET -Uri $uri -OutputType PSObject -ErrorAction Stop
+			foreach ($entry in $resp.value) {
+				if (-not $entry.appId) { continue }
+
+				$delegated = $null
+				if ($entry.delegatedClientSignInActivity)   { $delegated = $entry.delegatedClientSignInActivity.lastSignInDateTime }
+				if (-not $delegated -and $entry.delegatedResourceSignInActivity) {
+					$delegated = $entry.delegatedResourceSignInActivity.lastSignInDateTime
+				}
+
+				$appOnly = $null
+				if ($entry.applicationAuthenticationClientSignInActivity) {
+					$appOnly = $entry.applicationAuthenticationClientSignInActivity.lastSignInDateTime
+				}
+				if (-not $appOnly -and $entry.applicationAuthenticationResourceSignInActivity) {
+					$appOnly = $entry.applicationAuthenticationResourceSignInActivity.lastSignInDateTime
+				}
+
+				$latest = $null
+				if ($entry.lastSignInActivity -and $entry.lastSignInActivity.lastSignInDateTime) {
+					$latest = $entry.lastSignInActivity.lastSignInDateTime
+				} else {
+					foreach ($d in @($delegated, $appOnly)) {
+						if ($d -and (-not $latest -or [datetime]$d -gt [datetime]$latest)) { $latest = $d }
+					}
+				}
+
+				$source = if ($delegated -and $appOnly) { 'Both' }
+							elseif ($delegated) { 'Delegated' }
+							elseif ($appOnly) { 'AppOnly' }
+							else { 'None' }
+
+				$signInLookup[$entry.appId] = [pscustomobject]@{
+					LastSignIn = $latest
+					Delegated  = $delegated
+					AppOnly    = $appOnly
+					Source     = $source
+				}
+			}
+			$uri = $resp.'@odata.nextLink'
+		} while ($uri)
+		Write-Host "  Found activity for $($signInLookup.Count) service principals" -ForegroundColor Green
+	} catch {
+		Write-Warning "Could not fetch servicePrincipalSignInActivities (beta). Falling back to signInActivity only. $($_.Exception.Message)"
+	}
+
 	# --- Define high-privilege application permissions ---
 	$highPrivilegePermissions = @(
 		'Directory.ReadWrite.All',
@@ -259,21 +314,45 @@ try {
 		$isHighPrivilege = $highPrivPerms.Count -gt 0
 
 		# --- Sign-in activity ---
-		$lastSignIn = $null
+		# Activity assessment is only meaningful for non-Microsoft apps. Microsoft
+		# first-party apps are managed by Microsoft and frequently lack tenant-side
+		# sign-in records, so we leave their activity fields empty.
+		$lastSignIn        = $null
+		$lastDelegated     = $null
+		$lastAppOnly       = $null
+		$activitySource    = if ($isMicrosoft) { 'N/A' } else { 'None' }
 		$daysSinceActivity = $null
-		if ($sp.SignInActivity) {
-			$lastSignIn = $sp.SignInActivity.LastSignInDateTime
-			if (-not $lastSignIn) {
-				$lastSignIn = $sp.SignInActivity.LastNonInteractiveSignInDateTime
+
+		if (-not $isMicrosoft) {
+			# Primary: dedicated SP sign-in activity report (covers delegated + app-only)
+			if ($signInLookup.ContainsKey($sp.AppId)) {
+				$entry          = $signInLookup[$sp.AppId]
+				$lastSignIn     = $entry.LastSignIn
+				$lastDelegated  = $entry.Delegated
+				$lastAppOnly    = $entry.AppOnly
+				$activitySource = $entry.Source
+			}
+			# Fallback: legacy signInActivity property if the report had no entry
+			if (-not $lastSignIn -and $sp.SignInActivity) {
+				$lastSignIn = $sp.SignInActivity.LastSignInDateTime
+				if (-not $lastSignIn) { $lastSignIn = $sp.SignInActivity.LastNonInteractiveSignInDateTime }
+				if ($lastSignIn) {
+					$lastDelegated  = $lastSignIn
+					$activitySource = 'Delegated'
+				}
+			}
+			if ($lastSignIn) {
+				$daysSinceActivity = [int]($now - ([datetime]$lastSignIn)).TotalDays
 			}
 		}
-		if ($lastSignIn) {
-			$daysSinceActivity = [int]($now - ([datetime]$lastSignIn)).TotalDays
-		}
 
-		# --- Status (Disabled > Inactive > Active) ---
+		# --- Status (Disabled > Active > Inactive) ---
+		# Microsoft first-party apps are not assessed for activity; treat enabled MS
+		# apps as Active so they don't pollute the inactive bucket.
 		if (-not $sp.AccountEnabled) {
 			$status = "Disabled"
+		} elseif ($isMicrosoft) {
+			$status = "Active"
 		} elseif ($lastSignIn -and ([datetime]$lastSignIn) -ge $S_CutoffDate) {
 			$status = "Active"
 		} else {
@@ -308,6 +387,9 @@ try {
 			HighPrivPermissions     = ($highPrivPerms -join ", ")
 			AllGrantedPermissions   = ($grantedPerms -join ", ")
 			LastSignIn              = $lastSignIn
+			LastDelegatedSignIn     = $lastDelegated
+			LastAppOnlySignIn       = $lastAppOnly
+			ActivitySource          = $activitySource
 			DaysSinceActivity       = $daysSinceActivity
 			Status                  = $status
 		}
@@ -500,7 +582,7 @@ try {
     <p>Tenant: $([System.Net.WebUtility]::HtmlEncode($tenantDisplayName)) ($tenantId) &nbsp;|&nbsp; Generated: $reportDate &nbsp;|&nbsp; Total: $totalApps ($totalMicrosoft Microsoft, $($totalApps - $totalMicrosoft) third-party)</p>
   </div>
   <div class="header-right">
-    <label class="toggle-label"><input type="checkbox" id="hideMsApps" onchange="applyThreshold()"> Hide Microsoft Apps</label>
+    <label class="toggle-label"><input type="checkbox" id="hideMsApps" onchange="applyThreshold()" checked> Hide Microsoft Apps</label>
     <label for="thresholdSelect">Inactive Threshold:</label>
     <select id="thresholdSelect" onchange="applyThreshold()">
       <option value="30" $(if ($InactiveDays -eq 30) { 'selected' })>30 Days</option>
