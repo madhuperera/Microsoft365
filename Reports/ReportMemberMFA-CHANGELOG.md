@@ -15,21 +15,38 @@ host changelogs and tags for many reports without collisions.
 
 ## [Unreleased]
 
-### Planned for [1.3.0] / `ReportMemberMFA_v4.ps1`
-- **Enabled-only by default + `-IncludeDisabled` opt-in.** Push
-  `accountEnabled eq true` into the initial Graph `$filter` so Disabled
-  accounts are never fetched and never enumerated for authentication
-  methods — the largest single cost in the run today on tenants with many
-  stale accounts. The summary cards already count enabled accounts only, so
-  this becomes the natural default. The **Disabled** card renders as **N/A**
-  with a tooltip explaining that disabled accounts were not enumerated in
-  this run. Operators who want the full picture pass `-IncludeDisabled`
-  to restore the v3 behaviour (fetch and enumerate everything, Disabled
-  card populated).
-
 ### Known issues
 - See [`ReportMemberMFA-KNOWN-ISSUES.md`](ReportMemberMFA-KNOWN-ISSUES.md) for
   open planning items.
+
+---
+
+## [1.3.0] — 2026-06-03
+
+### Changed
+- **Enabled-only by default.** The Graph user query now pushes
+  `accountEnabled eq true` into `$filter`, so Disabled accounts are not
+  fetched and not enumerated for authentication methods on a default run.
+  This is the single largest performance win on tenants with many stale
+  accounts. The summary cards already counted enabled accounts only, so
+  this is now the natural default.
+- **User table defaults to `Enabled (any)`.** The Active filter on the user
+  table now starts on a new **Enabled (any)** option (everything except
+  Disabled). The previous `All` behaviour is still available as
+  **All (incl. Disabled)**. Picking a posture filter from the table now
+  matches the corresponding summary card on the first render.
+- **Disabled card renders as `N/A` by default.** When the script runs
+  enabled-only, the Disabled card on the main report and the Summary file
+  shows **N/A** with a tooltip *"Disabled accounts were not fetched in
+  this run. Pass `-IncludeDisabled` to populate this card."*
+
+### Added
+- **`-IncludeDisabled` switch.** Opt-in flag that restores v3 behaviour:
+  Disabled accounts are fetched, their auth methods enumerated, the
+  Disabled card and the table populate with real values, and the user
+  table shows every account by default.
+  - [`ReportMemberMFA_v4.ps1`](ReportMemberMFA_v4.ps1) is the active script.
+  - [`ReportMemberMFA_v3.ps1`](ReportMemberMFA_v3.ps1) frozen as reference.
 
 ---
 
