@@ -663,7 +663,7 @@
                 <tr>
                     <td class="row-h">No MFA (incl. WHfB)</td>
                     <td><span class="pill atrisk">At Risk</span><br>Risk Level&nbsp;8</td>
-                    <td><span class="pill gap">Coverage Gap</span><br>Risk Level&nbsp;9</td>
+                    <td><span class="pill atrisk">At Risk</span><br>Risk Level&nbsp;9</td>
                     <td><span class="pill critical">Critical</span><br>Risk Level&nbsp;10</td>
                 </tr>
                 <tr>
@@ -678,11 +678,11 @@
         <div class="preview" aria-hidden="true">
             <div class="card fully"><div class="label">Fully Compliant</div><div class="value">234</div><div class="detail">Modern + Full CA coverage</div></div>
             <div class="card weak"><div class="label">Weak Factor</div><div class="value">73</div><div class="detail">Legacy + Full CA coverage</div></div>
-            <div class="card gap"><div class="label">Coverage Gap</div><div class="value">19</div><div class="detail">Modern or No MFA + Partial</div></div>
+            <div class="card gap"><div class="label">Coverage Gap</div><div class="value">19</div><div class="detail">Modern Auth + Partial</div></div>
             <div class="card weakgap"><div class="label">Weak &amp; Gap</div><div class="value">5</div><div class="detail">Legacy + Partial CA coverage</div></div>
             <div class="card unenforced"><div class="label">Unenforced</div><div class="value">28</div><div class="detail">Modern + No CA coverage</div></div>
             <div class="card weakunenf"><div class="label">Weak &amp; Unenforced</div><div class="value">11</div><div class="detail">Legacy + No CA coverage</div></div>
-            <div class="card atrisk"><div class="label">At Risk</div><div class="value">7</div><div class="detail">No MFA + Full CA coverage</div></div>
+            <div class="card atrisk"><div class="label">At Risk</div><div class="value">7</div><div class="detail">No MFA + Full or Partial CA coverage</div></div>
             <div class="card critical"><div class="label">Critical</div><div class="value">14</div><div class="detail">No MFA + No CA coverage</div></div>
             <div class="card unknown"><div class="label">Unknown</div><div class="value">9</div><div class="detail">Posture not determined</div></div>
         </div>
@@ -697,7 +697,7 @@
             <thead><tr><th>Card</th><th>First action</th></tr></thead>
             <tbody>
                 <tr><td><span class="pill critical">Critical</span></td><td>This account currently has <strong>no MFA methods registered</strong> and we found <strong>no Conditional Access policy</strong> that would force MFA. An attacker who obtains the password can sign in with that password alone &mdash; no second factor, no challenge. Register Modern MFA on the account and enable an Ideal baseline CA policy.</td></tr>
-                <tr><td><span class="pill atrisk">At Risk</span></td><td>Same as Critical &mdash; <strong>no MFA methods registered</strong> &mdash; <em>except</em> there is a CA policy in place that will force MFA at next sign-in. The risk is that an attacker holding the password could be the first to reach the MFA registration prompt, enrol <em>their own</em> device, and stay undetected behind a credential that now looks fully compliant. Contact the user and have them register Modern MFA before someone else does.</td></tr>
+                <tr><td><span class="pill atrisk">At Risk</span></td><td>Same as Critical &mdash; <strong>no MFA methods registered</strong> &mdash; <em>except</em> an Ideal Conditional Access policy exists in the tenant. For this user it will either force MFA enrolment at next sign-in (Full coverage) or has been bypassed by an exclusion (Partial coverage). In the Full case, an attacker holding the password could be the first to reach the registration prompt, enrol <em>their own</em> device, and stay undetected behind a credential that now looks fully compliant. In the Partial case, the policy will not catch them at all until the exclusion is removed. Contact the user and have them register Modern MFA before someone else does, then review any exclusions on the relevant policy.</td></tr>
                 <tr><td><span class="pill weakunenf">Weak &amp; Unenforced</span></td><td>Review the tenant's Conditional Access policies and adopt our recommended baselines to minimise the attack footprint.</td></tr>
                 <tr><td><span class="pill weakgap">Weak &amp; Gap</span></td><td>Review the tenant's Conditional Access policies and adopt our recommended baselines to minimise the attack footprint.</td></tr>
                 <tr><td><span class="pill unenforced">Unenforced</span></td><td>Review the tenant's Conditional Access policies and adopt our recommended baselines to minimise the attack footprint.</td></tr>

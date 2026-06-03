@@ -10,7 +10,8 @@ release tag that fixed it.
 
 Files in scope:
 
-- [`ReportMemberMFA_v2.ps1`](ReportMemberMFA_v2.ps1) — current working version
+- [`ReportMemberMFA_v3.ps1`](ReportMemberMFA_v3.ps1) — current working version
+- [`ReportMemberMFA_v2.ps1`](ReportMemberMFA_v2.ps1) — frozen v2 reference
 - [`ReportMemberMFA_v1.ps1`](ReportMemberMFA_v1.ps1) — frozen v1 reference
 - [`ReportMemberMFA-Guide.html`](ReportMemberMFA-Guide.html) — companion guide
 
@@ -18,15 +19,36 @@ Files in scope:
 
 ## Open
 
-### Scoring / posture matrix
+### User experience
 
-- [ ] **Coverage Gap card conflates two postures.**
-  `No MFA + Partial` (Risk Level 9) and `Modern Auth + Partial` (Risk Level 3)
-  both currently surface as **Coverage Gap**, despite having very different
-  threat profiles. The `No MFA + Partial` group is closer to **At Risk** /
-  **Critical**. Decision pending: split into a new bucket, remap to At Risk,
-  or remap to Critical.
-  See [`ReportMemberMFA_v2.ps1`](ReportMemberMFA_v2.ps1) lines ~781–820.
+- [ ] **User table should default to enabled accounts only.** Today the user
+  table renders every member account (Enabled and Disabled) by default, while
+  the summary cards always count enabled accounts only. As a result, picking
+  a posture (e.g. **At Risk**) from the table filter does not produce a row
+  count that matches the corresponding card. Proposed change: filter the user
+  table to `Active = Enabled` on initial render, with a clearly labelled
+  control to show Disabled accounts as well. Once shipped, picking any posture
+  filter will line up exactly with the matching card.
+
+### Performance
+
+- [ ] **Enabled-only by default + `-IncludeDisabled` opt-in (planned for v4).**
+  Today the script calls `Get-MgUser -Filter "userType eq 'Member'"`, which
+  returns Enabled *and* Disabled accounts, then issues one
+  `/users/{id}/authentication/methods` Graph call per user. On tenants with
+  many stale Disabled accounts this is the single biggest cost in the run.
+  Proposed change for [`ReportMemberMFA_v4.ps1`](ReportMemberMFA_v4.ps1):
+  the script defaults to **enabled accounts only** by pushing
+  `accountEnabled eq true` into the Graph filter — Disabled accounts are
+  never fetched and never enumerated for auth methods. Because the summary
+  cards already count enabled accounts only, this is the natural default.
+  The **Disabled** card on the report renders as **N/A** with a tooltip
+  explaining that disabled accounts were not enumerated in this run.
+  Operators who want the full picture pass an opt-in `-IncludeDisabled`
+  switch, which restores the v3 behaviour (Disabled accounts fetched, auth
+  methods enumerated, Disabled card populated).
+
+### Scoring / posture matrix
 
 - [ ] **MFA Posture naming clash.** Internal labels A/B/C/D from earlier
   drafts versus the public posture names (Fully Compliant, Weak Factor, …).
@@ -61,4 +83,9 @@ Files in scope:
 
 ## Resolved
 
-_No items yet._
+- **Coverage Gap card conflated two postures** — Resolved in **1.2.0**
+  ([`ReportMemberMFA_v3.ps1`](ReportMemberMFA_v3.ps1)). `No MFA + Partial`
+  (Risk Level 9) is now reported as **At Risk**, matching `No MFA + Full`
+  (Risk Level 8). Coverage Gap is now reserved for `Modern Auth + Partial`
+  (Risk Level 3) only. See
+  [`ReportMemberMFA-CHANGELOG.md`](ReportMemberMFA-CHANGELOG.md).
