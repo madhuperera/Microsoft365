@@ -56,7 +56,7 @@ Scripts cover the following Microsoft 365 workloads:
 
 - Entra ID (Azure Active Directory) — users, guests, devices, roles, and application registrations
 - Exchange Online — mailboxes, calendar permissions, and DNS email security records
-- Microsoft Intune — managed application inventory
+- Microsoft Intune — managed application inventory, device compliance, and Windows/mobile device posture reporting
 - Microsoft 365 licensing — plan and SKU reporting
 - Incident response — audit log analysis and sign-in investigation
 
@@ -156,8 +156,10 @@ All scripts in this section are located in [`Reports/`](Reports/).
 | [`ReportLegacyAuthenticationMethodsGuests.ps1`](Reports/ReportLegacyAuthenticationMethodsGuests.ps1) | Reports authentication methods for Entra ID guest accounts, classifying each method as Modern or Legacy. Exports to CSV. | `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
 | [`ReportUsersWithManagers.ps1`](Reports/ReportUsersWithManagers.ps1) | Exports Entra ID users who have a manager assigned, including the manager's display name and email. Exports to CSV. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users` |
 | [`ReportNonMFA.ps1`](Reports/ReportNonMFA.ps1) | Generates a report of member users with MFA registration status, account activity, licensing, on-premises sync state, and group memberships. Exports to CSV and HTML. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Groups`, `Microsoft.Graph.Users`, `Microsoft.Graph.Reports` |
-| [`ReportMemberMFA.ps1`](Reports/ReportMemberMFA.ps1) | Reports MFA coverage across all Member users (Guests excluded), classifying each user as Modern Auth, Legacy Auth, or No MFA. Supports a `-Test` switch to run against the first 10 Member users only. Exports to CSV and HTML. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users`, `Microsoft.Graph.Reports`, `Microsoft.Graph.Identity.SignIns` |
+| [`ReportMemberMFA_v1.ps1`](Reports/ReportMemberMFA_v1.ps1) | Reports MFA coverage across all Member users (Guests excluded), classifying each user as Modern Auth, Legacy Auth, or No MFA. Supports a `-Test` switch to run against the first 10 Member users only. Exports to CSV and HTML. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users`, `Microsoft.Graph.Reports`, `Microsoft.Graph.Identity.SignIns`; `User.Read.All`, `AuditLog.Read.All`, `UserAuthenticationMethod.Read.All`, `Policy.Read.All` |
 | [`ReportMemberMFA_v2.ps1`](Reports/ReportMemberMFA_v2.ps1) | Enhanced MFA coverage report for all Member users. In addition to classifying each user by authentication method (Modern Auth, Legacy Auth, or No MFA), queries and analyses Conditional Access policies that enforce MFA to determine per-user CA coverage. Supports a `-Test` switch. Exports to CSV and HTML. See [`ReportMemberMFA-Guide.html`](Reports/ReportMemberMFA-Guide.html) for a guide to interpreting the report output. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users`, `Microsoft.Graph.Reports`, `Microsoft.Graph.Identity.SignIns`; `Policy.Read.All` |
+| [`ReportMemberMFA_v3.ps1`](Reports/ReportMemberMFA_v3.ps1) | (Inferred) Iteration of the member MFA coverage report that retains CSV/HTML output and member-user MFA classification with inactivity filtering. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users`, `Microsoft.Graph.Reports`, `Microsoft.Graph.Identity.SignIns`; `User.Read.All`, `AuditLog.Read.All`, `UserAuthenticationMethod.Read.All`, `Policy.Read.All` |
+| [`ReportMemberMFA_v4.ps1`](Reports/ReportMemberMFA_v4.ps1) | Reports MFA coverage across Member users with an `-IncludeDisabled` option to include disabled member accounts in the assessment. Supports `-Test`. Exports to CSV and HTML. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users`, `Microsoft.Graph.Reports`, `Microsoft.Graph.Identity.SignIns`; `User.Read.All`, `AuditLog.Read.All`, `UserAuthenticationMethod.Read.All`, `Policy.Read.All` |
 | [`ReportAADAuthenticationMethods.ps1`](Reports/ReportAADAuthenticationMethods.ps1) | Reports Windows Hello for Business authentication method registrations for enabled Entra ID users. Exports to CSV. | `UserAuthenticationMethod.Read.All` |
 
 </details>
@@ -191,6 +193,9 @@ All scripts in this section are located in [`Reports/`](Reports/).
 | Script | Description | Key permissions / modules |
 |--------|-------------|--------------------------|
 | [`ReportIntuneApps.ps1`](Reports/ReportIntuneApps.ps1) | Reports on applications managed by Microsoft Intune. Filterable by platform (Windows, Android, iOS, or All). Exports to CSV and HTML. | `Microsoft.Graph.Authentication`; `DeviceManagementApps.Read.All`, `Group.Read.All`, `Organization.Read.All` |
+| [`ReportIntuneCompliance.ps1`](Reports/ReportIntuneCompliance.ps1) | Reports tenant Intune device compliance posture including tenant compliance settings, overall and active-device compliance summaries, and per-policy compliance breakdowns. Supports optional per-device status detail export. Exports to CSV and HTML. | `Microsoft.Graph.Authentication`; `DeviceManagementConfiguration.Read.All`, `DeviceManagementManagedDevices.Read.All`, `DeviceManagementServiceConfig.Read.All`, `Organization.Read.All` |
+| [`ReportIntuneMobileDevices.ps1`](Reports/ReportIntuneMobileDevices.ps1) | Reports Intune-managed Android and iOS/iPadOS devices, including OS version age against supplied supported major versions. Exports to CSV and HTML. | `Microsoft.Graph.Authentication`; `DeviceManagementManagedDevices.Read.All`, `Organization.Read.All` |
+| [`ReportIntuneWindowsDevices.ps1`](Reports/ReportIntuneWindowsDevices.ps1) | Reports Intune-managed Windows devices by OS generation and build, with optional minimum supported build thresholds to flag outdated devices. Exports to CSV and HTML. | `Microsoft.Graph.Authentication`; `DeviceManagementManagedDevices.Read.All`, `Organization.Read.All` |
 
 </details>
 
