@@ -76,8 +76,10 @@ $S_RequiredGraphScopes = @(
 
 $S_GraphRequestDelayMilliseconds = 5
 
-try {
-	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Users)) {
+try
+{
+	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Users))
+     {
 		throw "Microsoft.Graph.Users module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
 	}
 
@@ -106,18 +108,27 @@ try {
 	$S_ExistingContext = Get-MgContext
 
 	# --- Resolve tenant display name ---
-	$tenantDisplayName = $null
-	try {
-		$org = Get-MgOrganization -ErrorAction Stop | Select-Object -First 1
-		$tenantDisplayName = $org.DisplayName
-	} catch { }
-	if (-not $tenantDisplayName) { $tenantDisplayName = $S_ExistingContext.TenantId }
-	$tenantId = if ($S_ExistingContext.TenantId) { $S_ExistingContext.TenantId } else { "Unknown" }
+	$S_TenantDisplayName = $null
+	try
+                             {
+		$S_Org = Get-MgOrganization -ErrorAction Stop | Select-Object -First 1
+		$S_TenantDisplayName = $S_Org.DisplayName
+	} catch
+                                           {
+ }
+	if (-not $S_TenantDisplayName)
+  {
+ $S_TenantDisplayName = $S_ExistingContext.TenantId }
+	$S_TenantId = if ($S_ExistingContext.TenantId)
+                                                     {
+ $S_ExistingContext.TenantId } else
+                                                      {
+ "Unknown" }
 
 	$S_CutoffDate = (Get-Date).AddDays(-$InactiveDays)
 
 	# --- SkuPartNumber -> Display Name mapping ---
-	$skuDisplayNames = @{
+	$S_SkuDisplayNames = @{
 		"O365_BUSINESS_ESSENTIALS"       = "Microsoft 365 Business Basic"
 		"SMB_BUSINESS_ESSENTIALS"        = "Microsoft 365 Business Basic"
 		"O365_BUSINESS_PREMIUM"          = "Microsoft 365 Business Standard"
@@ -178,182 +189,296 @@ try {
 	}
 
 	# --- Build SKU lookup: SkuId -> Display Name ---
-	$skuLookup = @{}
-	$primarySkuIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-	try {
-		$subscribedSkus = Get-MgSubscribedSku -All -ErrorAction Stop
-		foreach ($sku in $subscribedSkus) {
-			if ($sku.SkuPartNumber -and $sku.SkuId) {
-				$displayName = if ($skuDisplayNames.ContainsKey($sku.SkuPartNumber)) {
-					$skuDisplayNames[$sku.SkuPartNumber]
-				} else {
-					$sku.SkuPartNumber
+	$S_SkuLookup = @{}
+	$S_PrimarySkuIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+	try
+                                                                                                                 {
+		$S_SubscribedSkus = Get-MgSubscribedSku -All -ErrorAction Stop
+		foreach ($S_Sku in $S_SubscribedSkus)
+                                                                {
+			if ($S_Sku.SkuPartNumber -and $S_Sku.SkuId)
+                                         {
+				$S_DisplayName = if ($S_SkuDisplayNames.ContainsKey($S_Sku.SkuPartNumber))
+                                                {
+					$S_SkuDisplayNames[$S_Sku.SkuPartNumber]
+				} else
+                                             {
+					$S_Sku.SkuPartNumber
 				}
-				$skuLookup[$sku.SkuId] = $displayName
-				if ($PrimaryLicenseSkus -contains $sku.SkuPartNumber) {
-					[void]$primarySkuIds.Add($sku.SkuId)
+				$S_SkuLookup[$S_Sku.SkuId] = $S_DisplayName
+				if ($PrimaryLicenseSkus -contains $S_Sku.SkuPartNumber)
+                                               {
+					[void]$S_PrimarySkuIds.Add($S_Sku.SkuId)
 				}
 			}
 		}
-	} catch {
+	} catch
+   {
 		Write-Warning "Could not retrieve subscribed SKUs: $($_.Exception.Message)"
 	}
 
 	# --- Fetch all member users ---
-	$graphFilter = "userType eq 'Member'"
+	$S_GraphFilter = "userType eq 'Member'"
 
-	$users = Get-MgUser -All `
-		-Filter $graphFilter `
+	$S_Users = Get-MgUser -All `
+		-Filter $S_GraphFilter `
 		-Property "id,displayName,userPrincipalName,mail,userType,accountEnabled,createdDateTime,signInActivity,assignedLicenses,onPremisesSyncEnabled,jobTitle,department" `
 		-ConsistencyLevel eventual
 
 	# --- Build report data for ALL users ---
-	$report = foreach ($user in $users) {
-		$signInActivity = $user.SignInActivity
-		$lastInteractive = $signInActivity.lastSignInDateTime
-		$lastNonInteractive = $signInActivity.lastNonInteractiveSignInDateTime
+	$S_Report = foreach ($S_User in $S_Users)
+                                          {
+		$S_SignInActivity = $S_User.SignInActivity
+		$S_LastInteractive = $S_SignInActivity.lastSignInDateTime
+		$S_LastNonInteractive = $S_SignInActivity.lastNonInteractiveSignInDateTime
 
-		$lastInteractiveDt = if ($lastInteractive) { [datetime]$lastInteractive } else { $null }
-		$lastNonInteractiveDt = if ($lastNonInteractive) { [datetime]$lastNonInteractive } else { $null }
+		$S_LastInteractiveDt = if ($S_LastInteractive)
+{
+ [datetime]$S_LastInteractive } else
+                                                {
+ $null }
+		$S_LastNonInteractiveDt = if ($S_LastNonInteractive)
+                                                         {
+ [datetime]$S_LastNonInteractive } else
+                                                        {
+ $null }
 
-		$mostRecent = @($lastInteractiveDt, $lastNonInteractiveDt) | Where-Object { $_ } | Sort-Object -Descending | Select-Object -First 1
-		$lastSignInAgo = if ($mostRecent) { [int]((Get-Date) - $mostRecent).TotalDays } else { "Never" }
+		$S_MostRecent = @($S_LastInteractiveDt, $S_LastNonInteractiveDt) | Where-Object { $_ } | Sort-Object -Descending | Select-Object -First 1
+		$S_LastSignInAgo = if ($S_MostRecent)
+                                                                                                                                           {
+ [int]((Get-Date) - $S_MostRecent).TotalDays } else
+                                                                                                                                            {
+ "Never" }
 
-		$isInactive = $false
-		if (-not $lastInteractiveDt -and -not $lastNonInteractiveDt) {
-			$isInactive = $true
-		} elseif ((-not $lastInteractiveDt -or $lastInteractiveDt -lt $S_CutoffDate) -and (-not $lastNonInteractiveDt -or $lastNonInteractiveDt -lt $S_CutoffDate)) {
-			$isInactive = $true
+		$S_IsInactive = $false
+		if (-not $S_LastInteractiveDt -and -not $S_LastNonInteractiveDt)
+                        {
+			$S_IsInactive = $true
+		} elseif ((-not $S_LastInteractiveDt -or $S_LastInteractiveDt -lt $S_CutoffDate) -and (-not $S_LastNonInteractiveDt -or $S_LastNonInteractiveDt -lt $S_CutoffDate))
+                        {
+			$S_IsInactive = $true
 		}
 
-		$isLicensed = ($user.AssignedLicenses.Count -gt 0)
+		$S_IsLicensed = ($S_User.AssignedLicenses.Count -gt 0)
 
 		# Resolve license names
-		$userLicenseNames = @()
-		$primaryLicense = $null
-		foreach ($assignedLic in $user.AssignedLicenses) {
-			$skuId = $assignedLic.SkuId
-			$name = if ($skuLookup.ContainsKey($skuId)) { $skuLookup[$skuId] } else { $skuId }
-			$userLicenseNames += $name
-			if (-not $primaryLicense -and $primarySkuIds.Contains($skuId)) {
-				$primaryLicense = $name
+		$S_UserLicenseNames = @()
+		$S_PrimaryLicense = $null
+		foreach ($S_AssignedLic in $S_User.AssignedLicenses)
+                           {
+			$S_SkuId = $S_AssignedLic.SkuId
+			$S_Name = if ($S_SkuLookup.ContainsKey($S_SkuId))
+                                  {
+ $S_SkuLookup[$S_SkuId] } else
+                                   {
+ $S_SkuId }
+			$S_UserLicenseNames += $S_Name
+			if (-not $S_PrimaryLicense -and $S_PrimarySkuIds.Contains($S_SkuId))
+                                 {
+				$S_PrimaryLicense = $S_Name
 			}
 		}
-		$allLicenses = ($userLicenseNames | Sort-Object) -join " | "
-		if (-not $primaryLicense -and $isLicensed) { $primaryLicense = "Unidentified" }
-		if (-not $primaryLicense) { $primaryLicense = "None" }
+		$S_AllLicenses = ($S_UserLicenseNames | Sort-Object) -join " | "
+		if (-not $S_PrimaryLicense -and $S_IsLicensed)
+                                                                  {
+ $S_PrimaryLicense = "Unidentified" }
+		if (-not $S_PrimaryLicense)
+                                                                                       {
+ $S_PrimaryLicense = "None" }
 
 		# Status: Disabled accounts are always "Disabled"; only enabled accounts are Active/Inactive
-		if (-not $user.AccountEnabled) {
-			$status = "Disabled"
-			$isInactive = $false
-		} else {
-			$status = if ($isInactive) { "Inactive" } else { "Active" }
+		if (-not $S_User.AccountEnabled)
+                                                                                              {
+			$S_Status = "Disabled"
+			$S_IsInactive = $false
+		} else
+                         {
+			$S_Status = if ($S_IsInactive)
+          {
+ "Inactive" } else
+                                 {
+ "Active" }
 		}
 
 		[pscustomobject]@{
-			DisplayName              = $user.DisplayName
-			UserPrincipalName        = $user.UserPrincipalName
-			Mail                     = $user.Mail
-			PrimaryDomain            = if ($user.Mail -and $user.Mail -match "@") { ($user.Mail -split "@", 2)[1] } else { $null }
-			JobTitle                 = $user.JobTitle
-			Department               = $user.Department
-			UserType                 = $user.UserType
-			AccountEnabled           = $user.AccountEnabled
-			LicenseAssigned          = $isLicensed
-			PrimaryLicense           = $primaryLicense
-			AllLicenses              = $allLicenses
-			OnPremisesSyncEnabled    = [bool]$user.OnPremisesSyncEnabled
-			CreatedDateTime          = $user.CreatedDateTime
-			LastInteractiveSignIn    = $lastInteractiveDt
-			LastNonInteractiveSignIn = $lastNonInteractiveDt
-			LastSignInAgoDays        = $lastSignInAgo
-			Status                   = $status
-			Inactive                 = $isInactive
+			DisplayName              = $S_User.DisplayName
+			UserPrincipalName        = $S_User.UserPrincipalName
+			Mail                     = $S_User.Mail
+			PrimaryDomain            = if ($S_User.Mail -and $S_User.Mail -match "@")
+                                          {
+ ($S_User.Mail -split "@", 2)[1] } else
+                                                                            {
+ $null }
+			JobTitle                 = $S_User.JobTitle
+			Department               = $S_User.Department
+			UserType                 = $S_User.UserType
+			AccountEnabled           = $S_User.AccountEnabled
+			LicenseAssigned          = $S_IsLicensed
+			PrimaryLicense           = $S_PrimaryLicense
+			AllLicenses              = $S_AllLicenses
+			OnPremisesSyncEnabled    = [bool]$S_User.OnPremisesSyncEnabled
+			CreatedDateTime          = $S_User.CreatedDateTime
+			LastInteractiveSignIn    = $S_LastInteractiveDt
+			LastNonInteractiveSignIn = $S_LastNonInteractiveDt
+			LastSignInAgoDays        = $S_LastSignInAgo
+			Status                   = $S_Status
+			Inactive                 = $S_IsInactive
 		}
 	}
 
 	# --- Stats for console output (using PowerShell InactiveDays param) ---
-	$totalMembers    = $report.Count
-	$totalDisabled   = ($report | Where-Object { -not $_.AccountEnabled }).Count
-	$totalEnabled    = $totalMembers - $totalDisabled
-	$totalActive     = ($report | Where-Object { $_.AccountEnabled -and -not $_.Inactive }).Count
-	$totalInactive   = ($report | Where-Object { $_.AccountEnabled -and $_.Inactive }).Count
-	$percentInactive = if ($totalEnabled -gt 0) { [math]::Round(($totalInactive / $totalEnabled) * 100, 1) } else { 0 }
-	$percentActive   = if ($totalEnabled -gt 0) { [math]::Round(($totalActive / $totalEnabled) * 100, 1) } else { 0 }
-	$totalLicensed   = ($report | Where-Object { $_.LicenseAssigned }).Count
-	$totalUnlicensed = $totalMembers - $totalLicensed
-	$licensedActive   = ($report | Where-Object { $_.LicenseAssigned -and $_.AccountEnabled -and -not $_.Inactive }).Count
-	$licensedInactive = ($report | Where-Object { $_.LicenseAssigned -and $_.AccountEnabled -and $_.Inactive }).Count
-	$licensedDisabled = ($report | Where-Object { $_.LicenseAssigned -and -not $_.AccountEnabled }).Count
-	$unlicensedActive   = ($report | Where-Object { -not $_.LicenseAssigned -and $_.AccountEnabled -and -not $_.Inactive }).Count
-	$unlicensedInactive = ($report | Where-Object { -not $_.LicenseAssigned -and $_.AccountEnabled -and $_.Inactive }).Count
-	$unlicensedDisabled = ($report | Where-Object { -not $_.LicenseAssigned -and -not $_.AccountEnabled }).Count
-	$totalOnPrem     = ($report | Where-Object { $_.OnPremisesSyncEnabled }).Count
-	$totalCloudOnly  = $totalMembers - $totalOnPrem
-	$neverSignedIn   = ($report | Where-Object { $_.LastSignInAgoDays -eq "Never" -and $_.AccountEnabled }).Count
+	$S_TotalMembers    = $S_Report.Count
+	$S_TotalDisabled   = ($S_Report | Where-Object { -not $_.AccountEnabled }).Count
+	$S_TotalEnabled    = $S_TotalMembers - $S_TotalDisabled
+	$S_TotalActive     = ($S_Report | Where-Object { $_.AccountEnabled -and -not $_.Inactive }).Count
+	$S_TotalInactive   = ($S_Report | Where-Object { $_.AccountEnabled -and $_.Inactive }).Count
+	$S_PercentInactive = if ($S_TotalEnabled -gt 0)
+                                                                                             {
+ [math]::Round(($S_TotalInactive / $S_TotalEnabled) * 100, 1) } else
+                                                {
+ 0 }
+	$S_PercentActive   = if ($S_TotalEnabled -gt 0)
+    {
+ [math]::Round(($S_TotalActive / $S_TotalEnabled) * 100, 1) } else
+                                                                                                                            {
+ 0 }
+	$S_TotalLicensed   = ($S_Report | Where-Object { $_.LicenseAssigned }).Count
+	$S_TotalUnlicensed = $S_TotalMembers - $S_TotalLicensed
+	$S_LicensedActive   = ($S_Report | Where-Object { $_.LicenseAssigned -and $_.AccountEnabled -and -not $_.Inactive }).Count
+	$S_LicensedInactive = ($S_Report | Where-Object { $_.LicenseAssigned -and $_.AccountEnabled -and $_.Inactive }).Count
+	$S_LicensedDisabled = ($S_Report | Where-Object { $_.LicenseAssigned -and -not $_.AccountEnabled }).Count
+	$S_UnlicensedActive   = ($S_Report | Where-Object { -not $_.LicenseAssigned -and $_.AccountEnabled -and -not $_.Inactive }).Count
+	$S_UnlicensedInactive = ($S_Report | Where-Object { -not $_.LicenseAssigned -and $_.AccountEnabled -and $_.Inactive }).Count
+	$S_UnlicensedDisabled = ($S_Report | Where-Object { -not $_.LicenseAssigned -and -not $_.AccountEnabled }).Count
+	$S_TotalOnPrem     = ($S_Report | Where-Object { $_.OnPremisesSyncEnabled }).Count
+	$S_TotalCloudOnly  = $S_TotalMembers - $S_TotalOnPrem
+	$S_NeverSignedIn   = ($S_Report | Where-Object { $_.LastSignInAgoDays -eq "Never" -and $_.AccountEnabled }).Count
 
 	# --- File paths ---
-	if (-not $ReportPath) {
+	if (-not $ReportPath)
+                     {
 		$ReportPath = (Get-Location).Path
 	}
 
-	$reportFolder = if (Test-Path $ReportPath -PathType Container) { $ReportPath } else { Split-Path -Parent $ReportPath }
-	if ($reportFolder -and -not (Test-Path $reportFolder)) {
-		New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
+	$S_ReportFolder = if (Test-Path $ReportPath -PathType Container)
+{
+ $ReportPath } else
+                                                                   {
+ Split-Path -Parent $ReportPath }
+	if ($S_ReportFolder -and -not (Test-Path $S_ReportFolder))
+                                                                                                                         {
+		New-Item -ItemType Directory -Path $S_ReportFolder -Force | Out-Null
 	}
 
 	$S_Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-	$csvFile = if (Test-Path $ReportPath -PathType Container) {
+	$S_CsvFile = if (Test-Path $ReportPath -PathType Container)
+                                                  {
 		Join-Path $ReportPath ("ReportAllMemberUsers_{0}.csv" -f $S_Timestamp)
-	} else {
+	} else
+                                                                        {
 		$ReportPath
 	}
 
 	# --- CSV: export ALL users with all columns ---
-	$report | Sort-Object DisplayName | Export-Csv -Path $csvFile -NoTypeInformation -Encoding UTF8
+	$S_Report | Sort-Object DisplayName | Export-Csv -Path $S_CsvFile -NoTypeInformation -Encoding UTF8
 
 	# --- Build per-user JSON for client-side threshold recalculation ---
-	$usersJson = ($report | Sort-Object DisplayName | ForEach-Object {
-		$daysVal = if ($_.LastSignInAgoDays -eq "Never") { -1 } else { [int]$_.LastSignInAgoDays }
-		$lic = if ($_.LicenseAssigned) { "true" } else { "false" }
-		$onp = if ($_.OnPremisesSyncEnabled) { "true" } else { "false" }
-		$ena = if ($_.AccountEnabled) { "true" } else { "false" }
-		'{{"days":{0},"lic":{1},"onp":{2},"ena":{3}}}' -f $daysVal, $lic, $onp, $ena
+	$S_UsersJson = ($S_Report | Sort-Object DisplayName | ForEach-Object {
+		$S_DaysVal = if ($_.LastSignInAgoDays -eq "Never")
+                                                                       {
+ -1 } else
+                                                      {
+ [int]$_.LastSignInAgoDays }
+		$S_Lic = if ($_.LicenseAssigned)
+                                                                                              {
+ "true" } else
+                                                                                               {
+ "false" }
+		$S_Onp = if ($_.OnPremisesSyncEnabled)
+                          {
+ "true" } else
+                                                                                                                         {
+ "false" }
+		$S_Ena = if ($_.AccountEnabled)
+          {
+ "true" } else
+          {
+ "false" }
+		'{{"days":{0},"lic":{1},"onp":{2},"ena":{3}}}' -f $S_DaysVal, $S_Lic, $S_Onp, $S_Ena
 	}) -join ","
 
 	# --- Build HTML table rows (all users, status computed at default threshold) ---
-	$tableRows = ($report | Sort-Object DisplayName | ForEach-Object {
-		$daysVal = if ($_.LastSignInAgoDays -eq "Never") { -1 } else { [int]$_.LastSignInAgoDays }
-		$signInAge = if ($_.LastSignInAgoDays -eq "Never") { "Never" } else { "{0} days" -f $_.LastSignInAgoDays }
-		$licensed = if ($_.LicenseAssigned) { "Yes" } else { "No" }
-		$syncEnabled = if ($_.OnPremisesSyncEnabled) { "Yes" } else { "No" }
-		$enabled = if ($_.AccountEnabled) { "Yes" } else { "No" }
-		$statusClass = switch ($_.Status) { "Active" { "active" } "Inactive" { "inactive" } "Disabled" { "disabled" } }
+	$S_TableRows = ($S_Report | Sort-Object DisplayName | ForEach-Object {
+		$S_DaysVal = if ($_.LastSignInAgoDays -eq "Never")
+                                                                       {
+ -1 } else
+                                                      {
+ [int]$_.LastSignInAgoDays }
+		$S_SignInAge = if ($_.LastSignInAgoDays -eq "Never")
+                                        {
+ "Never" } else
+                                         {
+ "{0} days" -f $_.LastSignInAgoDays }
+		$S_Licensed = if ($_.LicenseAssigned)
+                                     {
+ "Yes" } else
+                                     {
+ "No" }
+		$S_SyncEnabled = if ($_.OnPremisesSyncEnabled)
+       {
+ "Yes" } else
+                                                  {
+ "No" }
+		$S_Enabled = if ($_.AccountEnabled)
+                      {
+ "Yes" } else
+                       {
+ "No" }
+		$S_StatusClass = switch ($_.Status)
+       {
+ "Active"
+                                       {
+ "active" } "Inactive"
+         {
+ "inactive" } "Disabled"
+                                                                          {
+ "disabled" } }
 		"<tr data-days=`"{0}`" data-lic=`"{1}`" data-onp=`"{2}`" data-ena=`"{3}`"><td>{4}</td><td>{5}</td><td>{6}</td><td>{7}</td><td>{8}</td><td>{9}</td><td><span class=`"badge badge-{10}`">{11}</span></td><td>{12}</td><td>{13}</td><td>{14}</td><td>{15}</td><td title=`"{16}`">{16}</td></tr>" -f
-			$daysVal,
-			$(if ($_.LicenseAssigned) { "1" } else { "0" }),
-			$(if ($_.OnPremisesSyncEnabled) { "1" } else { "0" }),
-			$(if ($_.AccountEnabled) { "1" } else { "0" }),
+			$S_DaysVal,
+			$(if ($_.LicenseAssigned)
+              {
+ "1" } else
+                              {
+ "0" }),
+			$(if ($_.OnPremisesSyncEnabled)
+        {
+ "1" } else
+         {
+ "0" }),
+			$(if ($_.AccountEnabled)
+                                                         {
+ "1" } else
+                                                          {
+ "0" }),
 			[System.Net.WebUtility]::HtmlEncode($_.DisplayName),
 			[System.Net.WebUtility]::HtmlEncode($_.UserPrincipalName),
 			[System.Net.WebUtility]::HtmlEncode($_.Mail),
 			[System.Net.WebUtility]::HtmlEncode($_.Department),
 			[System.Net.WebUtility]::HtmlEncode($_.PrimaryLicense),
-			[System.Net.WebUtility]::HtmlEncode($licensed),
-			$statusClass,
+			[System.Net.WebUtility]::HtmlEncode($S_Licensed),
+			$S_StatusClass,
 			[System.Net.WebUtility]::HtmlEncode($_.Status),
-			[System.Net.WebUtility]::HtmlEncode($enabled),
-			[System.Net.WebUtility]::HtmlEncode($syncEnabled),
-			[System.Net.WebUtility]::HtmlEncode($signInAge),
+			[System.Net.WebUtility]::HtmlEncode($S_Enabled),
+			[System.Net.WebUtility]::HtmlEncode($S_SyncEnabled),
+			[System.Net.WebUtility]::HtmlEncode($S_SignInAge),
 			[System.Net.WebUtility]::HtmlEncode($_.CreatedDateTime),
 			[System.Net.WebUtility]::HtmlEncode($_.AllLicenses)
 	}) -join "`n"
 
-	$reportDate = Get-Date -Format "dd MMM yyyy HH:mm"
-	$totalCount = $report.Count
+	$S_ReportDate = Get-Date -Format "dd MMM yyyy HH:mm"
+	$S_TotalCount = $S_Report.Count
 
-	$html = @"
+	$S_Html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -426,7 +551,7 @@ try {
 <div class="header">
   <div class="header-left">
     <h1>All Member Users Report</h1>
-    <p>Tenant: $([System.Net.WebUtility]::HtmlEncode($tenantDisplayName)) ($tenantId) &nbsp;|&nbsp; Generated: $reportDate</p>
+    <p>Tenant: $([System.Net.WebUtility]::HtmlEncode($S_TenantDisplayName)) ($S_TenantId) &nbsp;|&nbsp; Generated: $S_ReportDate</p>
   </div>
   <div class="header-right">
     <label for="thresholdSelect">Inactive Threshold:</label>
@@ -442,7 +567,7 @@ try {
 <!-- OVERVIEW -->
 <div class="section-title">Overview</div>
 <div class="summary-cards">
-  <div class="card"><div class="label">Total Members</div><div class="value" style="color:#1a1a2e;" id="cardTotal">$totalCount</div></div>
+  <div class="card"><div class="label">Total Members</div><div class="value" style="color:#1a1a2e;" id="cardTotal">$S_TotalCount</div></div>
   <div class="card"><div class="label">Active</div><div class="value" style="color:#27ae60;" id="cardActive">-</div><div class="sub" id="cardActivePct"></div></div>
   <div class="card"><div class="label">Inactive</div><div class="value" style="color:#e74c3c;" id="cardInactive">-</div><div class="sub" id="cardInactivePct"></div></div>
   <div class="card"><div class="label">Disabled</div><div class="value" style="color:#6c757d;" id="cardDisabled">-</div><div class="sub" id="cardDisabledPct"></div></div>
@@ -531,7 +656,7 @@ try {
       <th onclick="sortTable(11)">All Licenses</th>
     </tr></thead>
     <tbody>
-$tableRows
+$S_TableRows
     </tbody>
   </table>
 </div>
@@ -540,7 +665,7 @@ $tableRows
 
 <script>
 // --- Embedded user data for client-side threshold recalculation ---
-var userData = [$usersJson];
+var userData = [$S_UsersJson];
 
 var chartOpts = function(pos) {
   return { responsive: true, plugins: { legend: { position: pos || 'right', labels: { padding: 20, font: { size: 14 }, boxWidth: 18 } }, tooltip: { callbacks: { label: function(ctx) { var t = ctx.dataset.data.reduce(function(a,b){return a+b},0); return ctx.label+': '+ctx.parsed+' ('+(t>0?((ctx.parsed/t)*100).toFixed(1):0)+'%)'; } } } } };
@@ -721,47 +846,50 @@ applyThreshold();
 </html>
 "@
 
-	$htmlReportFile = Join-Path $reportFolder ("ReportAllMemberUsers_{0}.html" -f $S_Timestamp)
-	$html | Out-File -FilePath $htmlReportFile -Encoding UTF8
+	$S_HtmlReportFile = Join-Path $S_ReportFolder ("ReportAllMemberUsers_{0}.html" -f $S_Timestamp)
+	$S_Html | Out-File -FilePath $S_HtmlReportFile -Encoding UTF8
 
 	# --- Console summary ---
 	Write-Host ""
 	Write-Host "All Member Users Report" -ForegroundColor Cyan
 	Write-Host "--------------------------------------------"
-	Write-Host ("Tenant                   : {0} ({1})" -f $tenantDisplayName, $tenantId)
-	Write-Host ("Total members            : {0}" -f $totalMembers)
-	Write-Host ("Active members           : {0}  ({1}% of enabled)" -f $totalActive, $percentActive) -ForegroundColor Green
-	Write-Host ("Inactive members         : {0}  ({1}% of enabled)" -f $totalInactive, $percentInactive) -ForegroundColor Red
-	Write-Host ("Disabled members         : {0}" -f $totalDisabled) -ForegroundColor DarkGray
-	Write-Host ("Never signed in          : {0}  (enabled only)" -f $neverSignedIn)
+	Write-Host ("Tenant                   : {0} ({1})" -f $S_TenantDisplayName, $S_TenantId)
+	Write-Host ("Total members            : {0}" -f $S_TotalMembers)
+	Write-Host ("Active members           : {0}  ({1}% of enabled)" -f $S_TotalActive, $S_PercentActive) -ForegroundColor Green
+	Write-Host ("Inactive members         : {0}  ({1}% of enabled)" -f $S_TotalInactive, $S_PercentInactive) -ForegroundColor Red
+	Write-Host ("Disabled members         : {0}" -f $S_TotalDisabled) -ForegroundColor DarkGray
+	Write-Host ("Never signed in          : {0}  (enabled only)" -f $S_NeverSignedIn)
 	Write-Host ""
 	Write-Host "Licensed Users" -ForegroundColor Cyan
-	Write-Host ("  Total licensed         : {0}" -f $totalLicensed)
-	Write-Host ("  Licensed & active      : {0}" -f $licensedActive) -ForegroundColor Green
-	Write-Host ("  Licensed & inactive    : {0}" -f $licensedInactive) -ForegroundColor Red
-	Write-Host ("  Licensed & disabled    : {0}" -f $licensedDisabled) -ForegroundColor DarkGray
+	Write-Host ("  Total licensed         : {0}" -f $S_TotalLicensed)
+	Write-Host ("  Licensed & active      : {0}" -f $S_LicensedActive) -ForegroundColor Green
+	Write-Host ("  Licensed & inactive    : {0}" -f $S_LicensedInactive) -ForegroundColor Red
+	Write-Host ("  Licensed & disabled    : {0}" -f $S_LicensedDisabled) -ForegroundColor DarkGray
 	Write-Host ""
 	Write-Host "Unlicensed Users" -ForegroundColor Cyan
-	Write-Host ("  Total unlicensed       : {0}" -f $totalUnlicensed)
-	Write-Host ("  Unlicensed & active    : {0}" -f $unlicensedActive) -ForegroundColor Green
-	Write-Host ("  Unlicensed & inactive  : {0}" -f $unlicensedInactive) -ForegroundColor Red
-	Write-Host ("  Unlicensed & disabled  : {0}" -f $unlicensedDisabled) -ForegroundColor DarkGray
+	Write-Host ("  Total unlicensed       : {0}" -f $S_TotalUnlicensed)
+	Write-Host ("  Unlicensed & active    : {0}" -f $S_UnlicensedActive) -ForegroundColor Green
+	Write-Host ("  Unlicensed & inactive  : {0}" -f $S_UnlicensedInactive) -ForegroundColor Red
+	Write-Host ("  Unlicensed & disabled  : {0}" -f $S_UnlicensedDisabled) -ForegroundColor DarkGray
 	Write-Host ""
 	Write-Host "Identity Source" -ForegroundColor Cyan
-	Write-Host ("  On-prem synced         : {0}" -f $totalOnPrem)
-	Write-Host ("  Cloud-only             : {0}" -f $totalCloudOnly)
+	Write-Host ("  On-prem synced         : {0}" -f $S_TotalOnPrem)
+	Write-Host ("  Cloud-only             : {0}" -f $S_TotalCloudOnly)
 	Write-Host ""
 	Write-Host ("Inactive days threshold  : {0}" -f $InactiveDays)
-	Write-Host ("Users in export          : {0}" -f $totalCount)
-	Write-Host ("CSV report               : {0}" -f $csvFile) -ForegroundColor Yellow
-	Write-Host ("HTML report              : {0}" -f $htmlReportFile) -ForegroundColor Yellow
+	Write-Host ("Users in export          : {0}" -f $S_TotalCount)
+	Write-Host ("CSV report               : {0}" -f $S_CsvFile) -ForegroundColor Yellow
+	Write-Host ("HTML report              : {0}" -f $S_HtmlReportFile) -ForegroundColor Yellow
 
 	$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
-	if ($S_DisconnectChoice -match '^(y|yes)$') {
+	if ($S_DisconnectChoice -match '^(y|yes)$')
+                                                                         {
 		Disconnect-MgGraph -ErrorAction SilentlyContinue
 	}
 }
-catch {
+catch
+ {
 	Write-Error $_
 	exit 1
 }
+

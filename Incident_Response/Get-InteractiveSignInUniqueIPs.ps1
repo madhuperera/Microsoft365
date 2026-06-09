@@ -54,14 +54,16 @@ $S_RequiredGraphScopes = @(
 # Connection
 # ---------------------------------------------------------------------------
 
-if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Users)) {
+if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Users))
+{
     throw "Microsoft.Graph.Users module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
 }
 
 Import-Module Microsoft.Graph.Users -ErrorAction Stop
 
 $S_Context = Get-MgContext -ErrorAction SilentlyContinue
-if ($S_Context) {
+if ($S_Context)
+{
     Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
     Write-Host "  Account : $($S_Context.Account)" -ForegroundColor Yellow
     Write-Host "  TenantId: $($S_Context.TenantId)" -ForegroundColor Yellow
@@ -69,18 +71,21 @@ if ($S_Context) {
     Write-Host ""
 
     $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-    if ($S_Choice -eq 'N') {
+    if ($S_Choice -eq 'N')
+    {
         Write-Host "Disconnecting existing session..." -ForegroundColor Cyan
         Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Reconnecting with required scope..." -ForegroundColor Cyan
         Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
         Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
     }
-    else {
+    else
+    {
         Write-Host "Using existing Graph session." -ForegroundColor Green
     }
 }
-else {
+else
+{
     Write-Host "Connecting to Microsoft Graph..." -ForegroundColor Cyan
     Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
     Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
@@ -89,16 +94,22 @@ else {
 $S_Context = Get-MgContext -ErrorAction SilentlyContinue
 $S_TenantId = if ($S_Context) { $S_Context.TenantId } else { 'Unknown' }
 $S_TenantName = 'Unknown'
-try {
-    $orgInfo = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization?$select=displayName,verifiedDomains' -OutputType PSObject -ErrorAction Stop
-    if ($orgInfo.value -and $orgInfo.value.Count -gt 0) {
-        $org = $orgInfo.value[0]
-        $S_TenantName = [string]$org.displayName
-        $defaultDomain = ($org.verifiedDomains | Where-Object { $_.isDefault -eq $true } | Select-Object -First 1).name
-        if ($defaultDomain) { $S_TenantName = "$S_TenantName ($defaultDomain)" }
+try
+{
+    $S_OrgInfo = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization?$select=displayName,verifiedDomains' -OutputType PSObject -ErrorAction Stop
+    if ($S_OrgInfo.value -and $S_OrgInfo.value.Count -gt 0)
+    {
+        $S_Org = $S_OrgInfo.value[0]
+        $S_TenantName = [string]$S_Org.displayName
+        $S_DefaultDomain = ($S_Org.verifiedDomains | Where-Object { $_.isDefault -eq $true } | Select-Object -First 1).name
+        if ($S_DefaultDomain)
+        {
+            $S_TenantName = "$S_TenantName ($S_DefaultDomain)"
+        }
     }
 }
-catch {
+catch
+{
     Write-Warning "Could not retrieve tenant display name: $($_.Exception.Message)"
 }
 

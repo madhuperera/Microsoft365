@@ -45,10 +45,14 @@ param (
 
 $ErrorActionPreference = 'Stop'
 
-if (-not $OutputPath)
+$S_Threshold = $Threshold
+$S_ReportInExcel = $ReportInExcel
+$S_OutputPath = $OutputPath
+
+if (-not $S_OutputPath)
 {
     $S_Timestamp = Get-Date -Format 'yyyy-MM-dd_HHmm'
-    $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportMailboxQuota_$S_Timestamp"
+    $S_OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportMailboxQuota_$S_Timestamp"
 }
 
 $S_ReportNameTitle = "Mailbox Quota Report"
@@ -58,63 +62,68 @@ if (-not (Get-Module -Name ExchangeOnlineManagement -ListAvailable))
 {
     throw "ExchangeOnlineManagement module is not installed. Install it using: Install-Module ExchangeOnlineManagement -Scope CurrentUser"
 }
+
 Connect-ExchangeOnline -ShowBanner:$false
 
-Write-Host "Finding mailboxes..." 
-[array]$S_Mbx = Get-ExoMailbox -RecipientTypeDetails UserMailbox -PropertySet Quota -Properties DisplayName -ResultSize Unlimited 
-$S_Report = [System.Collections.Generic.List[Object]]::new() # Create output file for report 
-ForEach ($M in $S_Mbx) 
-{ 
-    # Find current usage 
-    Write-Host "`n`nProcessing" $M.DisplayName 
-    $ErrorText = $Null 
-    $MbxStats = Get-ExoMailboxStatistics -Identity $M.UserPrincipalName | Select-Object ItemCount, TotalItemSize 
-    # Return byte count of quota used 
-    [INT64]$QuotaUsed = [convert]::ToInt64(((($MbxStats.TotalItemSize.ToString().split("(")[1]).split(")")[0]).split(" ")[0] -replace '[,]', '')) 
-    # Byte count for mailbox quota 
-    [INT64]$MbxQuota = [convert]::ToInt64(((($M.ProhibitSendReceiveQuota.ToString().split("(")[1]).split(")")[0]).split(" ")[0] -replace '[,]', '')) 
-    $MbxQuotaGB = [math]::Round(($MbxQuota / 1GB), 2) 
-    $QuotaPercentUsed = [math]::Round(($QuotaUsed / $MbxQuota), 4).ToString("P") 
-    $QuotaUsedGB = [math]::Round(($QuotaUsed / 1GB), 2) 
-    If ($QuotaPercentUsed -gt $Threshold)
-    { 
-        Write-Host $M.DisplayName "current mailbox use is above threshold at" $QuotaPercentUsed -Foregroundcolor Red 
-        $ErrorText = "Mailbox quota over $QuotaPercentUsed %" 
-    } 
-    
-    # Generate report line for the mailbox 
-    $ReportLine = [PSCustomObject]@{  
-        Mailbox          = $M.DisplayName  
-        MbxQuota         = $MbxQuotaGB 
-        Items            = $MbxStats.ItemCount 
-        MbxSizeGB        = $QuotaUsedGB 
-        QuotaPercentUsed = $QuotaPercentUsed 
-        ErrorText        = $ErrorText
-    }  
-    $S_Report.Add($ReportLine) 
-}  
-
-if ($ReportInExcel) 
+Write-Host "Finding mailboxes..."
+[array]$S_Mbx = Get-ExoMailbox -RecipientTypeDetails UserMailbox -PropertySet Quota -Properties DisplayName -ResultSize Unlimited
+$S_Report = [System.Collections.Generic.List[Object]]::new() # Create output file for report
+ForEach ($S_MailboxEntry in $S_Mbx)
 {
-    If (Get-Module ImportExcel -ListAvailable) 
-    { 
-        Import-Module ImportExcel -ErrorAction SilentlyContinue 
-        $ExcelOutputFile = "$OutputPath.xlsx"
-        $S_Report | Sort-Object Mailbox | Export-Excel -Path $ExcelOutputFile -WorksheetName $S_ReportWorksheetName -Title ("$S_ReportNameTitle {0}" -f (Get-Date -format 'dd-MMM-yyyy')) -TitleBold -TableName $S_ReportWorksheetName
-        $OutputFile = $ExcelOutputFile 
+    # Find current usage
+    Write-Host "`n`nProcessing" $S_MailboxEntry.DisplayName
+    $S_ErrorText = $null
+    $S_MbxStats = Get-ExoMailboxStatistics -Identity $S_MailboxEntry.UserPrincipalName | Select-Object ItemCount, TotalItemSize
+
+    # Return byte count of quota used
+    [int64]$S_QuotaUsed = [convert]::ToInt64(((($S_MbxStats.TotalItemSize.ToString().split("(")[1]).split(")")[0]).split(" ")[0] -replace '[,]', ''))
+
+    # Byte count for mailbox quota
+    [int64]$S_MbxQuota = [convert]::ToInt64(((($S_MailboxEntry.ProhibitSendReceiveQuota.ToString().split("(")[1]).split(")")[0]).split(" ")[0] -replace '[,]', ''))
+    $S_MbxQuotaGB = [math]::Round(($S_MbxQuota / 1GB), 2)
+    $S_QuotaPercentUsed = [math]::Round(($S_QuotaUsed / $S_MbxQuota), 4).ToString("P")
+    $S_QuotaUsedGB = [math]::Round(($S_QuotaUsed / 1GB), 2)
+
+    if ($S_QuotaPercentUsed -gt $S_Threshold)
+    {
+        Write-Host $S_MailboxEntry.DisplayName "current mailbox use is above threshold at" $S_QuotaPercentUsed -ForegroundColor Red
+        $S_ErrorText = "Mailbox quota over $S_QuotaPercentUsed %"
     }
-    else 
-    { 
-        $CSVOutputFile = "$OutputPath.csv"
-        $S_Report | Sort-Object Mailbox | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
-        $Outputfile = $CSVOutputFile 
-    } 
+
+    # Generate report line for the mailbox
+    $S_ReportLine = [PSCustomObject]@{
+        Mailbox          = $S_MailboxEntry.DisplayName
+        MbxQuota         = $S_MbxQuotaGB
+        Items            = $S_MbxStats.ItemCount
+        MbxSizeGB        = $S_QuotaUsedGB
+        QuotaPercentUsed = $S_QuotaPercentUsed
+        ErrorText        = $S_ErrorText
+    }
+    $S_Report.Add($S_ReportLine)
+}
+
+if ($S_ReportInExcel)
+{
+    if (Get-Module ImportExcel -ListAvailable)
+    {
+        Import-Module ImportExcel -ErrorAction SilentlyContinue
+        $S_ExcelOutputFile = "$S_OutputPath.xlsx"
+        $S_Report | Sort-Object Mailbox | Export-Excel -Path $S_ExcelOutputFile -WorksheetName $S_ReportWorksheetName -Title ("$S_ReportNameTitle {0}" -f (Get-Date -Format 'dd-MMM-yyyy')) -TitleBold -TableName $S_ReportWorksheetName
+        $S_OutputFile = $S_ExcelOutputFile
+    }
+    else
+    {
+        $S_CsvOutputFile = "$S_OutputPath.csv"
+        $S_Report | Sort-Object Mailbox | Export-Csv -Path $S_CsvOutputFile -NoTypeInformation -Encoding Utf8
+        $S_OutputFile = $S_CsvOutputFile
+    }
 }
 else
 {
-    $CSVOutputFile = "$OutputPath.csv"
-    $S_Report | Sort-Object Mailbox | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
-    $Outputfile = $CSVOutputFile 
+    $S_CsvOutputFile = "$S_OutputPath.csv"
+    $S_Report | Sort-Object Mailbox | Export-Csv -Path $S_CsvOutputFile -NoTypeInformation -Encoding Utf8
+    $S_OutputFile = $S_CsvOutputFile
 }
-Write-Host ("Output data is available in {0}" -f $OutputFile)
+
+Write-Host ("Output data is available in {0}" -f $S_OutputFile)
 

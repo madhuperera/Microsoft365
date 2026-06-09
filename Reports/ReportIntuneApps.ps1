@@ -29,278 +29,395 @@
 
 [CmdletBinding()]
 param(
-	[Parameter(Mandatory = $false)]
-	[ValidateSet("All", "Windows", "Android", "iOS")]
-	[string]$Platform = "All",
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("All", "Windows", "Android", "iOS")]
+    [string]$Platform = "All",
 
-	[Parameter(Mandatory = $false)]
-	[ValidateNotNullOrEmpty()]
-	[string]$ReportPath
+    [Parameter(Mandatory = $false)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ReportPath
 )
 
 $ErrorActionPreference = "Stop"
 
+$S_ReportPath = $ReportPath
+
 $S_RequiredGraphScopes = @(
-	'DeviceManagementApps.Read.All'
-	'Group.Read.All'
-	'Organization.Read.All'
+    'DeviceManagementApps.Read.All'
+    'Group.Read.All'
+    'Organization.Read.All'
 )
 
 $S_GraphRequestDelayMilliseconds = 5
 
 # --- @odata.type maps for platform filtering ---
 $S_PlatformTypeMap = @{
-	Windows = @(
-		'#microsoft.graph.win32LobApp',
-		'#microsoft.graph.windowsMobileMSI',
-		'#microsoft.graph.windowsStoreApp',
-		'#microsoft.graph.microsoftStoreForBusinessApp',
-		'#microsoft.graph.winGetApp',
-		'#microsoft.graph.windowsUniversalAppX',
-		'#microsoft.graph.windowsAppX',
-		'#microsoft.graph.windowsWebApp',
-		'#microsoft.graph.windowsMicrosoftEdgeApp',
-		'#microsoft.graph.officeSuiteApp'
-	)
-	iOS = @(
-		'#microsoft.graph.iosLobApp',
-		'#microsoft.graph.iosStoreApp',
-		'#microsoft.graph.iosVppApp',
-		'#microsoft.graph.iosWebApp',
-		'#microsoft.graph.managedIOSLobApp',
-		'#microsoft.graph.managedIOSStoreApp'
-	)
-	Android = @(
-		'#microsoft.graph.androidLobApp',
-		'#microsoft.graph.androidStoreApp',
-		'#microsoft.graph.androidManagedStoreApp',
-		'#microsoft.graph.androidForWorkApp',
-		'#microsoft.graph.managedAndroidLobApp',
-		'#microsoft.graph.managedAndroidStoreApp'
-	)
+    Windows = @(
+        '#microsoft.graph.win32LobApp',
+        '#microsoft.graph.windowsMobileMSI',
+        '#microsoft.graph.windowsStoreApp',
+        '#microsoft.graph.microsoftStoreForBusinessApp',
+        '#microsoft.graph.winGetApp',
+        '#microsoft.graph.windowsUniversalAppX',
+        '#microsoft.graph.windowsAppX',
+        '#microsoft.graph.windowsWebApp',
+        '#microsoft.graph.windowsMicrosoftEdgeApp',
+        '#microsoft.graph.officeSuiteApp'
+    )
+    iOS     = @(
+        '#microsoft.graph.iosLobApp',
+        '#microsoft.graph.iosStoreApp',
+        '#microsoft.graph.iosVppApp',
+        '#microsoft.graph.iosWebApp',
+        '#microsoft.graph.managedIOSLobApp',
+        '#microsoft.graph.managedIOSStoreApp'
+    )
+    Android = @(
+        '#microsoft.graph.androidLobApp',
+        '#microsoft.graph.androidStoreApp',
+        '#microsoft.graph.androidManagedStoreApp',
+        '#microsoft.graph.androidForWorkApp',
+        '#microsoft.graph.managedAndroidLobApp',
+        '#microsoft.graph.managedAndroidStoreApp'
+    )
 }
 
-function Get-AppPlatform {
-	param([string]$OdataType)
-	foreach ($plat in $S_PlatformTypeMap.Keys) {
-		if ($S_PlatformTypeMap[$plat] -contains $OdataType) { return $plat }
-	}
-	return 'Other'
+function Get-AppPlatform
+{
+    param([string]$OdataType)
+    foreach ($plat in $S_PlatformTypeMap.Keys)
+    {
+        if ($S_PlatformTypeMap[$plat] -contains $OdataType)
+        {
+            return $plat
+        }
+    }
+    return 'Other'
 }
 
-function Get-AppVersion {
-	param($App)
-	# Try common version property names across app types
-	foreach ($prop in @('displayVersion','version','versionName','productVersion','identityVersion','bundleVersion')) {
-		if ($App.PSObject.Properties[$prop] -and $App.$prop) { return [string]$App.$prop }
-	}
-	return ''
+function Get-AppVersion
+{
+    param($App)
+    # Try common version property names across app types
+    foreach ($prop in @('displayVersion', 'version', 'versionName', 'productVersion', 'identityVersion', 'bundleVersion'))
+    {
+        if ($App.PSObject.Properties[$prop] -and $App.$prop)
+        {
+            return [string]$App.$prop
+        }
+    }
+    return ''
 }
 
-try {
-	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Authentication)) {
-		throw "Microsoft.Graph.Authentication module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
-	}
-	Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
+try
+{
+    if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Authentication))
+    {
+        throw "Microsoft.Graph.Authentication module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
+    }
+    Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
 
-	# --- Connect to Graph ---
-	$S_ExistingContext = Get-MgContext
-	if ($S_ExistingContext)
-	{
-		Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
-		Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
-		Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
-		Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
-		Write-Host ""
+    # --- Connect to Graph ---
+    $S_ExistingContext = Get-MgContext
+    if ($S_ExistingContext)
+    {
+        Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
+        Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
+        Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
+        Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
+        Write-Host ""
 
-		$S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-		if ($S_Choice -eq 'N')
-		{
-			Disconnect-MgGraph | Out-Null
-			Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
-		}
-	}
-	else
-	{
-		Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
-	}
-	$S_ExistingContext = Get-MgContext
-	Write-Host ""
-	Write-Host "Active Graph context:" -ForegroundColor Cyan
-	Write-Host "  Account    : $($S_ExistingContext.Account)" -ForegroundColor Cyan
-	Write-Host "  TenantId   : $($S_ExistingContext.TenantId)" -ForegroundColor Cyan
-	Write-Host "  Environment: $($S_ExistingContext.Environment)" -ForegroundColor Cyan
-	Write-Host "  Scopes     : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Cyan
-	Write-Host ""
+        $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+        if ($S_Choice -eq 'N')
+        {
+            Disconnect-MgGraph | Out-Null
+            Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
+        }
+    }
+    else
+    {
+        Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
+    }
+    $S_ExistingContext = Get-MgContext
+    Write-Host ""
+    Write-Host "Active Graph context:" -ForegroundColor Cyan
+    Write-Host "  Account    : $($S_ExistingContext.Account)" -ForegroundColor Cyan
+    Write-Host "  TenantId   : $($S_ExistingContext.TenantId)" -ForegroundColor Cyan
+    Write-Host "  Environment: $($S_ExistingContext.Environment)" -ForegroundColor Cyan
+    Write-Host "  Scopes     : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Cyan
+    Write-Host ""
 
-	$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
-	if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
-	{
-		$S_ContextConfirmation = 'N'
-	}
-	else
-	{
-		$S_ContextConfirmation = $S_ContextConfirmation.ToUpperInvariant()
-	}
-	if ($S_ContextConfirmation -ne 'Y')
-	{
-		throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
-	}
+    $S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
+    if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
+    {
+        $S_ContextConfirmation = 'N'
+    }
+    else
+    {
+        $S_ContextConfirmation = $S_ContextConfirmation.ToUpperInvariant()
+    }
+    if ($S_ContextConfirmation -ne 'Y')
+    {
+        throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
+    }
 
-	# --- Tenant info ---
-	$tenantDisplayName = $null
-	try {
-		$orgResp = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization' -ErrorAction Stop
-		if ($orgResp.value) { $tenantDisplayName = $orgResp.value[0].displayName }
-	} catch { }
-	if (-not $tenantDisplayName) { $tenantDisplayName = $S_ExistingContext.TenantId }
-	$tenantId = if ($S_ExistingContext.TenantId) { $S_ExistingContext.TenantId } else { 'Unknown' }
+    # --- Tenant info ---
+    $S_TenantDisplayName = $null
+    try
+    {
+        $S_OrgResp = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization' -ErrorAction Stop
+        if ($S_OrgResp.value)
+        {
+            $S_TenantDisplayName = $S_OrgResp.value[0].displayName
+        }
+    }
+    catch
+    {
+    }
+    if (-not $S_TenantDisplayName)
+    {
+        $S_TenantDisplayName = $S_ExistingContext.TenantId
+    }
+    $S_TenantId = if ($S_ExistingContext.TenantId)
+    {
+        $S_ExistingContext.TenantId
+    }
+    else
+    {
+        'Unknown'
+    }
 
-	# --- Fetch all mobileApps with assignments (Beta returns more app types) ---
-	Write-Host "Fetching Intune mobile apps with assignments..." -ForegroundColor Cyan
-	$apps = New-Object System.Collections.Generic.List[object]
-	$uri = 'https://graph.microsoft.com/beta/deviceAppManagement/mobileApps?$expand=assignments&$top=100'
-	do {
-		$resp = Invoke-MgGraphRequest -Method GET -Uri $uri -ErrorAction Stop
-		if ($resp.value) {
-			foreach ($a in $resp.value) { $apps.Add([pscustomobject]$a) | Out-Null }
-		}
-		$uri = $resp.'@odata.nextLink'
-	} while ($uri)
-	Write-Host ("  Retrieved {0} apps total" -f $apps.Count) -ForegroundColor Green
+    # --- Fetch all mobileApps with assignments (Beta returns more app types) ---
+    Write-Host "Fetching Intune mobile apps with assignments..." -ForegroundColor Cyan
+    $S_Apps = New-Object System.Collections.Generic.List[object]
+    $S_Uri = 'https://graph.microsoft.com/beta/deviceAppManagement/mobileApps?$expand=assignments&$top=100'
+    do
+    {
+        $S_Resp = Invoke-MgGraphRequest -Method GET -Uri $S_Uri -ErrorAction Stop
+        if ($S_Resp.value)
+        {
+            foreach ($a in $S_Resp.value)
+            {
+                $S_Apps.Add([pscustomobject]$a) | Out-Null
+            }
+        }
+        $S_Uri = $S_Resp.'@odata.nextLink'
+    } while ($S_Uri)
+    Write-Host ("  Retrieved {0} apps total" -f $S_Apps.Count) -ForegroundColor Green
 
-	# --- Filter by platform ---
-	if ($Platform -ne 'All') {
-		$wanted = $S_PlatformTypeMap[$Platform]
-		$apps = $apps | Where-Object { $wanted -contains $_.'@odata.type' }
-		Write-Host ("  After {0} filter: {1} apps" -f $Platform, $apps.Count) -ForegroundColor Green
-	}
+    # --- Filter by platform ---
+    if ($Platform -ne 'All')
+    {
+        $S_Wanted = $S_PlatformTypeMap[$Platform]
+        $S_Apps = $S_Apps | Where-Object { $S_Wanted -contains $_.'@odata.type' }
+        Write-Host ("  After {0} filter: {1} apps" -f $Platform, $S_Apps.Count) -ForegroundColor Green
+    }
 
-	# --- Resolve group display names referenced by assignments ---
-	$groupIds = New-Object System.Collections.Generic.HashSet[string]
-	foreach ($app in $apps) {
-		if ($app.assignments) {
-			foreach ($asn in $app.assignments) {
-				if ($asn.target -and $asn.target.groupId) { [void]$groupIds.Add([string]$asn.target.groupId) }
-			}
-		}
-	}
+    # --- Resolve group display names referenced by assignments ---
+    $S_GroupIds = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($app in $S_Apps)
+    {
+        if ($app.assignments)
+        {
+            foreach ($asn in $app.assignments)
+            {
+                if ($asn.target -and $asn.target.groupId)
+                {
+                    [void]$S_GroupIds.Add([string]$asn.target.groupId)
+                }
+            }
+        }
+    }
 
-	$groupLookup = @{}
-	if ($groupIds.Count -gt 0) {
-		Write-Host ("Resolving {0} group display names..." -f $groupIds.Count) -ForegroundColor Cyan
-		foreach ($gid in $groupIds) {
-			try {
-				$g = Invoke-MgGraphRequest -Method GET -Uri ("https://graph.microsoft.com/v1.0/groups/{0}?`$select=id,displayName" -f $gid) -ErrorAction Stop
-				$groupLookup[$gid] = $g.displayName
-			} catch {
-				$groupLookup[$gid] = "(Unknown / Deleted: $gid)"
-			}
-		}
-	}
+    $S_GroupLookup = @{}
+    if ($S_GroupIds.Count -gt 0)
+    {
+        Write-Host ("Resolving {0} group display names..." -f $S_GroupIds.Count) -ForegroundColor Cyan
+        foreach ($gid in $S_GroupIds)
+        {
+            try
+            {
+                $S_G = Invoke-MgGraphRequest -Method GET -Uri ("https://graph.microsoft.com/v1.0/groups/{0}?`$select=id,displayName" -f $gid) -ErrorAction Stop
+                $S_GroupLookup[$gid] = $S_G.displayName
+            }
+            catch
+            {
+                $S_GroupLookup[$gid] = "(Unknown / Deleted: $gid)"
+            }
+        }
+    }
 
-	function Resolve-AssignmentTarget {
-		param($Target)
-		if (-not $Target) { return 'Unknown' }
-		switch ($Target.'@odata.type') {
-			'#microsoft.graph.allLicensedUsersAssignmentTarget' { return 'All Users' }
-			'#microsoft.graph.allDevicesAssignmentTarget'       { return 'All Devices' }
-			'#microsoft.graph.groupAssignmentTarget'            { return $groupLookup[[string]$Target.groupId] }
-			'#microsoft.graph.exclusionGroupAssignmentTarget'   { return ('EXCLUDE: {0}' -f $groupLookup[[string]$Target.groupId]) }
-			default { return ($Target.'@odata.type' -replace '#microsoft.graph.', '') }
-		}
-	}
+    function Resolve-AssignmentTarget
+    {
+        param($Target)
+        if (-not $Target)
+        {
+            return 'Unknown'
+        }
+        switch ($Target.'@odata.type')
+        {
+            '#microsoft.graph.allLicensedUsersAssignmentTarget' { return 'All Users' }
+            '#microsoft.graph.allDevicesAssignmentTarget' { return 'All Devices' }
+            '#microsoft.graph.groupAssignmentTarget' { return $S_GroupLookup[[string]$Target.groupId] }
+            '#microsoft.graph.exclusionGroupAssignmentTarget' { return ('EXCLUDE: {0}' -f $S_GroupLookup[[string]$Target.groupId]) }
+            default { return ($Target.'@odata.type' -replace '#microsoft.graph.', '') }
+        }
+    }
 
-	# --- Build report data ---
-	$report = foreach ($app in $apps) {
-		$plat = Get-AppPlatform -OdataType $app.'@odata.type'
-		$ver  = Get-AppVersion -App $app
-		$typeShort = ($app.'@odata.type' -replace '#microsoft.graph.', '')
+    # --- Build report data ---
+    $S_Report = foreach ($app in $S_Apps)
+    {
+        $S_Plat = Get-AppPlatform -OdataType $app.'@odata.type'
+        $S_Ver = Get-AppVersion -App $app
+        $S_TypeShort = ($app.'@odata.type' -replace '#microsoft.graph.', '')
 
-		$required  = New-Object System.Collections.Generic.List[string]
-		$available = New-Object System.Collections.Generic.List[string]
-		$uninstall = New-Object System.Collections.Generic.List[string]
+        $S_Required = New-Object System.Collections.Generic.List[string]
+        $S_Available = New-Object System.Collections.Generic.List[string]
+        $S_Uninstall = New-Object System.Collections.Generic.List[string]
 
-		if ($app.assignments) {
-			foreach ($asn in $app.assignments) {
-				$name = Resolve-AssignmentTarget -Target $asn.target
-				switch ($asn.intent) {
-					'required'                  { $required.Add($name)  | Out-Null }
-					'available'                 { $available.Add($name) | Out-Null }
-					'availableWithoutEnrollment'{ $available.Add($name + ' (No Enrollment)') | Out-Null }
-					'uninstall'                 { $uninstall.Add($name) | Out-Null }
-				}
-			}
-		}
+        if ($app.assignments)
+        {
+            foreach ($asn in $app.assignments)
+            {
+                $S_Name = Resolve-AssignmentTarget -Target $asn.target
+                switch ($asn.intent)
+                {
+                    'required' { $S_Required.Add($S_Name)  | Out-Null }
+                    'available' { $S_Available.Add($S_Name) | Out-Null }
+                    'availableWithoutEnrollment' { $S_Available.Add($S_Name + ' (No Enrollment)') | Out-Null }
+                    'uninstall' { $S_Uninstall.Add($S_Name) | Out-Null }
+                }
+            }
+        }
 
-		[pscustomobject]@{
-			DisplayName       = $app.displayName
-			Platform          = $plat
-			AppType           = $typeShort
-			Version           = $ver
-			Publisher         = $app.publisher
-			IsAssigned        = [bool]$app.isAssigned
-			PublishingState   = $app.publishingState
-			CreatedDateTime   = $app.createdDateTime
-			LastModified      = $app.lastModifiedDateTime
-			RequiredCount     = $required.Count
-			AvailableCount    = $available.Count
-			UninstallCount    = $uninstall.Count
-			RequiredGroups    = ($required  -join '; ')
-			AvailableGroups   = ($available -join '; ')
-			UninstallGroups   = ($uninstall -join '; ')
-		}
-	}
+        [pscustomobject]@{
+            DisplayName     = $app.displayName
+            Platform        = $S_Plat
+            AppType         = $S_TypeShort
+            Version         = $S_Ver
+            Publisher       = $app.publisher
+            IsAssigned      = [bool]$app.isAssigned
+            PublishingState = $app.publishingState
+            CreatedDateTime = $app.createdDateTime
+            LastModified    = $app.lastModifiedDateTime
+            RequiredCount   = $S_Required.Count
+            AvailableCount  = $S_Available.Count
+            UninstallCount  = $S_Uninstall.Count
+            RequiredGroups  = ($S_Required -join '; ')
+            AvailableGroups = ($S_Available -join '; ')
+            UninstallGroups = ($S_Uninstall -join '; ')
+        }
+    }
 
-	$report = $report | Sort-Object Platform, DisplayName
+    $S_Report = $S_Report | Sort-Object Platform, DisplayName
 
-	# --- Stats ---
-	$totalApps          = $report.Count
-	$totalAssigned      = ($report | Where-Object { $_.IsAssigned }).Count
-	$totalUnassigned    = $totalApps - $totalAssigned
-	$totalRequiredAsn   = ($report | Measure-Object RequiredCount  -Sum).Sum
-	$totalAvailableAsn  = ($report | Measure-Object AvailableCount -Sum).Sum
-	$totalUninstallAsn  = ($report | Measure-Object UninstallCount -Sum).Sum
+    # --- Stats ---
+    $S_TotalApps = $S_Report.Count
+    $S_TotalAssigned = ($S_Report | Where-Object { $_.IsAssigned }).Count
+    $S_TotalUnassigned = $S_TotalApps - $S_TotalAssigned
+    $S_TotalRequiredAsn = ($S_Report | Measure-Object RequiredCount  -Sum).Sum
+    $S_TotalAvailableAsn = ($S_Report | Measure-Object AvailableCount -Sum).Sum
+    $S_TotalUninstallAsn = ($S_Report | Measure-Object UninstallCount -Sum).Sum
 
-	$platformSummary = $report | Group-Object Platform | Sort-Object Count -Descending | ForEach-Object {
-		[pscustomobject]@{ Platform = $_.Name; Count = $_.Count }
-	}
-	$typeSummary = $report | Group-Object AppType | Sort-Object Count -Descending | ForEach-Object {
-		[pscustomobject]@{ AppType = $_.Name; Count = $_.Count }
-	}
+    $S_PlatformSummary = $S_Report | Group-Object Platform | Sort-Object Count -Descending | ForEach-Object {
+        [pscustomobject]@{ Platform = $_.Name; Count = $_.Count }
+    }
+    $S_TypeSummary = $S_Report | Group-Object AppType | Sort-Object Count -Descending | ForEach-Object {
+        [pscustomobject]@{ AppType = $_.Name; Count = $_.Count }
+    }
 
-	# --- Output paths ---
-	if (-not $ReportPath) { $ReportPath = (Get-Location).Path }
-	$reportFolder = if (Test-Path $ReportPath -PathType Container) { $ReportPath } else { Split-Path -Parent $ReportPath }
-	if ($reportFolder -and -not (Test-Path $reportFolder)) {
-		New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
-	}
-	$S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-	$fileBase = "ReportIntuneApps_{0}_{1}" -f $Platform, $S_Timestamp
-	$csvFile  = if (Test-Path $ReportPath -PathType Container) { Join-Path $ReportPath ("{0}.csv" -f $fileBase) } else { $ReportPath }
-	$htmlFile = Join-Path $reportFolder ("{0}.html" -f $fileBase)
+    # --- Output paths ---
+    if (-not $S_ReportPath)
+    {
+        $S_ReportPath = (Get-Location).Path
+    }
+    $S_ReportFolder = if (Test-Path $S_ReportPath -PathType Container)
+    {
+        $S_ReportPath
+    }
+    else
+    {
+        Split-Path -Parent $S_ReportPath
+    }
+    if ($S_ReportFolder -and -not (Test-Path $S_ReportFolder))
+    {
+        New-Item -ItemType Directory -Path $S_ReportFolder -Force | Out-Null
+    }
+    $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+    $S_FileBase = "ReportIntuneApps_{0}_{1}" -f $Platform, $S_Timestamp
+    $S_CsvFile = if (Test-Path $S_ReportPath -PathType Container)
+    {
+        Join-Path $S_ReportPath ("{0}.csv" -f $S_FileBase)
+    }
+    else
+    {
+        $S_ReportPath
+    }
+    $S_HtmlFile = Join-Path $S_ReportFolder ("{0}.html" -f $S_FileBase)
 
-	# --- CSV export ---
-	$report | Export-Csv -Path $csvFile -NoTypeInformation -Encoding UTF8
+    # --- CSV export ---
+    $S_Report | Export-Csv -Path $S_CsvFile -NoTypeInformation -Encoding UTF8
 
-	# --- HTML report ---
-	$reportDate = Get-Date -Format 'dd MMM yyyy HH:mm'
+    # --- HTML report ---
+    $S_ReportDate = Get-Date -Format 'dd MMM yyyy HH:mm'
 
-	$enc = { param($s) if ($null -eq $s -or $s -eq '') { '-' } else { [System.Net.WebUtility]::HtmlEncode([string]$s) } }
+    $S_Enc = { param($s) if ($null -eq $s -or $s -eq '') { '-' } else { [System.Net.WebUtility]::HtmlEncode([string]$s) } }
 
-	$tableRows = ($report | ForEach-Object {
-		$created = if ($_.CreatedDateTime) { ([datetime]$_.CreatedDateTime).ToString('dd MMM yyyy') } else { '-' }
-		$modified = if ($_.LastModified)    { ([datetime]$_.LastModified).ToString('dd MMM yyyy') }    else { '-' }
-		$assignedBadge = if ($_.IsAssigned) { '<span class="badge badge-active">Yes</span>' } else { '<span class="badge badge-disabled">No</span>' }
-		$reqHtml = if ($_.RequiredCount -gt 0) { (& $enc $_.RequiredGroups)  } else { '-' }
-		$avlHtml = if ($_.AvailableCount -gt 0){ (& $enc $_.AvailableGroups) } else { '-' }
-		$uniHtml = if ($_.UninstallCount -gt 0){ (& $enc $_.UninstallGroups) } else { '-' }
-		"<tr data-platform=`"$($_.Platform)`" data-assigned=`"$([int][bool]$_.IsAssigned)`"><td>$(& $enc $_.DisplayName)</td><td><span class=`"badge badge-platform`">$($_.Platform)</span></td><td>$(& $enc $_.AppType)</td><td>$(& $enc $_.Version)</td><td>$(& $enc $_.Publisher)</td><td>$assignedBadge</td><td>$(& $enc $_.PublishingState)</td><td>$created</td><td>$modified</td><td><span class=`"count-pill count-req`">$($_.RequiredCount)</span></td><td>$reqHtml</td><td><span class=`"count-pill count-avl`">$($_.AvailableCount)</span></td><td>$avlHtml</td><td><span class=`"count-pill count-uni`">$($_.UninstallCount)</span></td><td>$uniHtml</td></tr>"
-	}) -join "`n"
+    $S_TableRows = ($S_Report | ForEach-Object {
+            $S_Created = if ($_.CreatedDateTime)
+            {
+                ([datetime]$_.CreatedDateTime).ToString('dd MMM yyyy')
+            }
+            else
+            {
+                '-'
+            }
+            $S_Modified = if ($_.LastModified)
+            {
+                ([datetime]$_.LastModified).ToString('dd MMM yyyy')
+            }
+            else
+            {
+                '-'
+            }
+            $S_AssignedBadge = if ($_.IsAssigned)
+            {
+                '<span class="badge badge-active">Yes</span>'
+            }
+            else
+            {
+                '<span class="badge badge-disabled">No</span>'
+            }
+            $S_ReqHtml = if ($_.RequiredCount -gt 0)
+            {
+                (& $S_Enc $_.RequiredGroups)
+            }
+            else
+            {
+                '-'
+            }
+            $S_AvlHtml = if ($_.AvailableCount -gt 0)
+            {
+                (& $S_Enc $_.AvailableGroups)
+            }
+            else
+            {
+                '-'
+            }
+            $S_UniHtml = if ($_.UninstallCount -gt 0)
+            {
+                (& $S_Enc $_.UninstallGroups)
+            }
+            else
+            {
+                '-'
+            }
+            "<tr data-platform=`"$($_.Platform)`" data-assigned=`"$([int][bool]$_.IsAssigned)`"><td>$(& $S_Enc $_.DisplayName)</td><td><span class=`"badge badge-platform`">$($_.Platform)</span></td><td>$(& $S_Enc $_.AppType)</td><td>$(& $S_Enc $_.Version)</td><td>$(& $S_Enc $_.Publisher)</td><td>$S_AssignedBadge</td><td>$(& $S_Enc $_.PublishingState)</td><td>$S_Created</td><td>$S_Modified</td><td><span class=`"count-pill count-req`">$($_.RequiredCount)</span></td><td>$S_ReqHtml</td><td><span class=`"count-pill count-avl`">$($_.AvailableCount)</span></td><td>$S_AvlHtml</td><td><span class=`"count-pill count-uni`">$($_.UninstallCount)</span></td><td>$S_UniHtml</td></tr>"
+        }) -join "`n"
 
-	$platformOptions = ($platformSummary | ForEach-Object { "<option value=`"$($_.Platform)`">$($_.Platform) ($($_.Count))</option>" }) -join "`n      "
+    $S_PlatformOptions = ($S_PlatformSummary | ForEach-Object { "<option value=`"$($_.Platform)`">$($_.Platform) ($($_.Count))</option>" }) -join "`n      "
 
-	$html = @"
+    $S_Html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -367,28 +484,28 @@ try {
 <div class="header">
   <div class="header-left">
     <h1>Intune Apps Report</h1>
-    <p>Tenant: $(& $enc $tenantDisplayName) ($tenantId) &nbsp;|&nbsp; Platform Filter: <strong>$Platform</strong> &nbsp;|&nbsp; Generated: $reportDate</p>
+    <p>Tenant: $(& $S_Enc $S_TenantDisplayName) ($S_TenantId) &nbsp;|&nbsp; Platform Filter: <strong>$Platform</strong> &nbsp;|&nbsp; Generated: $S_ReportDate</p>
   </div>
   <div class="header-right">
-    <span class="pill">$totalApps Apps</span>
+    <span class="pill">$S_TotalApps Apps</span>
   </div>
 </div>
 
 <!-- OVERVIEW -->
 <div class="section-title">Overview</div>
 <div class="summary-cards">
-  <div class="card"><div class="label">Total Apps</div><div class="value" style="color:#1a1a2e;">$totalApps</div></div>
-  <div class="card"><div class="label">Assigned</div><div class="value" style="color:#27ae60;">$totalAssigned</div><div class="sub">$totalUnassigned unassigned</div></div>
-  <div class="card"><div class="label">Required Assignments</div><div class="value" style="color:#e74c3c;">$totalRequiredAsn</div></div>
-  <div class="card"><div class="label">Available Assignments</div><div class="value" style="color:#27ae60;">$totalAvailableAsn</div></div>
-  <div class="card"><div class="label">Uninstall Assignments</div><div class="value" style="color:#f39c12;">$totalUninstallAsn</div></div>
+  <div class="card"><div class="label">Total Apps</div><div class="value" style="color:#1a1a2e;">$S_TotalApps</div></div>
+  <div class="card"><div class="label">Assigned</div><div class="value" style="color:#27ae60;">$S_TotalAssigned</div><div class="sub">$S_TotalUnassigned unassigned</div></div>
+  <div class="card"><div class="label">Required Assignments</div><div class="value" style="color:#e74c3c;">$S_TotalRequiredAsn</div></div>
+  <div class="card"><div class="label">Available Assignments</div><div class="value" style="color:#27ae60;">$S_TotalAvailableAsn</div></div>
+  <div class="card"><div class="label">Uninstall Assignments</div><div class="value" style="color:#f39c12;">$S_TotalUninstallAsn</div></div>
 </div>
 
 <!-- PLATFORM DIST -->
 <div class="dist-section">
   <div class="section-title">Apps by Platform</div>
   <div class="dist-cards">
-$(($platformSummary | ForEach-Object { "    <div class=`"dist-card`"><div class=`"dist-label`">$($_.Platform)</div><div class=`"dist-value`">$($_.Count)</div></div>" }) -join "`n")
+$(($S_PlatformSummary | ForEach-Object { "    <div class=`"dist-card`"><div class=`"dist-label`">$($_.Platform)</div><div class=`"dist-value`">$($_.Count)</div></div>" }) -join "`n")
   </div>
 </div>
 
@@ -396,7 +513,7 @@ $(($platformSummary | ForEach-Object { "    <div class=`"dist-card`"><div class=
 <div class="dist-section">
   <div class="section-title">Apps by Type</div>
   <div class="dist-cards">
-$(($typeSummary | ForEach-Object { "    <div class=`"dist-card`"><div class=`"dist-label`">$($_.AppType)</div><div class=`"dist-value`">$($_.Count)</div></div>" }) -join "`n")
+$(($S_TypeSummary | ForEach-Object { "    <div class=`"dist-card`"><div class=`"dist-label`">$($_.AppType)</div><div class=`"dist-value`">$($_.Count)</div></div>" }) -join "`n")
   </div>
 </div>
 
@@ -419,7 +536,7 @@ $(($typeSummary | ForEach-Object { "    <div class=`"dist-card`"><div class=`"di
     <input type="text" id="searchBox" placeholder="Search by name, publisher, group..." onkeyup="filterTable()" />
     <select id="platformFilter" onchange="filterTable()">
       <option value="all">All Platforms</option>
-      $platformOptions
+      $S_PlatformOptions
     </select>
     <select id="assignedFilter" onchange="filterTable()">
       <option value="all">All Apps</option>
@@ -447,7 +564,7 @@ $(($typeSummary | ForEach-Object { "    <div class=`"dist-card`"><div class=`"di
       <th>Uninstall Groups</th>
     </tr></thead>
     <tbody>
-$tableRows
+$S_TableRows
     </tbody>
   </table>
 </div>
@@ -457,8 +574,8 @@ $tableRows
 <script>
 var chartColors = ['#3498db','#27ae60','#e74c3c','#f39c12','#9b59b6','#1abc9c','#e67e22','#2c3e50','#95a5a6','#d35400'];
 
-var platformData = { $(($platformSummary | ForEach-Object { "'$($_.Platform)': $($_.Count)" }) -join ', ') };
-var intentData = { 'Required': $totalRequiredAsn, 'Available': $totalAvailableAsn, 'Uninstall': $totalUninstallAsn };
+var platformData = { $(($S_PlatformSummary | ForEach-Object { "'$($_.Platform)': $($_.Count)" }) -join ', ') };
+var intentData = { 'Required': $S_TotalRequiredAsn, 'Available': $S_TotalAvailableAsn, 'Uninstall': $S_TotalUninstallAsn };
 
 function makeDoughnut(canvasId, dataObj) {
   var keys = Object.keys(dataObj);
@@ -523,32 +640,37 @@ filterTable();
 </html>
 "@
 
-	$html | Out-File -FilePath $htmlFile -Encoding UTF8
+    $S_Html | Out-File -FilePath $S_HtmlFile -Encoding UTF8
 
-	# --- Console summary ---
-	Write-Host ""
-	Write-Host "Intune Apps Report" -ForegroundColor Cyan
-	Write-Host "--------------------------------------------"
-	Write-Host ("Tenant                   : {0} ({1})" -f $tenantDisplayName, $tenantId)
-	Write-Host ("Platform filter          : {0}" -f $Platform)
-	Write-Host ("Total apps               : {0}" -f $totalApps)
-	Write-Host ("Assigned / Unassigned    : {0} / {1}" -f $totalAssigned, $totalUnassigned)
-	Write-Host ("Required assignments     : {0}" -f $totalRequiredAsn)  -ForegroundColor Red
-	Write-Host ("Available assignments    : {0}" -f $totalAvailableAsn) -ForegroundColor Green
-	Write-Host ("Uninstall assignments    : {0}" -f $totalUninstallAsn) -ForegroundColor Yellow
-	Write-Host ""
-	Write-Host "By Platform" -ForegroundColor Cyan
-	foreach ($p in $platformSummary) { Write-Host ("  {0,-15}: {1}" -f $p.Platform, $p.Count) }
-	Write-Host ""
-	Write-Host ("CSV report               : {0}" -f $csvFile)  -ForegroundColor Yellow
-	Write-Host ("HTML report              : {0}" -f $htmlFile) -ForegroundColor Yellow
+    # --- Console summary ---
+    Write-Host ""
+    Write-Host "Intune Apps Report" -ForegroundColor Cyan
+    Write-Host "--------------------------------------------"
+    Write-Host ("Tenant                   : {0} ({1})" -f $S_TenantDisplayName, $S_TenantId)
+    Write-Host ("Platform filter          : {0}" -f $Platform)
+    Write-Host ("Total apps               : {0}" -f $S_TotalApps)
+    Write-Host ("Assigned / Unassigned    : {0} / {1}" -f $S_TotalAssigned, $S_TotalUnassigned)
+    Write-Host ("Required assignments     : {0}" -f $S_TotalRequiredAsn)  -ForegroundColor Red
+    Write-Host ("Available assignments    : {0}" -f $S_TotalAvailableAsn) -ForegroundColor Green
+    Write-Host ("Uninstall assignments    : {0}" -f $S_TotalUninstallAsn) -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "By Platform" -ForegroundColor Cyan
+    foreach ($p in $S_PlatformSummary)
+    {
+        Write-Host ("  {0,-15}: {1}" -f $p.Platform, $p.Count)
+    }
+    Write-Host ""
+    Write-Host ("CSV report               : {0}" -f $S_CsvFile)  -ForegroundColor Yellow
+    Write-Host ("HTML report              : {0}" -f $S_HtmlFile) -ForegroundColor Yellow
 
-	$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
-	if ($S_DisconnectChoice -match '^(y|yes)$') {
-		Disconnect-MgGraph -ErrorAction SilentlyContinue
-	}
+    $S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
+    if ($S_DisconnectChoice -match '^(y|yes)$')
+    {
+        Disconnect-MgGraph -ErrorAction SilentlyContinue
+    }
 }
-catch {
-	Write-Error $_
-	exit 1
+catch
+{
+    Write-Error $_
+    exit 1
 }

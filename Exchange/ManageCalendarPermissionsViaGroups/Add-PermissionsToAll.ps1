@@ -30,13 +30,13 @@ param (
 
 $ErrorActionPreference = 'Stop'
 
-$AllMembers = Get-Mailbox | Where-Object {$_.RecipientTypeDetails -eq "UserMailbox" -and $_.PrimarySmtpAddress -ne $StaffMemberPrimarySmtpAddress}`
+$S_AllMembers = Get-Mailbox | Where-Object {$_.RecipientTypeDetails -eq "UserMailbox" -and $_.PrimarySmtpAddress -ne $StaffMemberPrimarySmtpAddress}`
     | Select-Object DisplayName, PrimarySmtpAddress `
     | Sort-Object DisplayName
 
-foreach ($Member in $AllMembers)
+foreach ($S_Member in $S_AllMembers)
 {
-    Write-Host "$($Member.DisplayName)" -ForegroundColor Green
-    Add-MailboxFolderPermission -Identity $($Member.PrimarySmtpAddress + ":\Calendar") -User $StaffMemberPrimarySmtpAddress -AccessRights $Permissions
+    Write-Host "$($S_Member.DisplayName)" -ForegroundColor Green
+    Add-MailboxFolderPermission -Identity $($S_Member.PrimarySmtpAddress + ":\Calendar") -User $StaffMemberPrimarySmtpAddress -AccessRights $Permissions
     Write-Host "`n"
 }

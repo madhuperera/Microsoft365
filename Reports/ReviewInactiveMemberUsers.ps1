@@ -63,143 +63,264 @@ $S_RequiredGraphScopes = @(
 
 $S_GraphRequestDelayMilliseconds = 5
 
-try {
-	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Users)) {
+try
+{
+	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Users))
+	{
 		throw "Microsoft.Graph.Users module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
 	}
 
 	Import-Module Microsoft.Graph.Users -ErrorAction Stop
 
 	$S_Context = Get-MgContext
-	if (-not $S_Context) {
-		$scopes = if ($Mode -eq "Disable") { "User.ReadWrite.All", "AuditLog.Read.All" } else { $S_RequiredGraphScopes }
-		Connect-MgGraph -Scopes $scopes -ErrorAction Stop | Out-Null
+	if (-not $S_Context)
+	{
+		$S_Scopes = if ($Mode -eq "Disable")
+		{
+			"User.ReadWrite.All", "AuditLog.Read.All"
+		}
+		else
+		{
+			$S_RequiredGraphScopes
+		}
+
+		Connect-MgGraph -Scopes $S_Scopes -ErrorAction Stop | Out-Null
 	}
 
 	$S_CutoffDate = (Get-Date).AddDays(-$InactiveDays)
 
-	$users = Get-MgUser -All `
+	$S_Users = Get-MgUser -All `
 		-Filter "userType eq 'Member' and accountEnabled eq true" `
 		-Property "id,displayName,userPrincipalName,mail,userType,accountEnabled,createdDateTime,signInActivity,assignedLicenses,onPremisesSyncEnabled" `
 		-ConsistencyLevel eventual
 
-	$report = foreach ($user in $users) {
-		$signInActivity = $user.SignInActivity
-		$lastInteractive = $signInActivity.lastSignInDateTime
-		$lastNonInteractive = $signInActivity.lastNonInteractiveSignInDateTime
+	$S_Report = foreach ($S_User in $S_Users)
+	{
+		$S_SignInActivity = $S_User.SignInActivity
+		$S_LastInteractive = $S_SignInActivity.lastSignInDateTime
+		$S_LastNonInteractive = $S_SignInActivity.lastNonInteractiveSignInDateTime
 
-		$lastInteractiveDt = if ($lastInteractive) { [datetime]$lastInteractive } else { $null }
-		$lastNonInteractiveDt = if ($lastNonInteractive) { [datetime]$lastNonInteractive } else { $null }
+		$S_LastInteractiveDt =
+			if ($S_LastInteractive)
+			{
+				[datetime]$S_LastInteractive
+			}
+			else
+			{
+				$null
+			}
 
-		$mostRecent = @($lastInteractiveDt, $lastNonInteractiveDt) | Where-Object { $_ } | Sort-Object -Descending | Select-Object -First 1
-		$lastSignInAgo = if ($mostRecent) { [int]((Get-Date) - $mostRecent).TotalDays } else { "Never" }
+		$S_LastNonInteractiveDt =
+			if ($S_LastNonInteractive)
+			{
+				[datetime]$S_LastNonInteractive
+			}
+			else
+			{
+				$null
+			}
 
-		$isInactive = $false
-		if (-not $lastInteractiveDt -and -not $lastNonInteractiveDt) {
-			$isInactive = $true
-		} elseif ((-not $lastInteractiveDt -or $lastInteractiveDt -lt $S_CutoffDate) -and (-not $lastNonInteractiveDt -or $lastNonInteractiveDt -lt $S_CutoffDate)) {
-			$isInactive = $true
+		$S_MostRecent = @($S_LastInteractiveDt, $S_LastNonInteractiveDt) | Where-Object { $_ } | Sort-Object -Descending | Select-Object -First 1
+		$S_LastSignInAgo =
+			if ($S_MostRecent)
+			{
+				[int]((Get-Date) - $S_MostRecent).TotalDays
+			}
+			else
+			{
+				"Never"
+			}
+
+		$S_IsInactive = $false
+		if (-not $S_LastInteractiveDt -and -not $S_LastNonInteractiveDt)
+		{
+			$S_IsInactive = $true
+		}
+		elseif ((-not $S_LastInteractiveDt -or $S_LastInteractiveDt -lt $S_CutoffDate) -and (-not $S_LastNonInteractiveDt -or $S_LastNonInteractiveDt -lt $S_CutoffDate))
+		{
+			$S_IsInactive = $true
 		}
 
 		[pscustomobject]@{
-			DisplayName                 = $user.DisplayName
-			UserPrincipalName           = $user.UserPrincipalName
-			Mail                        = $user.Mail
-			PrimaryDomain               = if ($user.Mail -and $user.Mail -match "@") { ($user.Mail -split "@", 2)[1] } else { $null }
-			UserType                    = $user.UserType
-			AccountEnabled              = $user.AccountEnabled
-			LicenseAssigned             = ($user.AssignedLicenses.Count -gt 0)
-			OnPremisesSyncEnabled       = [bool]$user.OnPremisesSyncEnabled
-			CreatedDateTime             = $user.CreatedDateTime
-			LastInteractiveSignIn       = $lastInteractiveDt
-			LastNonInteractiveSignIn    = $lastNonInteractiveDt
-			LastSignInAgoDays           = $lastSignInAgo
-			Inactive                    = $isInactive
+			DisplayName = $S_User.DisplayName
+			UserPrincipalName = $S_User.UserPrincipalName
+			Mail = $S_User.Mail
+			PrimaryDomain =
+				if ($S_User.Mail -and $S_User.Mail -match "@")
+				{
+					($S_User.Mail -split "@", 2)[1]
+				}
+				else
+				{
+					$null
+				}
+			UserType = $S_User.UserType
+			AccountEnabled = $S_User.AccountEnabled
+			LicenseAssigned = ($S_User.AssignedLicenses.Count -gt 0)
+			OnPremisesSyncEnabled = [bool]$S_User.OnPremisesSyncEnabled
+			CreatedDateTime = $S_User.CreatedDateTime
+			LastInteractiveSignIn = $S_LastInteractiveDt
+			LastNonInteractiveSignIn = $S_LastNonInteractiveDt
+			LastSignInAgoDays = $S_LastSignInAgo
+			Inactive = $S_IsInactive
 		}
 	}
 
-	$inactiveUsers = $report | Where-Object { $_.Inactive }
-	$totalMembers = $report.Count
-	$totalInactive = $inactiveUsers.Count
-	$percentInactive = if ($totalMembers -gt 0) { [math]::Round(($totalInactive / $totalMembers) * 100, 2) } else { 0 }
+	$S_InactiveUsers = $S_Report | Where-Object { $_.Inactive }
+	$S_TotalMembers = $S_Report.Count
+	$S_TotalInactive = $S_InactiveUsers.Count
+	$S_PercentInactive =
+		if ($S_TotalMembers -gt 0)
+		{
+			[math]::Round(($S_TotalInactive / $S_TotalMembers) * 100, 2)
+		}
+		else
+		{
+			0
+		}
 
-	if (-not $ReportPath) {
+	if (-not $ReportPath)
+	{
 		$ReportPath = (Get-Location).Path
 	}
 
-	$reportFolder = if (Test-Path $ReportPath -PathType Container) { $ReportPath } else { Split-Path -Parent $ReportPath }
-	if ($reportFolder -and -not (Test-Path $reportFolder)) {
-		New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
+	$S_ReportFolder =
+		if (Test-Path $ReportPath -PathType Container)
+		{
+			$ReportPath
+		}
+		else
+		{
+			Split-Path -Parent $ReportPath
+		}
+
+	if ($S_ReportFolder -and -not (Test-Path $S_ReportFolder))
+	{
+		New-Item -ItemType Directory -Path $S_ReportFolder -Force | Out-Null
 	}
 
 	$S_Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-	$reportFile = if (Test-Path $ReportPath -PathType Container) {
-		Join-Path $ReportPath ("ReviewInactiveMemberUsers_{0}.csv" -f $S_Timestamp)
-	} else {
-		$ReportPath
-	}
+	$S_ReportFile =
+		if (Test-Path $ReportPath -PathType Container)
+		{
+			Join-Path $ReportPath ("ReviewInactiveMemberUsers_{0}.csv" -f $S_Timestamp)
+		}
+		else
+		{
+			$ReportPath
+		}
 
-	$inactiveUsers | Sort-Object DisplayName | Export-Csv -Path $reportFile -NoTypeInformation -Encoding UTF8
+	$S_InactiveUsers | Sort-Object DisplayName | Export-Csv -Path $S_ReportFile -NoTypeInformation -Encoding UTF8
 
 	# --- HTML Report with Pie Chart: Inactive Member Users by Last Sign-In Age ---
-	$bucket1Max = $InactiveDays * 2
-	$bucket2Max = 365
+	$S_Bucket1Max = $InactiveDays * 2
+	$S_Bucket2Max = 365
 
-	$bucketLabel1 = "{0}-{1} Days" -f $InactiveDays, $bucket1Max
-	$bucketLabel2 = "{0}-{1} Days" -f $bucket1Max, $bucket2Max
-	$bucketLabel3 = "Over 1 Year"
-	$bucketLabel4 = "Never Signed In"
+	$S_BucketLabel1 = "{0}-{1} Days" -f $InactiveDays, $S_Bucket1Max
+	$S_BucketLabel2 = "{0}-{1} Days" -f $S_Bucket1Max, $S_Bucket2Max
+	$S_BucketLabel3 = "Over 1 Year"
+	$S_BucketLabel4 = "Never Signed In"
 
-	$bucket1Count = 0; $bucket2Count = 0; $bucket3Count = 0; $bucket4Count = 0
+	$S_Bucket1Count = 0
+	$S_Bucket2Count = 0
+	$S_Bucket3Count = 0
+	$S_Bucket4Count = 0
 
-	foreach ($u in $inactiveUsers) {
-		if ($u.LastSignInAgoDays -eq "Never") {
-			$bucket4Count++
-		} elseif ([int]$u.LastSignInAgoDays -gt $bucket2Max) {
-			$bucket3Count++
-		} elseif ([int]$u.LastSignInAgoDays -gt $bucket1Max) {
-			$bucket2Count++
-		} else {
-			$bucket1Count++
+	foreach ($S_User in $S_InactiveUsers)
+	{
+		if ($S_User.LastSignInAgoDays -eq "Never")
+		{
+			$S_Bucket4Count++
+		}
+		elseif ([int]$S_User.LastSignInAgoDays -gt $S_Bucket2Max)
+		{
+			$S_Bucket3Count++
+		}
+		elseif ([int]$S_User.LastSignInAgoDays -gt $S_Bucket1Max)
+		{
+			$S_Bucket2Count++
+		}
+		else
+		{
+			$S_Bucket1Count++
 		}
 	}
 
 	# Collapse bucket2 into bucket3 if InactiveDays*2 >= 365
-	if ($bucket1Max -ge $bucket2Max) {
-		$bucketLabelsJson = "'{0}', '{1}', '{2}'" -f $bucketLabel1, $bucketLabel3, $bucketLabel4
-		$bucketDataJson   = "{0}, {1}, {2}" -f $bucket1Count, ($bucket2Count + $bucket3Count), $bucket4Count
-		$bucketColorsJson = "'#3498db', '#e74c3c', '#95a5a6'"
-	} else {
-		$bucketLabelsJson = "'{0}', '{1}', '{2}', '{3}'" -f $bucketLabel1, $bucketLabel2, $bucketLabel3, $bucketLabel4
-		$bucketDataJson   = "{0}, {1}, {2}, {3}" -f $bucket1Count, $bucket2Count, $bucket3Count, $bucket4Count
-		$bucketColorsJson = "'#3498db', '#f39c12', '#e74c3c', '#95a5a6'"
+	if ($S_Bucket1Max -ge $S_Bucket2Max)
+	{
+		$S_BucketLabelsJson = "'{0}', '{1}', '{2}'" -f $S_BucketLabel1, $S_BucketLabel3, $S_BucketLabel4
+		$S_BucketDataJson = "{0}, {1}, {2}" -f $S_Bucket1Count, ($S_Bucket2Count + $S_Bucket3Count), $S_Bucket4Count
+		$S_BucketColorsJson = "'#3498db', '#e74c3c', '#95a5a6'"
+	}
+	else
+	{
+		$S_BucketLabelsJson = "'{0}', '{1}', '{2}', '{3}'" -f $S_BucketLabel1, $S_BucketLabel2, $S_BucketLabel3, $S_BucketLabel4
+		$S_BucketDataJson = "{0}, {1}, {2}, {3}" -f $S_Bucket1Count, $S_Bucket2Count, $S_Bucket3Count, $S_Bucket4Count
+		$S_BucketColorsJson = "'#3498db', '#f39c12', '#e74c3c', '#95a5a6'"
 	}
 
-	$tableRows = ($inactiveUsers | Sort-Object DisplayName | ForEach-Object {
-		$signInAge = if ($_.LastSignInAgoDays -eq "Never") { "Never" } else { "{0} days" -f $_.LastSignInAgoDays }
-		$licensed = if ($_.LicenseAssigned) { "Yes" } else { "No" }
-		$syncEnabled = if ($_.OnPremisesSyncEnabled) { "Yes" } else { "No" }
+	$S_TableRows = ($S_InactiveUsers | Sort-Object DisplayName | ForEach-Object {
+		$S_SignInAge =
+			if ($_.LastSignInAgoDays -eq "Never")
+			{
+				"Never"
+			}
+			else
+			{
+				"{0} days" -f $_.LastSignInAgoDays
+			}
+
+		$S_Licensed =
+			if ($_.LicenseAssigned)
+			{
+				"Yes"
+			}
+			else
+			{
+				"No"
+			}
+
+		$S_SyncEnabled =
+			if ($_.OnPremisesSyncEnabled)
+			{
+				"Yes"
+			}
+			else
+			{
+				"No"
+			}
+
 		"<tr><td>{0}</td><td>{1}</td><td>{2}</td><td>{3}</td><td>{4}</td><td>{5}</td><td>{6}</td></tr>" -f
 			[System.Net.WebUtility]::HtmlEncode($_.DisplayName),
 			[System.Net.WebUtility]::HtmlEncode($_.UserPrincipalName),
 			[System.Net.WebUtility]::HtmlEncode($_.Mail),
-			[System.Net.WebUtility]::HtmlEncode($licensed),
-			[System.Net.WebUtility]::HtmlEncode($syncEnabled),
-			[System.Net.WebUtility]::HtmlEncode($signInAge),
+			[System.Net.WebUtility]::HtmlEncode($S_Licensed),
+			[System.Net.WebUtility]::HtmlEncode($S_SyncEnabled),
+			[System.Net.WebUtility]::HtmlEncode($S_SignInAge),
 			[System.Net.WebUtility]::HtmlEncode($_.CreatedDateTime)
 	}) -join "`n"
 
 	# --- Additional stats for info cards ---
-	$inactiveLicensed    = ($inactiveUsers | Where-Object { $_.LicenseAssigned }).Count
-	$inactiveUnlicensed  = $totalInactive - $inactiveLicensed
-	$inactiveOnPrem      = ($inactiveUsers | Where-Object { $_.OnPremisesSyncEnabled }).Count
-	$inactiveCloudOnly   = $totalInactive - $inactiveOnPrem
-	$inactiveNeverSignIn = ($inactiveUsers | Where-Object { $_.LastSignInAgoDays -eq "Never" }).Count
+	$S_InactiveLicensed = ($S_InactiveUsers | Where-Object { $_.LicenseAssigned }).Count
+	$S_InactiveUnlicensed = $S_TotalInactive - $S_InactiveLicensed
+	$S_InactiveOnPrem = ($S_InactiveUsers | Where-Object { $_.OnPremisesSyncEnabled }).Count
+	$S_InactiveCloudOnly = $S_TotalInactive - $S_InactiveOnPrem
+	$S_InactiveNeverSignIn = ($S_InactiveUsers | Where-Object { $_.LastSignInAgoDays -eq "Never" }).Count
 
-	$tenantName = if ($S_Context.TenantId) { $S_Context.TenantId } else { "Unknown" }
-	$reportDate = Get-Date -Format "dd MMM yyyy HH:mm"
+	$S_TenantName =
+		if ($S_Context.TenantId)
+		{
+			$S_Context.TenantId
+		}
+		else
+		{
+			"Unknown"
+		}
 
-	$html = @"
+	$S_ReportDate = Get-Date -Format "dd MMM yyyy HH:mm"
+
+	$S_Html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -250,22 +371,22 @@ try {
 
 <div class="header">
   <h1>Inactive Member Users Report</h1>
-  <p>Tenant: $tenantName &nbsp;|&nbsp; Generated: $reportDate &nbsp;|&nbsp; Inactive Threshold: $InactiveDays days</p>
+  <p>Tenant: $S_TenantName &nbsp;|&nbsp; Generated: $S_ReportDate &nbsp;|&nbsp; Inactive Threshold: $InactiveDays days</p>
 </div>
 
 <div class="summary-cards">
-  <div class="card"><div class="label">Total Enabled Members</div><div class="value blue">$totalMembers</div></div>
-  <div class="card"><div class="label">Inactive Members</div><div class="value red">$totalInactive</div></div>
-  <div class="card"><div class="label">Active Members</div><div class="value" style="color:#27ae60;">$($totalMembers - $totalInactive)</div></div>
-  <div class="card"><div class="label">Inactive %</div><div class="value orange">$percentInactive%</div></div>
+  <div class="card"><div class="label">Total Enabled Members</div><div class="value blue">$S_TotalMembers</div></div>
+  <div class="card"><div class="label">Inactive Members</div><div class="value red">$S_TotalInactive</div></div>
+  <div class="card"><div class="label">Active Members</div><div class="value" style="color:#27ae60;">$($S_TotalMembers - $S_TotalInactive)</div></div>
+  <div class="card"><div class="label">Inactive %</div><div class="value orange">$S_PercentInactive%</div></div>
 </div>
 
 <div class="info-cards">
-  <div class="info-card purple"><div class="info-label">Inactive &amp; Licensed</div><div class="info-value">$inactiveLicensed</div></div>
-  <div class="info-card coral"><div class="info-label">Inactive &amp; Unlicensed</div><div class="info-value">$inactiveUnlicensed</div></div>
-  <div class="info-card indigo"><div class="info-label">Inactive &amp; On-Prem Synced</div><div class="info-value">$inactiveOnPrem</div></div>
-  <div class="info-card teal"><div class="info-label">Inactive &amp; Cloud-Only</div><div class="info-value">$inactiveCloudOnly</div></div>
-  <div class="info-card grey"><div class="info-label">Never Signed In</div><div class="info-value">$inactiveNeverSignIn</div></div>
+  <div class="info-card purple"><div class="info-label">Inactive &amp; Licensed</div><div class="info-value">$S_InactiveLicensed</div></div>
+  <div class="info-card coral"><div class="info-label">Inactive &amp; Unlicensed</div><div class="info-value">$S_InactiveUnlicensed</div></div>
+  <div class="info-card indigo"><div class="info-label">Inactive &amp; On-Prem Synced</div><div class="info-value">$S_InactiveOnPrem</div></div>
+  <div class="info-card teal"><div class="info-label">Inactive &amp; Cloud-Only</div><div class="info-value">$S_InactiveCloudOnly</div></div>
+  <div class="info-card grey"><div class="info-label">Never Signed In</div><div class="info-value">$S_InactiveNeverSignIn</div></div>
 </div>
 
 <div class="chart-section">
@@ -274,11 +395,11 @@ try {
 </div>
 
 <div class="table-section">
-  <h2>Inactive Member User Details ($totalInactive users)</h2>
+  <h2>Inactive Member User Details ($S_TotalInactive users)</h2>
   <table>
     <thead><tr><th>Display Name</th><th>UPN</th><th>Mail</th><th>Licensed</th><th>On-Prem Sync</th><th>Last Sign-In</th><th>Created</th></tr></thead>
     <tbody>
-$tableRows
+$S_TableRows
     </tbody>
   </table>
 </div>
@@ -289,10 +410,10 @@ $tableRows
 new Chart(document.getElementById('pieChart'), {
   type: 'pie',
   data: {
-    labels: [$bucketLabelsJson],
+    labels: [$S_BucketLabelsJson],
     datasets: [{
-      data: [$bucketDataJson],
-      backgroundColor: [$bucketColorsJson],
+      data: [$S_BucketDataJson],
+      backgroundColor: [$S_BucketColorsJson],
       borderWidth: 2, borderColor: '#fff'
     }]
   },
@@ -317,75 +438,89 @@ new Chart(document.getElementById('pieChart'), {
 </html>
 "@
 
-	$htmlReportFile = Join-Path $reportFolder ("ReviewInactiveMemberUsers_{0}.html" -f $S_Timestamp)
-	$html | Out-File -FilePath $htmlReportFile -Encoding UTF8
+	$S_HtmlReportFile = Join-Path $S_ReportFolder ("ReviewInactiveMemberUsers_{0}.html" -f $S_Timestamp)
+	$S_Html | Out-File -FilePath $S_HtmlReportFile -Encoding UTF8
 
-	$disableReport = @()
-	if ($Mode -eq "Disable" -and $totalInactive -gt 0) {
-		$disableCandidates = if ($SkipIfLastSignInIsNEVER) {
-			$inactiveUsers | Where-Object { $_.LastSignInAgoDays -ne "Never" }
-		} else {
-			$inactiveUsers
+	$S_DisableReport = @()
+	if ($Mode -eq "Disable" -and $S_TotalInactive -gt 0)
+	{
+		$S_DisableCandidates =
+			if ($SkipIfLastSignInIsNEVER)
+			{
+				$S_InactiveUsers | Where-Object { $_.LastSignInAgoDays -ne "Never" }
+			}
+			else
+			{
+				$S_InactiveUsers
+			}
+
+		$S_TotalToDisable = $S_DisableCandidates.Count
+		if ($SkipIfLastSignInIsNEVER)
+		{
+			Write-Host ("Skip users with never sign-in: {0}" -f ($S_InactiveUsers.Count - $S_TotalToDisable))
 		}
 
-		$totalToDisable = $disableCandidates.Count
-		if ($SkipIfLastSignInIsNEVER) {
-			Write-Host ("Skip users with never sign-in: {0}" -f ($inactiveUsers.Count - $totalToDisable))
-		}
-
-		$counter = 0
-		foreach ($user in $disableCandidates) {
-			$counter++
-			Write-Host ("Processing {0}/{1}: {2}" -f $counter, $totalToDisable, $user.UserPrincipalName) -ForegroundColor Yellow
-			for ($countdown = 3; $countdown -ge 1; $countdown--) {
-				Write-Host ("Disabling in {0}..." -f $countdown)
+		$S_Counter = 0
+		foreach ($S_User in $S_DisableCandidates)
+		{
+			$S_Counter++
+			Write-Host ("Processing {0}/{1}: {2}" -f $S_Counter, $S_TotalToDisable, $S_User.UserPrincipalName) -ForegroundColor Yellow
+			for ($S_Countdown = 3; $S_Countdown -ge 1; $S_Countdown--)
+			{
+				Write-Host ("Disabling in {0}..." -f $S_Countdown)
 				Start-Sleep -Seconds 1
 			}
 
-			$disableStatus = "Success"
-			$disableError = $null
-			try {
-				Update-MgUser -UserId $user.UserPrincipalName -AccountEnabled:$false -ErrorAction Stop
+			$S_DisableStatus = "Success"
+			$S_DisableError = $null
+			try
+			{
+				Update-MgUser -UserId $S_User.UserPrincipalName -AccountEnabled:$false -ErrorAction Stop
 			}
-			catch {
-				$disableStatus = "Failed"
-				$disableError = $_.Exception.Message
+			catch
+			{
+				$S_DisableStatus = "Failed"
+				$S_DisableError = $_.Exception.Message
 			}
 
-			$disableReport += [pscustomobject]@{
-				DisplayName       = $user.DisplayName
-				UserPrincipalName = $user.UserPrincipalName
-				Disabled          = $disableStatus
-				Error             = $disableError
+			$S_DisableReport += [pscustomobject]@{
+				DisplayName       = $S_User.DisplayName
+				UserPrincipalName = $S_User.UserPrincipalName
+				Disabled          = $S_DisableStatus
+				Error             = $S_DisableError
 			}
 		}
 	}
 
-	$disableReportFile = $null
-	if ($disableReport.Count -gt 0) {
-		$disableReportFile = Join-Path $reportFolder ("DisabledMemberUsers_{0}.csv" -f $S_Timestamp)
-		$disableReport | Export-Csv -Path $disableReportFile -NoTypeInformation -Encoding UTF8
+	$S_DisableReportFile = $null
+	if ($S_DisableReport.Count -gt 0)
+	{
+		$S_DisableReportFile = Join-Path $S_ReportFolder ("DisabledMemberUsers_{0}.csv" -f $S_Timestamp)
+		$S_DisableReport | Export-Csv -Path $S_DisableReportFile -NoTypeInformation -Encoding UTF8
 	}
 
 	Write-Host "Inactive Member Users Report" -ForegroundColor Cyan
 	Write-Host "--------------------------------------------"
-	Write-Host ("Total enabled member users : {0}" -f $totalMembers)
-	Write-Host ("Inactive member users      : {0}" -f $totalInactive)
-	Write-Host ("Inactive percentage       : {0}%" -f $percentInactive)
+	Write-Host ("Total enabled member users : {0}" -f $S_TotalMembers)
+	Write-Host ("Inactive member users      : {0}" -f $S_TotalInactive)
+	Write-Host ("Inactive percentage       : {0}%" -f $S_PercentInactive)
 	Write-Host ("Inactive days threshold   : {0}" -f $InactiveDays)
-	Write-Host ("CSV report exported to    : {0}" -f $reportFile)
-	Write-Host ("HTML report exported to   : {0}" -f $htmlReportFile)
+	Write-Host ("CSV report exported to    : {0}" -f $S_ReportFile)
+	Write-Host ("HTML report exported to   : {0}" -f $S_HtmlReportFile)
 	Write-Host ("Mode                     : {0}" -f $Mode)
-	if ($disableReportFile) {
-		Write-Host ("Disable report exported  : {0}" -f $disableReportFile)
+	if ($S_DisableReportFile)
+	{
+		Write-Host ("Disable report exported  : {0}" -f $S_DisableReportFile)
 	}
 
 	$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
-	if ($S_DisconnectChoice -match '^(y|yes)$') {
+	if ($S_DisconnectChoice -match '^(y|yes)$')
+	{
 		Disconnect-MgGraph -ErrorAction SilentlyContinue
 	}
 }
-catch {
+catch
+{
 	Write-Error $_
 	exit 1
 }

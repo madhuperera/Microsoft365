@@ -47,12 +47,15 @@ $S_RequiredGraphScopes = @(
 
 $S_GraphRequestDelayMilliseconds = 5
 
-try {
+try
+{
 	# --- Module check ---
-	$requiredModules = @('Microsoft.Graph.Applications', 'Microsoft.Graph.Identity.DirectoryManagement')
-	foreach ($mod in $requiredModules) {
-		if (-not (Get-Module -ListAvailable -Name $mod)) {
-			throw "$mod module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
+	$S_RequiredModules = @('Microsoft.Graph.Applications', 'Microsoft.Graph.Identity.DirectoryManagement')
+	foreach ($S_Mod in $S_RequiredModules)
+	{
+		if (-not (Get-Module -ListAvailable -Name $S_Mod))
+		{
+			throw "$S_Mod module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
 		}
 	}
 	Import-Module Microsoft.Graph.Applications -ErrorAction Stop
@@ -82,69 +85,101 @@ try {
 	$S_ExistingContext = Get-MgContext
 
 	# --- Tenant info ---
-	$tenantDisplayName = $null
-	try {
-		$org = Get-MgOrganization -ErrorAction Stop | Select-Object -First 1
-		$tenantDisplayName = $org.DisplayName
-	} catch { }
-	if (-not $tenantDisplayName) { $tenantDisplayName = $S_ExistingContext.TenantId }
-	$tenantId = if ($S_ExistingContext.TenantId) { $S_ExistingContext.TenantId } else { "Unknown" }
+	$S_TenantDisplayName = $null
+	try
+	{
+		$S_Org = Get-MgOrganization -ErrorAction Stop | Select-Object -First 1
+		$S_TenantDisplayName = $S_Org.DisplayName
+	}
+	catch
+	{
+	}
+	if (-not $S_TenantDisplayName)
+	{
+		$S_TenantDisplayName = $S_ExistingContext.TenantId
+	}
+	if ($S_ExistingContext.TenantId)
+	{
+		$S_TenantId = $S_ExistingContext.TenantId
+	}
+	else
+	{
+		$S_TenantId = 'Unknown'
+	}
 
 	# --- Fetch all Service Principals (Enterprise Applications) ---
 	Write-Host "Fetching all enterprise applications (service principals)..." -ForegroundColor Cyan
-	$servicePrincipals = Get-MgServicePrincipal -All `
+	$S_ServicePrincipals = Get-MgServicePrincipal -All `
 		-Property "id,appId,displayName,servicePrincipalType,accountEnabled,appOwnerOrganizationId,signInAudience,createdDateTime,passwordCredentials,keyCredentials,signInActivity,tags,notes" `
 		-ErrorAction Stop
-	Write-Host "  Found $($servicePrincipals.Count) service principals" -ForegroundColor Green
+	Write-Host "  Found $($S_ServicePrincipals.Count) service principals" -ForegroundColor Green
 
 	# --- Fetch App Registrations to identify which SPs have a local app reg ---
 	Write-Host "Fetching app registrations for cross-reference..." -ForegroundColor Cyan
-	$appRegLookup = @{}
-	try {
-		$appRegistrations = Get-MgApplication -All `
+	$S_AppRegLookup = @{}
+	try
+	{
+		$S_AppRegistrations = Get-MgApplication -All `
 			-Property "id,appId,displayName,passwordCredentials,keyCredentials" `
 			-ErrorAction Stop
-		foreach ($ar in $appRegistrations) {
-			if ($ar.AppId) { $appRegLookup[$ar.AppId] = $ar }
+		foreach ($S_Ar in $S_AppRegistrations)
+		{
+			if ($S_Ar.AppId)
+			{
+				$S_AppRegLookup[$S_Ar.AppId] = $S_Ar
+			}
 		}
-		Write-Host "  Found $($appRegistrations.Count) app registrations" -ForegroundColor Green
-	} catch {
+		Write-Host "  Found $($S_AppRegistrations.Count) app registrations" -ForegroundColor Green
+	}
+	catch
+	{
 		Write-Warning "Could not fetch app registrations. HasAppRegistration column will be unavailable."
 	}
 
 	# --- Resolve Microsoft Graph permission names ---
 	Write-Host "Resolving Graph permission names..." -ForegroundColor Cyan
-	$graphAppId = '00000003-0000-0000-c000-000000000000'
-	$graphAppRoles = @{}
-	$graphSpnId = $null
-	try {
-		$graphSpn = Get-MgServicePrincipal -Filter "appId eq '$graphAppId'" -Property "id,appRoles" -ErrorAction Stop
-		$graphSpnId = $graphSpn.Id
-		foreach ($role in $graphSpn.AppRoles) {
-			$graphAppRoles[$role.Id] = $role.Value
+	$S_GraphAppId = '00000003-0000-0000-c000-000000000000'
+	$S_GraphAppRoles = @{}
+	$S_GraphSpnId = $null
+	try
+	{
+		$S_GraphSpn = Get-MgServicePrincipal -Filter "appId eq '$S_GraphAppId'" -Property "id,appRoles" -ErrorAction Stop
+		$S_GraphSpnId = $S_GraphSpn.Id
+		foreach ($S_Role in $S_GraphSpn.AppRoles)
+		{
+			$S_GraphAppRoles[$S_Role.Id] = $S_Role.Value
 		}
-	} catch {
+	}
+	catch
+	{
 		Write-Warning "Could not resolve Microsoft Graph permission names."
 	}
 
 	# --- Fetch all granted Graph app role assignments (efficient single call) ---
 	Write-Host "Fetching granted Microsoft Graph permissions..." -ForegroundColor Cyan
-	$grantedPermsLookup = @{}
-	if ($graphSpnId) {
-		try {
-			$graphAssignments = Get-MgServicePrincipalAppRoleAssignedTo -ServicePrincipalId $graphSpnId -All -ErrorAction Stop
-			foreach ($assignment in $graphAssignments) {
-				$principalId = $assignment.PrincipalId
-				$roleName = $graphAppRoles[$assignment.AppRoleId]
-				if ($roleName) {
-					if (-not $grantedPermsLookup.ContainsKey($principalId)) {
-						$grantedPermsLookup[$principalId] = [System.Collections.Generic.List[string]]::new()
+	$S_GrantedPermsLookup = @{}
+	if ($S_GraphSpnId)
+	{
+		try
+		{
+			$S_GraphAssignments = Get-MgServicePrincipalAppRoleAssignedTo -ServicePrincipalId $S_GraphSpnId -All -ErrorAction Stop
+			foreach ($S_Assignment in $S_GraphAssignments)
+			{
+				$S_PrincipalId = $S_Assignment.PrincipalId
+				$S_RoleName = $S_GraphAppRoles[$S_Assignment.AppRoleId]
+				if ($S_RoleName)
+				{
+					if (-not $S_GrantedPermsLookup.ContainsKey($S_PrincipalId))
+					{
+						$S_GrantedPermsLookup[$S_PrincipalId] = [System.Collections.Generic.List[string]]::new()
 					}
-					$grantedPermsLookup[$principalId].Add($roleName)
+					$S_GrantedPermsLookup[$S_PrincipalId].Add($S_RoleName)
 				}
 			}
-			Write-Host "  Found $($graphAssignments.Count) granted Graph permissions" -ForegroundColor Green
-		} catch {
+			Write-Host "  Found $($S_GraphAssignments.Count) granted Graph permissions" -ForegroundColor Green
+		}
+		catch
+		{
 			Write-Warning "Could not fetch Graph app role assignments. Permission data may be incomplete."
 		}
 	}
@@ -154,58 +189,92 @@ try {
 	# managed identities and SAML-only apps look perpetually inactive. The dedicated
 	# report endpoint exposes delegated + application-auth (client-credential) buckets.
 	Write-Host "Fetching service principal sign-in activity report (beta)..." -ForegroundColor Cyan
-	$signInLookup = @{}
-	try {
-		$uri = 'https://graph.microsoft.com/beta/reports/servicePrincipalSignInActivities?$top=999'
-		do {
-			$resp = Invoke-MgGraphRequest -Method GET -Uri $uri -OutputType PSObject -ErrorAction Stop
-			foreach ($entry in $resp.value) {
-				if (-not $entry.appId) { continue }
-
-				$delegated = $null
-				if ($entry.delegatedClientSignInActivity)   { $delegated = $entry.delegatedClientSignInActivity.lastSignInDateTime }
-				if (-not $delegated -and $entry.delegatedResourceSignInActivity) {
-					$delegated = $entry.delegatedResourceSignInActivity.lastSignInDateTime
+	$S_SignInLookup = @{}
+	try
+	{
+		$S_Uri = 'https://graph.microsoft.com/beta/reports/servicePrincipalSignInActivities?$top=999'
+		do
+		{
+			$S_Resp = Invoke-MgGraphRequest -Method GET -Uri $S_Uri -OutputType PSObject -ErrorAction Stop
+			foreach ($S_Entry in $S_Resp.value)
+			{
+				if (-not $S_Entry.appId)
+				{
+					continue
 				}
 
-				$appOnly = $null
-				if ($entry.applicationAuthenticationClientSignInActivity) {
-					$appOnly = $entry.applicationAuthenticationClientSignInActivity.lastSignInDateTime
+				$S_Delegated = $null
+				if ($S_Entry.delegatedClientSignInActivity)
+				{
+					$S_Delegated = $S_Entry.delegatedClientSignInActivity.lastSignInDateTime
 				}
-				if (-not $appOnly -and $entry.applicationAuthenticationResourceSignInActivity) {
-					$appOnly = $entry.applicationAuthenticationResourceSignInActivity.lastSignInDateTime
+				if (-not $S_Delegated -and $S_Entry.delegatedResourceSignInActivity)
+				{
+					$S_Delegated = $S_Entry.delegatedResourceSignInActivity.lastSignInDateTime
 				}
 
-				$latest = $null
-				if ($entry.lastSignInActivity -and $entry.lastSignInActivity.lastSignInDateTime) {
-					$latest = $entry.lastSignInActivity.lastSignInDateTime
-				} else {
-					foreach ($d in @($delegated, $appOnly)) {
-						if ($d -and (-not $latest -or [datetime]$d -gt [datetime]$latest)) { $latest = $d }
+				$S_AppOnly = $null
+				if ($S_Entry.applicationAuthenticationClientSignInActivity)
+				{
+					$S_AppOnly = $S_Entry.applicationAuthenticationClientSignInActivity.lastSignInDateTime
+				}
+				if (-not $S_AppOnly -and $S_Entry.applicationAuthenticationResourceSignInActivity)
+				{
+					$S_AppOnly = $S_Entry.applicationAuthenticationResourceSignInActivity.lastSignInDateTime
+				}
+
+				$S_Latest = $null
+				if ($S_Entry.lastSignInActivity -and $S_Entry.lastSignInActivity.lastSignInDateTime)
+				{
+					$S_Latest = $S_Entry.lastSignInActivity.lastSignInDateTime
+				}
+				else
+				{
+					foreach ($S_D in @($S_Delegated, $S_AppOnly))
+					{
+						if ($S_D -and (-not $S_Latest -or [datetime]$S_D -gt [datetime]$S_Latest))
+						{
+							$S_Latest = $S_D
+						}
 					}
 				}
 
-				$source = if ($delegated -and $appOnly) { 'Both' }
-							elseif ($delegated) { 'Delegated' }
-							elseif ($appOnly) { 'AppOnly' }
-							else { 'None' }
+				if ($S_Delegated -and $S_AppOnly)
+				{
+					$S_Source = 'Both'
+				}
+				elseif ($S_Delegated)
+				{
+					$S_Source = 'Delegated'
+				}
+				elseif ($S_AppOnly)
+				{
+					$S_Source = 'AppOnly'
+				}
+				else
+				{
+					$S_Source = 'None'
+				}
 
-				$signInLookup[$entry.appId] = [pscustomobject]@{
-					LastSignIn = $latest
-					Delegated  = $delegated
-					AppOnly    = $appOnly
-					Source     = $source
+				$S_SignInLookup[$S_Entry.appId] = [pscustomobject]@{
+					LastSignIn = $S_Latest
+					Delegated  = $S_Delegated
+					AppOnly    = $S_AppOnly
+					Source     = $S_Source
 				}
 			}
-			$uri = $resp.'@odata.nextLink'
-		} while ($uri)
-		Write-Host "  Found activity for $($signInLookup.Count) service principals" -ForegroundColor Green
-	} catch {
+			$S_Uri = $S_Resp.'@odata.nextLink'
+		}
+		while ($S_Uri)
+		Write-Host "  Found activity for $($S_SignInLookup.Count) service principals" -ForegroundColor Green
+	}
+	catch
+	{
 		Write-Warning "Could not fetch servicePrincipalSignInActivities (beta). Falling back to signInActivity only. $($_.Exception.Message)"
 	}
 
 	# --- Define high-privilege application permissions ---
-	$highPrivilegePermissions = @(
+	$S_HighPrivilegePermissions = @(
 		'Directory.ReadWrite.All',
 		'RoleManagement.ReadWrite.Directory',
 		'Application.ReadWrite.All',
@@ -227,265 +296,518 @@ try {
 	)
 
 	# Microsoft's tenant ID for first-party app detection
-	$microsoftTenantId = 'f8cdef31-a31e-4b4a-93e4-5f571e91255a'
+	$S_MicrosoftTenantId = 'f8cdef31-a31e-4b4a-93e4-5f571e91255a'
 
 	# --- Build report data ---
-	Write-Host "Building report data for $($servicePrincipals.Count) enterprise applications..." -ForegroundColor Cyan
-	$now = Get-Date
-	$S_CutoffDate = $now.AddDays(-$InactiveDays)
-	$expiringThresholdDate = $now.AddDays(30)
+	Write-Host "Building report data for $($S_ServicePrincipals.Count) enterprise applications..." -ForegroundColor Cyan
+	$S_Now = Get-Date
+	$S_CutoffDate = $S_Now.AddDays(-$InactiveDays)
+	$S_ExpiringThresholdDate = $S_Now.AddDays(30)
 
-	$report = foreach ($sp in $servicePrincipals) {
+	$S_Report = foreach ($S_Sp in $S_ServicePrincipals)
+	{
 		# Microsoft first-party detection
-		$isMicrosoft = ($sp.AppOwnerOrganizationId -eq $microsoftTenantId)
+		$S_IsMicrosoft = ($S_Sp.AppOwnerOrganizationId -eq $S_MicrosoftTenantId)
 
 		# Has app registration in this tenant?
-		$hasAppReg = $appRegLookup.ContainsKey($sp.AppId)
-		$linkedAppReg = if ($hasAppReg) { $appRegLookup[$sp.AppId] } else { $null }
+		$S_HasAppReg = $S_AppRegLookup.ContainsKey($S_Sp.AppId)
+		if ($S_HasAppReg)
+		{
+			$S_LinkedAppReg = $S_AppRegLookup[$S_Sp.AppId]
+		}
+		else
+		{
+			$S_LinkedAppReg = $null
+		}
 
 		# --- Credentials (from SP + linked App Reg) ---
-		$allCreds = @()
+		$S_AllCreds = @()
 		# Credentials on the Service Principal itself (SAML certs, etc.)
-		if ($sp.PasswordCredentials) {
-			foreach ($pc in $sp.PasswordCredentials) {
-				$allCreds += [pscustomobject]@{ Type = 'Secret'; EndDateTime = $pc.EndDateTime; Source = 'SP' }
+		if ($S_Sp.PasswordCredentials)
+		{
+			foreach ($S_Pc in $S_Sp.PasswordCredentials)
+			{
+				$S_AllCreds += [pscustomobject]@{ Type = 'Secret'; EndDateTime = $S_Pc.EndDateTime; Source = 'SP' }
 			}
 		}
-		if ($sp.KeyCredentials) {
-			foreach ($kc in $sp.KeyCredentials) {
-				$allCreds += [pscustomobject]@{ Type = 'Certificate'; EndDateTime = $kc.EndDateTime; Source = 'SP' }
+		if ($S_Sp.KeyCredentials)
+		{
+			foreach ($S_Kc in $S_Sp.KeyCredentials)
+			{
+				$S_AllCreds += [pscustomobject]@{ Type = 'Certificate'; EndDateTime = $S_Kc.EndDateTime; Source = 'SP' }
 			}
 		}
 		# Credentials on the linked App Registration
-		if ($linkedAppReg) {
-			if ($linkedAppReg.PasswordCredentials) {
-				foreach ($pc in $linkedAppReg.PasswordCredentials) {
-					$allCreds += [pscustomobject]@{ Type = 'Secret'; EndDateTime = $pc.EndDateTime; Source = 'AppReg' }
+		if ($S_LinkedAppReg)
+		{
+			if ($S_LinkedAppReg.PasswordCredentials)
+			{
+				foreach ($S_Pc in $S_LinkedAppReg.PasswordCredentials)
+				{
+					$S_AllCreds += [pscustomobject]@{ Type = 'Secret'; EndDateTime = $S_Pc.EndDateTime; Source = 'AppReg' }
 				}
 			}
-			if ($linkedAppReg.KeyCredentials) {
-				foreach ($kc in $linkedAppReg.KeyCredentials) {
-					$allCreds += [pscustomobject]@{ Type = 'Certificate'; EndDateTime = $kc.EndDateTime; Source = 'AppReg' }
-				}
-			}
-		}
-
-		$secretCount = @($allCreds | Where-Object { $_.Type -eq 'Secret' }).Count
-		$certCount = @($allCreds | Where-Object { $_.Type -eq 'Certificate' }).Count
-
-		$earliestExpiry = $null
-		$daysUntilExpiry = $null
-		$expiredCount = 0
-		$expiringSoonCount = 0
-
-		foreach ($cred in $allCreds) {
-			$expDt = if ($cred.EndDateTime) { [datetime]$cred.EndDateTime } else { $null }
-			if ($expDt) {
-				if ($null -eq $earliestExpiry -or $expDt -lt $earliestExpiry) {
-					$earliestExpiry = $expDt
-				}
-				if ($expDt -lt $now) {
-					$expiredCount++
-				} elseif ($expDt -lt $expiringThresholdDate) {
-					$expiringSoonCount++
+			if ($S_LinkedAppReg.KeyCredentials)
+			{
+				foreach ($S_Kc in $S_LinkedAppReg.KeyCredentials)
+				{
+					$S_AllCreds += [pscustomobject]@{ Type = 'Certificate'; EndDateTime = $S_Kc.EndDateTime; Source = 'AppReg' }
 				}
 			}
 		}
 
-		if ($earliestExpiry) {
-			$daysUntilExpiry = [int]($earliestExpiry - $now).TotalDays
+		$S_SecretCount = @($S_AllCreds | Where-Object { $_.Type -eq 'Secret' }).Count
+		$S_CertCount = @($S_AllCreds | Where-Object { $_.Type -eq 'Certificate' }).Count
+
+		$S_EarliestExpiry = $null
+		$S_DaysUntilExpiry = $null
+		$S_ExpiredCount = 0
+		$S_ExpiringSoonCount = 0
+
+		foreach ($S_Cred in $S_AllCreds)
+		{
+			if ($S_Cred.EndDateTime)
+			{
+				$S_ExpDt = [datetime]$S_Cred.EndDateTime
+			}
+			else
+			{
+				$S_ExpDt = $null
+			}
+			if ($S_ExpDt)
+			{
+				if ($null -eq $S_EarliestExpiry -or $S_ExpDt -lt $S_EarliestExpiry)
+				{
+					$S_EarliestExpiry = $S_ExpDt
+				}
+				if ($S_ExpDt -lt $S_Now)
+				{
+					$S_ExpiredCount++
+				}
+				elseif ($S_ExpDt -lt $S_ExpiringThresholdDate)
+				{
+					$S_ExpiringSoonCount++
+				}
+			}
 		}
 
-		if ($allCreds.Count -eq 0) {
-			$credentialStatus = "No Credentials"
-		} elseif ($expiredCount -eq $allCreds.Count) {
-			$credentialStatus = "Critical"
-		} elseif ($expiredCount -gt 0) {
-			$credentialStatus = "Warning"
-		} elseif ($expiringSoonCount -gt 0) {
-			$credentialStatus = "Expiring Soon"
-		} else {
-			$credentialStatus = "Healthy"
+		if ($S_EarliestExpiry)
+		{
+			$S_DaysUntilExpiry = [int]($S_EarliestExpiry - $S_Now).TotalDays
+		}
+
+		if ($S_AllCreds.Count -eq 0)
+		{
+			$S_CredentialStatus = 'No Credentials'
+		}
+		elseif ($S_ExpiredCount -eq $S_AllCreds.Count)
+		{
+			$S_CredentialStatus = 'Critical'
+		}
+		elseif ($S_ExpiredCount -gt 0)
+		{
+			$S_CredentialStatus = 'Warning'
+		}
+		elseif ($S_ExpiringSoonCount -gt 0)
+		{
+			$S_CredentialStatus = 'Expiring Soon'
+		}
+		else
+		{
+			$S_CredentialStatus = 'Healthy'
 		}
 
 		# --- Granted Graph permissions (actually consented, not just configured) ---
-		$grantedPerms = if ($grantedPermsLookup.ContainsKey($sp.Id)) { $grantedPermsLookup[$sp.Id] } else { @() }
-		$highPrivPerms = @($grantedPerms | Where-Object { $_ -in $highPrivilegePermissions })
-		$isHighPrivilege = $highPrivPerms.Count -gt 0
+		if ($S_GrantedPermsLookup.ContainsKey($S_Sp.Id))
+		{
+			$S_GrantedPerms = $S_GrantedPermsLookup[$S_Sp.Id]
+		}
+		else
+		{
+			$S_GrantedPerms = @()
+		}
+		$S_HighPrivPerms = @($S_GrantedPerms | Where-Object { $_ -in $S_HighPrivilegePermissions })
+		$S_IsHighPrivilege = $S_HighPrivPerms.Count -gt 0
 
 		# --- Sign-in activity ---
 		# Activity assessment is only meaningful for non-Microsoft apps. Microsoft
 		# first-party apps are managed by Microsoft and frequently lack tenant-side
 		# sign-in records, so we leave their activity fields empty.
-		$lastSignIn        = $null
-		$lastDelegated     = $null
-		$lastAppOnly       = $null
-		$activitySource    = if ($isMicrosoft) { 'N/A' } else { 'None' }
-		$daysSinceActivity = $null
+		$S_LastSignIn = $null
+		$S_LastDelegated = $null
+		$S_LastAppOnly = $null
+		if ($S_IsMicrosoft)
+		{
+			$S_ActivitySource = 'N/A'
+		}
+		else
+		{
+			$S_ActivitySource = 'None'
+		}
+		$S_DaysSinceActivity = $null
 
-		if (-not $isMicrosoft) {
+		if (-not $S_IsMicrosoft)
+		{
 			# Primary: dedicated SP sign-in activity report (covers delegated + app-only)
-			if ($signInLookup.ContainsKey($sp.AppId)) {
-				$entry          = $signInLookup[$sp.AppId]
-				$lastSignIn     = $entry.LastSignIn
-				$lastDelegated  = $entry.Delegated
-				$lastAppOnly    = $entry.AppOnly
-				$activitySource = $entry.Source
+			if ($S_SignInLookup.ContainsKey($S_Sp.AppId))
+			{
+				$S_Entry = $S_SignInLookup[$S_Sp.AppId]
+				$S_LastSignIn = $S_Entry.LastSignIn
+				$S_LastDelegated = $S_Entry.Delegated
+				$S_LastAppOnly = $S_Entry.AppOnly
+				$S_ActivitySource = $S_Entry.Source
 			}
 			# Fallback: legacy signInActivity property if the report had no entry
-			if (-not $lastSignIn -and $sp.SignInActivity) {
-				$lastSignIn = $sp.SignInActivity.LastSignInDateTime
-				if (-not $lastSignIn) { $lastSignIn = $sp.SignInActivity.LastNonInteractiveSignInDateTime }
-				if ($lastSignIn) {
-					$lastDelegated  = $lastSignIn
-					$activitySource = 'Delegated'
+			if (-not $S_LastSignIn -and $S_Sp.SignInActivity)
+			{
+				$S_LastSignIn = $S_Sp.SignInActivity.LastSignInDateTime
+				if (-not $S_LastSignIn)
+				{
+					$S_LastSignIn = $S_Sp.SignInActivity.LastNonInteractiveSignInDateTime
+				}
+				if ($S_LastSignIn)
+				{
+					$S_LastDelegated = $S_LastSignIn
+					$S_ActivitySource = 'Delegated'
 				}
 			}
-			if ($lastSignIn) {
-				$daysSinceActivity = [int]($now - ([datetime]$lastSignIn)).TotalDays
+			if ($S_LastSignIn)
+			{
+				$S_DaysSinceActivity = [int]($S_Now - ([datetime]$S_LastSignIn)).TotalDays
 			}
 		}
 
 		# --- Status (Disabled > Active > Inactive) ---
 		# Microsoft first-party apps are not assessed for activity; treat enabled MS
 		# apps as Active so they don't pollute the inactive bucket.
-		if (-not $sp.AccountEnabled) {
-			$status = "Disabled"
-		} elseif ($isMicrosoft) {
-			$status = "Active"
-		} elseif ($lastSignIn -and ([datetime]$lastSignIn) -ge $S_CutoffDate) {
-			$status = "Active"
-		} else {
-			$status = "Inactive"
+		if (-not $S_Sp.AccountEnabled)
+		{
+			$S_Status = 'Disabled'
+		}
+		elseif ($S_IsMicrosoft)
+		{
+			$S_Status = 'Active'
+		}
+		elseif ($S_LastSignIn -and ([datetime]$S_LastSignIn) -ge $S_CutoffDate)
+		{
+			$S_Status = 'Active'
+		}
+		else
+		{
+			$S_Status = 'Inactive'
 		}
 
 		# --- SP Type friendly name ---
-		$spTypeName = switch ($sp.ServicePrincipalType) {
+		$S_SpTypeName = switch ($S_Sp.ServicePrincipalType)
+		{
 			'Application' { 'Application' }
 			'ManagedIdentity' { 'Managed Identity' }
 			'Legacy' { 'Legacy' }
 			'SocialIdp' { 'Social IdP' }
-			default { if ($sp.ServicePrincipalType) { $sp.ServicePrincipalType } else { 'Unknown' } }
+			default {
+				if ($S_Sp.ServicePrincipalType)
+				{
+					$S_Sp.ServicePrincipalType
+				}
+				else
+				{
+					'Unknown'
+				}
+			}
 		}
 
 		[pscustomobject]@{
-			DisplayName             = $sp.DisplayName
-			AppId                   = $sp.AppId
-			ObjectId                = $sp.Id
-			ServicePrincipalType    = $spTypeName
-			AccountEnabled          = $sp.AccountEnabled
-			IsMicrosoft             = $isMicrosoft
-			HasAppRegistration      = $hasAppReg
-			CreatedDateTime         = $sp.CreatedDateTime
-			SecretCount             = $secretCount
-			CertificateCount        = $certCount
-			EarliestExpiry          = $earliestExpiry
-			DaysUntilExpiry         = $daysUntilExpiry
-			CredentialStatus        = $credentialStatus
-			GrantedPermissionCount  = $grantedPerms.Count
-			IsHighPrivilege         = $isHighPrivilege
-			HighPrivPermissions     = ($highPrivPerms -join ", ")
-			AllGrantedPermissions   = ($grantedPerms -join ", ")
-			LastSignIn              = $lastSignIn
-			LastDelegatedSignIn     = $lastDelegated
-			LastAppOnlySignIn       = $lastAppOnly
-			ActivitySource          = $activitySource
-			DaysSinceActivity       = $daysSinceActivity
-			Status                  = $status
+			DisplayName             = $S_Sp.DisplayName
+			AppId                   = $S_Sp.AppId
+			ObjectId                = $S_Sp.Id
+			ServicePrincipalType    = $S_SpTypeName
+			AccountEnabled          = $S_Sp.AccountEnabled
+			IsMicrosoft             = $S_IsMicrosoft
+			HasAppRegistration      = $S_HasAppReg
+			CreatedDateTime         = $S_Sp.CreatedDateTime
+			SecretCount             = $S_SecretCount
+			CertificateCount        = $S_CertCount
+			EarliestExpiry          = $S_EarliestExpiry
+			DaysUntilExpiry         = $S_DaysUntilExpiry
+			CredentialStatus        = $S_CredentialStatus
+			GrantedPermissionCount  = $S_GrantedPerms.Count
+			IsHighPrivilege         = $S_IsHighPrivilege
+			HighPrivPermissions     = ($S_HighPrivPerms -join ', ')
+			AllGrantedPermissions   = ($S_GrantedPerms -join ', ')
+			LastSignIn              = $S_LastSignIn
+			LastDelegatedSignIn     = $S_LastDelegated
+			LastAppOnlySignIn       = $S_LastAppOnly
+			ActivitySource          = $S_ActivitySource
+			DaysSinceActivity       = $S_DaysSinceActivity
+			Status                  = $S_Status
 		}
 	}
 
 	# --- Stats ---
-	$totalApps       = @($report).Count
-	$totalEnabled    = @($report | Where-Object { $_.AccountEnabled }).Count
-	$totalDisabled   = @($report | Where-Object { -not $_.AccountEnabled }).Count
-	$totalActive     = @($report | Where-Object { $_.Status -eq "Active" }).Count
-	$totalInactive   = @($report | Where-Object { $_.Status -eq "Inactive" }).Count
-	$totalHighPriv   = @($report | Where-Object { $_.IsHighPrivilege }).Count
-	$totalMicrosoft  = @($report | Where-Object { $_.IsMicrosoft }).Count
-	$totalWithAppReg = @($report | Where-Object { $_.HasAppRegistration }).Count
-	$totalCritical   = @($report | Where-Object { $_.CredentialStatus -eq "Critical" }).Count
-	$totalWarning    = @($report | Where-Object { $_.CredentialStatus -eq "Warning" }).Count
-	$totalExpSoon    = @($report | Where-Object { $_.CredentialStatus -eq "Expiring Soon" }).Count
-	$totalHealthy    = @($report | Where-Object { $_.CredentialStatus -eq "Healthy" }).Count
-	$totalNoCreds    = @($report | Where-Object { $_.CredentialStatus -eq "No Credentials" }).Count
+	$S_TotalApps       = @($S_Report).Count
+	$S_TotalEnabled    = @($S_Report | Where-Object { $_.AccountEnabled }).Count
+	$S_TotalDisabled   = @($S_Report | Where-Object { -not $_.AccountEnabled }).Count
+	$S_TotalActive     = @($S_Report | Where-Object { $_.Status -eq 'Active' }).Count
+	$S_TotalInactive   = @($S_Report | Where-Object { $_.Status -eq 'Inactive' }).Count
+	$S_TotalHighPriv   = @($S_Report | Where-Object { $_.IsHighPrivilege }).Count
+	$S_TotalMicrosoft  = @($S_Report | Where-Object { $_.IsMicrosoft }).Count
+	$S_TotalWithAppReg = @($S_Report | Where-Object { $_.HasAppRegistration }).Count
+	$S_TotalCritical   = @($S_Report | Where-Object { $_.CredentialStatus -eq 'Critical' }).Count
+	$S_TotalWarning    = @($S_Report | Where-Object { $_.CredentialStatus -eq 'Warning' }).Count
+	$S_TotalExpSoon    = @($S_Report | Where-Object { $_.CredentialStatus -eq 'Expiring Soon' }).Count
+	$S_TotalHealthy    = @($S_Report | Where-Object { $_.CredentialStatus -eq 'Healthy' }).Count
+	$S_TotalNoCreds    = @($S_Report | Where-Object { $_.CredentialStatus -eq 'No Credentials' }).Count
 
-	$spTypeSummary = $report | Group-Object ServicePrincipalType | Sort-Object Count -Descending | ForEach-Object {
+	$S_SpTypeSummary = $S_Report | Group-Object ServicePrincipalType | Sort-Object Count -Descending | ForEach-Object {
 		[pscustomobject]@{ Type = $_.Name; Count = $_.Count }
 	}
 
 	# --- File paths ---
-	if (-not $ReportPath) { $ReportPath = (Get-Location).Path }
-	$reportFolder = if (Test-Path $ReportPath -PathType Container) { $ReportPath } else { Split-Path -Parent $ReportPath }
-	if ($reportFolder -and -not (Test-Path $reportFolder)) {
-		New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
+	if (-not $ReportPath)
+	{
+		$ReportPath = (Get-Location).Path
+	}
+	if (Test-Path $ReportPath -PathType Container)
+	{
+		$S_ReportFolder = $ReportPath
+	}
+	else
+	{
+		$S_ReportFolder = Split-Path -Parent $ReportPath
+	}
+	if ($S_ReportFolder -and -not (Test-Path $S_ReportFolder))
+	{
+		New-Item -ItemType Directory -Path $S_ReportFolder -Force | Out-Null
 	}
 
-	$S_Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-	$csvFile = if (Test-Path $ReportPath -PathType Container) {
-		Join-Path $ReportPath ("ReportEntraIDApps_{0}.csv" -f $S_Timestamp)
-	} else { $ReportPath }
+	$S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+	if (Test-Path $ReportPath -PathType Container)
+	{
+		$S_CsvFile = Join-Path $ReportPath ("ReportEntraIDApps_{0}.csv" -f $S_Timestamp)
+	}
+	else
+	{
+		$S_CsvFile = $ReportPath
+	}
 
 	# --- CSV export ---
-	$report | Sort-Object DisplayName | Export-Csv -Path $csvFile -NoTypeInformation -Encoding UTF8
+	$S_Report | Sort-Object DisplayName | Export-Csv -Path $S_CsvFile -NoTypeInformation -Encoding UTF8
 
 	# --- HTML report ---
-	$reportDate = Get-Date -Format "dd MMM yyyy HH:mm"
+	$S_ReportDate = Get-Date -Format 'dd MMM yyyy HH:mm'
 
 	# Build per-app JSON for client-side threshold recalculation
-	$appsJson = ($report | Sort-Object DisplayName | ForEach-Object {
-		$daysVal = if ($null -ne $_.DaysSinceActivity) { $_.DaysSinceActivity } else { -1 }
-		$hp = if ($_.IsHighPrivilege) { "true" } else { "false" }
-		$ms = if ($_.IsMicrosoft) { "true" } else { "false" }
-		$en = if ($_.AccountEnabled) { "true" } else { "false" }
-		$ar = if ($_.HasAppRegistration) { "true" } else { "false" }
-		$cs = ($_.CredentialStatus) -replace '"', '\"'
-		$spt = ($_.ServicePrincipalType) -replace '"', '\"'
-		'{{"days":{0},"hp":{1},"ms":{2},"en":{3},"ar":{4},"cs":"{5}","spt":"{6}"}}' -f $daysVal, $hp, $ms, $en, $ar, $cs, $spt
-	}) -join ","
+	$S_AppsJson = ($S_Report | Sort-Object DisplayName | ForEach-Object {
+		if ($null -ne $_.DaysSinceActivity)
+		{
+			$S_DaysVal = $_.DaysSinceActivity
+		}
+		else
+		{
+			$S_DaysVal = -1
+		}
+		if ($_.IsHighPrivilege)
+		{
+			$S_Hp = 'true'
+		}
+		else
+		{
+			$S_Hp = 'false'
+		}
+		if ($_.IsMicrosoft)
+		{
+			$S_Ms = 'true'
+		}
+		else
+		{
+			$S_Ms = 'false'
+		}
+		if ($_.AccountEnabled)
+		{
+			$S_En = 'true'
+		}
+		else
+		{
+			$S_En = 'false'
+		}
+		if ($_.HasAppRegistration)
+		{
+			$S_Ar = 'true'
+		}
+		else
+		{
+			$S_Ar = 'false'
+		}
+		$S_Cs = ($_.CredentialStatus) -replace '"', '\"'
+		$S_Spt = ($_.ServicePrincipalType) -replace '"', '\"'
+		'{{"days":{0},"hp":{1},"ms":{2},"en":{3},"ar":{4},"cs":"{5}","spt":"{6}"}}' -f $S_DaysVal, $S_Hp, $S_Ms, $S_En, $S_Ar, $S_Cs, $S_Spt
+	}) -join ','
 
 	# Build table rows
-	$tableRows = ($report | Sort-Object DisplayName | ForEach-Object {
-		$daysVal = if ($null -ne $_.DaysSinceActivity) { $_.DaysSinceActivity } else { -1 }
-		$enabledVal = if ($_.AccountEnabled) { "1" } else { "0" }
-		$msVal = if ($_.IsMicrosoft) { "1" } else { "0" }
-		$appName = [System.Net.WebUtility]::HtmlEncode($_.DisplayName)
-		$appIdEnc = [System.Net.WebUtility]::HtmlEncode($_.AppId)
-		$spType = [System.Net.WebUtility]::HtmlEncode($_.ServicePrincipalType)
-		$enabled = if ($_.AccountEnabled) { '<span class="badge badge-active">Yes</span>' } else { '<span class="badge badge-disabled">Disabled</span>' }
-		$msBadge = if ($_.IsMicrosoft) { '<span class="badge badge-ms">Microsoft</span>' } else { '<span class="badge badge-thirdparty">3rd Party</span>' }
-		$arBadge = if ($_.HasAppRegistration) { '<span class="badge badge-active">Yes</span>' } else { '<span class="badge badge-nocreds">No</span>' }
-		$created = if ($_.CreatedDateTime) { ([datetime]$_.CreatedDateTime).ToString("dd MMM yyyy") } else { "-" }
-		$creds = if ($_.SecretCount -eq 0 -and $_.CertificateCount -eq 0) { "None" } else { "{0}S / {1}C" -f $_.SecretCount, $_.CertificateCount }
-		$expiry = if ($_.EarliestExpiry) { ([datetime]$_.EarliestExpiry).ToString("dd MMM yyyy") } else { "-" }
-		$daysUntil = if ($null -ne $_.DaysUntilExpiry) { "$($_.DaysUntilExpiry) days" } else { "-" }
-		$credStatusClass = switch ($_.CredentialStatus) {
-			"Healthy" { "healthy" } "Expiring Soon" { "expiring" } "Warning" { "warning" } "Critical" { "critical" } "No Credentials" { "nocreds" }
+	$S_TableRows = ($S_Report | Sort-Object DisplayName | ForEach-Object {
+		if ($null -ne $_.DaysSinceActivity)
+		{
+			$S_DaysVal = $_.DaysSinceActivity
 		}
-		$highPrivBadge = if ($_.IsHighPrivilege) { '<span class="badge badge-highpriv">Yes</span>' } else { '<span class="badge badge-lowpriv">No</span>' }
-		$lastSignIn = if ($_.LastSignIn) { ([datetime]$_.LastSignIn).ToString("dd MMM yyyy") } else { "-" }
-		$sinceActivity = if ($null -ne $_.DaysSinceActivity) { "$($_.DaysSinceActivity) days" } else { "Never" }
-		$statusClass = switch ($_.Status) { "Active" { "active" } "Inactive" { "inactive" } "Disabled" { "disabled" } }
+		else
+		{
+			$S_DaysVal = -1
+		}
+		if ($_.AccountEnabled)
+		{
+			$S_EnabledVal = '1'
+		}
+		else
+		{
+			$S_EnabledVal = '0'
+		}
+		if ($_.IsMicrosoft)
+		{
+			$S_MsVal = '1'
+		}
+		else
+		{
+			$S_MsVal = '0'
+		}
+		$S_AppName = [System.Net.WebUtility]::HtmlEncode($_.DisplayName)
+		$S_AppIdEnc = [System.Net.WebUtility]::HtmlEncode($_.AppId)
+		$S_SpType = [System.Net.WebUtility]::HtmlEncode($_.ServicePrincipalType)
+		if ($_.AccountEnabled)
+		{
+			$S_Enabled = '<span class="badge badge-active">Yes</span>'
+		}
+		else
+		{
+			$S_Enabled = '<span class="badge badge-disabled">Disabled</span>'
+		}
+		if ($_.IsMicrosoft)
+		{
+			$S_MsBadge = '<span class="badge badge-ms">Microsoft</span>'
+		}
+		else
+		{
+			$S_MsBadge = '<span class="badge badge-thirdparty">3rd Party</span>'
+		}
+		if ($_.HasAppRegistration)
+		{
+			$S_ArBadge = '<span class="badge badge-active">Yes</span>'
+		}
+		else
+		{
+			$S_ArBadge = '<span class="badge badge-nocreds">No</span>'
+		}
+		if ($_.CreatedDateTime)
+		{
+			$S_Created = ([datetime]$_.CreatedDateTime).ToString('dd MMM yyyy')
+		}
+		else
+		{
+			$S_Created = '-'
+		}
+		if ($_.SecretCount -eq 0 -and $_.CertificateCount -eq 0)
+		{
+			$S_Creds = 'None'
+		}
+		else
+		{
+			$S_Creds = '{0}S / {1}C' -f $_.SecretCount, $_.CertificateCount
+		}
+		if ($_.EarliestExpiry)
+		{
+			$S_Expiry = ([datetime]$_.EarliestExpiry).ToString('dd MMM yyyy')
+		}
+		else
+		{
+			$S_Expiry = '-'
+		}
+		if ($null -ne $_.DaysUntilExpiry)
+		{
+			$S_DaysUntil = "$($_.DaysUntilExpiry) days"
+		}
+		else
+		{
+			$S_DaysUntil = '-'
+		}
+		$S_CredStatusClass = switch ($_.CredentialStatus)
+		{
+			'Healthy' { 'healthy' }
+			'Expiring Soon' { 'expiring' }
+			'Warning' { 'warning' }
+			'Critical' { 'critical' }
+			'No Credentials' { 'nocreds' }
+		}
+		if ($_.IsHighPrivilege)
+		{
+			$S_HighPrivBadge = '<span class="badge badge-highpriv">Yes</span>'
+		}
+		else
+		{
+			$S_HighPrivBadge = '<span class="badge badge-lowpriv">No</span>'
+		}
+		if ($_.LastSignIn)
+		{
+			$S_LastSignIn = ([datetime]$_.LastSignIn).ToString('dd MMM yyyy')
+		}
+		else
+		{
+			$S_LastSignIn = '-'
+		}
+		if ($null -ne $_.DaysSinceActivity)
+		{
+			$S_SinceActivity = "$($_.DaysSinceActivity) days"
+		}
+		else
+		{
+			$S_SinceActivity = 'Never'
+		}
+		$S_StatusClass = switch ($_.Status)
+		{
+			'Active' { 'active' }
+			'Inactive' { 'inactive' }
+			'Disabled' { 'disabled' }
+		}
 
-		"<tr data-days=`"$daysVal`" data-ena=`"$enabledVal`" data-ms=`"$msVal`"><td>$appName</td><td class=`"app-id`">$appIdEnc</td><td>$spType</td><td>$enabled</td><td>$msBadge</td><td>$arBadge</td><td>$created</td><td>$creds</td><td>$expiry</td><td class=`"cred-days`">$daysUntil</td><td><span class=`"badge badge-$credStatusClass`">$($_.CredentialStatus)</span></td><td>$($_.GrantedPermissionCount)</td><td>$highPrivBadge</td><td>$lastSignIn</td><td>$sinceActivity</td><td><span class=`"badge badge-$statusClass`">$($_.Status)</span></td></tr>"
+		"<tr data-days=`"$S_DaysVal`" data-ena=`"$S_EnabledVal`" data-ms=`"$S_MsVal`"><td>$S_AppName</td><td class=`"app-id`">$S_AppIdEnc</td><td>$S_SpType</td><td>$S_Enabled</td><td>$S_MsBadge</td><td>$S_ArBadge</td><td>$S_Created</td><td>$S_Creds</td><td>$S_Expiry</td><td class=`"cred-days`">$S_DaysUntil</td><td><span class=`"badge badge-$S_CredStatusClass`">$($_.CredentialStatus)</span></td><td>$($_.GrantedPermissionCount)</td><td>$S_HighPrivBadge</td><td>$S_LastSignIn</td><td>$S_SinceActivity</td><td><span class=`"badge badge-$S_StatusClass`">$($_.Status)</span></td></tr>"
 	}) -join "`n"
 
 	# Build high-privilege apps detail rows
-	$highPrivApps = $report | Where-Object { $_.IsHighPrivilege } | Sort-Object DisplayName
-	$highPrivRows = if ($highPrivApps) {
-		($highPrivApps | ForEach-Object {
-			$appName = [System.Net.WebUtility]::HtmlEncode($_.DisplayName)
-			$perms = [System.Net.WebUtility]::HtmlEncode($_.HighPrivPermissions)
-			$msBadge = if ($_.IsMicrosoft) { '<span class="badge badge-ms">Microsoft</span>' } else { '<span class="badge badge-thirdparty">3rd Party</span>' }
-			$credBadgeClass = switch ($_.CredentialStatus) { "Healthy" { "healthy" } "Expiring Soon" { "expiring" } "Warning" { "warning" } "Critical" { "critical" } "No Credentials" { "nocreds" } }
-			$statusClass = switch ($_.Status) { "Active" { "active" } "Inactive" { "inactive" } "Disabled" { "disabled" } }
-			"<tr><td>$appName</td><td class=`"app-id`">$([System.Net.WebUtility]::HtmlEncode($_.AppId))</td><td>$msBadge</td><td class=`"perm-list`">$perms</td><td><span class=`"badge badge-$credBadgeClass`">$($_.CredentialStatus)</span></td><td><span class=`"badge badge-$statusClass`">$($_.Status)</span></td></tr>"
+	$S_HighPrivApps = $S_Report | Where-Object { $_.IsHighPrivilege } | Sort-Object DisplayName
+	if ($S_HighPrivApps)
+	{
+		$S_HighPrivRows = ($S_HighPrivApps | ForEach-Object {
+			$S_AppName = [System.Net.WebUtility]::HtmlEncode($_.DisplayName)
+			$S_Perms = [System.Net.WebUtility]::HtmlEncode($_.HighPrivPermissions)
+			if ($_.IsMicrosoft)
+			{
+				$S_MsBadge = '<span class="badge badge-ms">Microsoft</span>'
+			}
+			else
+			{
+				$S_MsBadge = '<span class="badge badge-thirdparty">3rd Party</span>'
+			}
+			$S_CredBadgeClass = switch ($_.CredentialStatus)
+			{
+				'Healthy' { 'healthy' }
+				'Expiring Soon' { 'expiring' }
+				'Warning' { 'warning' }
+				'Critical' { 'critical' }
+				'No Credentials' { 'nocreds' }
+			}
+			$S_StatusClass = switch ($_.Status)
+			{
+				'Active' { 'active' }
+				'Inactive' { 'inactive' }
+				'Disabled' { 'disabled' }
+			}
+			"<tr><td>$S_AppName</td><td class=`"app-id`">$([System.Net.WebUtility]::HtmlEncode($_.AppId))</td><td>$S_MsBadge</td><td class=`"perm-list`">$S_Perms</td><td><span class=`"badge badge-$S_CredBadgeClass`">$($_.CredentialStatus)</span></td><td><span class=`"badge badge-$S_StatusClass`">$($_.Status)</span></td></tr>"
 		}) -join "`n"
-	} else {
-		"<tr><td colspan=`"6`" style=`"text-align:center;color:#999;`">No highly privileged applications found</td></tr>"
+	}
+	else
+	{
+		$S_HighPrivRows = "<tr><td colspan=`"6`" style=`"text-align:center;color:#999;`">No highly privileged applications found</td></tr>"
 	}
 
-	$html = @"
+	$S_Html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -579,17 +901,22 @@ try {
 <div class="header">
   <div class="header-left">
     <h1>Entra ID Enterprise Applications Report</h1>
-    <p>Tenant: $([System.Net.WebUtility]::HtmlEncode($tenantDisplayName)) ($tenantId) &nbsp;|&nbsp; Generated: $reportDate &nbsp;|&nbsp; Total: $totalApps ($totalMicrosoft Microsoft, $($totalApps - $totalMicrosoft) third-party)</p>
+    <p>Tenant: $([System.Net.WebUtility]::HtmlEncode($S_TenantDisplayName)) ($S_TenantId) &nbsp;|&nbsp; Generated: $S_ReportDate &nbsp;|&nbsp; Total: $S_TotalApps ($S_TotalMicrosoft Microsoft, $($S_TotalApps - $S_TotalMicrosoft) third-party)</p>
   </div>
   <div class="header-right">
     <label class="toggle-label"><input type="checkbox" id="hideMsApps" onchange="applyThreshold()" checked> Hide Microsoft Apps</label>
     <label for="thresholdSelect">Inactive Threshold:</label>
     <select id="thresholdSelect" onchange="applyThreshold()">
-      <option value="30" $(if ($InactiveDays -eq 30) { 'selected' })>30 Days</option>
-      <option value="60" $(if ($InactiveDays -eq 60) { 'selected' })>60 Days</option>
-      <option value="90" $(if ($InactiveDays -eq 90) { 'selected' })>90 Days</option>
-      <option value="180" $(if ($InactiveDays -eq 180 -or ($InactiveDays -ne 30 -and $InactiveDays -ne 60 -and $InactiveDays -ne 90 -and $InactiveDays -ne 360)) { 'selected' })>180 Days</option>
-      <option value="360" $(if ($InactiveDays -eq 360) { 'selected' })>360 Days</option>
+      <option value="30" $(if ($InactiveDays -eq 30)
+      { 'selected' })>30 Days</option>
+      <option value="60" $(if ($InactiveDays -eq 60)
+      { 'selected' })>60 Days</option>
+      <option value="90" $(if ($InactiveDays -eq 90)
+      { 'selected' })>90 Days</option>
+      <option value="180" $(if ($InactiveDays -eq 180 -or ($InactiveDays -ne 30 -and $InactiveDays -ne 60 -and $InactiveDays -ne 90 -and $InactiveDays -ne 360))
+      { 'selected' })>180 Days</option>
+      <option value="360" $(if ($InactiveDays -eq 360)
+      { 'selected' })>360 Days</option>
     </select>
   </div>
 </div>
@@ -629,7 +956,7 @@ try {
 
 <!-- HIGHLY PRIVILEGED APPS -->
 <div class="table-section">
-  <h2>Highly Privileged Applications — Granted Graph Permissions ($totalHighPriv)</h2>
+  <h2>Highly Privileged Applications — Granted Graph Permissions ($S_TotalHighPriv)</h2>
   <p style="font-size:0.88em;color:#777;margin-bottom:12px;">Applications with high-privilege Microsoft Graph permissions actually granted (admin consented) — not just configured</p>
   <table class="highpriv-table">
     <thead><tr>
@@ -641,7 +968,7 @@ try {
       <th>Activity Status</th>
     </tr></thead>
     <tbody>
-$highPrivRows
+$S_HighPrivRows
     </tbody>
   </table>
 </div>
@@ -697,7 +1024,7 @@ $highPrivRows
       <th onclick="sortTable(15)">Status</th>
     </tr></thead>
     <tbody>
-$tableRows
+$S_TableRows
     </tbody>
   </table>
 </div>
@@ -705,7 +1032,7 @@ $tableRows
 <div class="footer">Report generated by ReportEntraIDApps.ps1</div>
 
 <script>
-var appData = [$appsJson];
+var appData = [$S_AppsJson];
 var chartColors = ['#3498db','#27ae60','#e74c3c','#f39c12','#9b59b6','#1abc9c','#e67e22','#2c3e50','#95a5a6','#d35400'];
 var credColorMap = { 'Healthy':'#27ae60', 'Expiring Soon':'#f39c12', 'Warning':'#e67e22', 'Critical':'#e74c3c', 'No Credentials':'#95a5a6' };
 
@@ -912,55 +1239,60 @@ applyThreshold();
 </html>
 "@
 
-	$htmlReportFile = Join-Path $reportFolder ("ReportEntraIDApps_{0}.html" -f $S_Timestamp)
-	$html | Out-File -FilePath $htmlReportFile -Encoding UTF8
+	$S_HtmlReportFile = Join-Path $S_ReportFolder ("ReportEntraIDApps_{0}.html" -f $S_Timestamp)
+	$S_Html | Out-File -FilePath $S_HtmlReportFile -Encoding UTF8
 
 	# --- Console summary ---
 	Write-Host ""
 	Write-Host "Entra ID Enterprise Applications Report" -ForegroundColor Cyan
 	Write-Host "--------------------------------------------"
-	Write-Host ("Tenant                   : {0} ({1})" -f $tenantDisplayName, $tenantId)
-	Write-Host ("Total enterprise apps    : {0}" -f $totalApps)
-	Write-Host ("  Microsoft first-party  : {0}" -f $totalMicrosoft) -ForegroundColor DarkGray
-	Write-Host ("  Third-party / custom   : {0}" -f ($totalApps - $totalMicrosoft))
-	Write-Host ("  With app registration  : {0}" -f $totalWithAppReg)
+	Write-Host ("Tenant                   : {0} ({1})" -f $S_TenantDisplayName, $S_TenantId)
+	Write-Host ("Total enterprise apps    : {0}" -f $S_TotalApps)
+	Write-Host ("  Microsoft first-party  : {0}" -f $S_TotalMicrosoft) -ForegroundColor DarkGray
+	Write-Host ("  Third-party / custom   : {0}" -f ($S_TotalApps - $S_TotalMicrosoft))
+	Write-Host ("  With app registration  : {0}" -f $S_TotalWithAppReg)
 	Write-Host ""
 	Write-Host "Activity" -ForegroundColor Cyan
-	Write-Host ("  Active                 : {0}" -f $totalActive) -ForegroundColor Green
-	Write-Host ("  Inactive               : {0}" -f $totalInactive) -ForegroundColor Red
-	Write-Host ("  Disabled               : {0}" -f $totalDisabled) -ForegroundColor DarkGray
+	Write-Host ("  Active                 : {0}" -f $S_TotalActive) -ForegroundColor Green
+	Write-Host ("  Inactive               : {0}" -f $S_TotalInactive) -ForegroundColor Red
+	Write-Host ("  Disabled               : {0}" -f $S_TotalDisabled) -ForegroundColor DarkGray
 	Write-Host ""
 	Write-Host "Application Types" -ForegroundColor Cyan
-	foreach ($spt in $spTypeSummary) {
-		Write-Host ("  {0,-25}: {1}" -f $spt.Type, $spt.Count)
+	foreach ($S_Spt in $S_SpTypeSummary)
+	{
+		Write-Host ("  {0,-25}: {1}" -f $S_Spt.Type, $S_Spt.Count)
 	}
 	Write-Host ""
 	Write-Host "Credential Health" -ForegroundColor Cyan
-	Write-Host ("  Healthy                : {0}" -f $totalHealthy) -ForegroundColor Green
-	Write-Host ("  Expiring Soon (30d)    : {0}" -f $totalExpSoon) -ForegroundColor Yellow
-	Write-Host ("  Warning (some expired) : {0}" -f $totalWarning) -ForegroundColor DarkYellow
-	Write-Host ("  Critical (all expired) : {0}" -f $totalCritical) -ForegroundColor Red
-	Write-Host ("  No Credentials         : {0}" -f $totalNoCreds) -ForegroundColor DarkGray
+	Write-Host ("  Healthy                : {0}" -f $S_TotalHealthy) -ForegroundColor Green
+	Write-Host ("  Expiring Soon (30d)    : {0}" -f $S_TotalExpSoon) -ForegroundColor Yellow
+	Write-Host ("  Warning (some expired) : {0}" -f $S_TotalWarning) -ForegroundColor DarkYellow
+	Write-Host ("  Critical (all expired) : {0}" -f $S_TotalCritical) -ForegroundColor Red
+	Write-Host ("  No Credentials         : {0}" -f $S_TotalNoCreds) -ForegroundColor DarkGray
 	Write-Host ""
 	Write-Host "High Privilege Applications (Granted Graph Permissions)" -ForegroundColor Cyan
-	Write-Host ("  Count                  : {0}" -f $totalHighPriv) -ForegroundColor Red
-	if ($highPrivApps -and $highPrivApps.Count -gt 0) {
-		foreach ($hp in $highPrivApps) {
-			Write-Host ("  - {0}" -f $hp.DisplayName)
-			Write-Host ("    Granted: {0}" -f $hp.HighPrivPermissions) -ForegroundColor DarkYellow
+	Write-Host ("  Count                  : {0}" -f $S_TotalHighPriv) -ForegroundColor Red
+	if ($S_HighPrivApps -and $S_HighPrivApps.Count -gt 0)
+	{
+		foreach ($S_Hp in $S_HighPrivApps)
+		{
+			Write-Host ("  - {0}" -f $S_Hp.DisplayName)
+			Write-Host ("    Granted: {0}" -f $S_Hp.HighPrivPermissions) -ForegroundColor DarkYellow
 		}
 	}
 	Write-Host ""
 	Write-Host ("Inactive days threshold  : {0}" -f $InactiveDays)
-	Write-Host ("CSV report               : {0}" -f $csvFile) -ForegroundColor Yellow
-	Write-Host ("HTML report              : {0}" -f $htmlReportFile) -ForegroundColor Yellow
+	Write-Host ("CSV report               : {0}" -f $S_CsvFile) -ForegroundColor Yellow
+	Write-Host ("HTML report              : {0}" -f $S_HtmlReportFile) -ForegroundColor Yellow
 
 	$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
-	if ($S_DisconnectChoice -match '^(y|yes)$') {
+	if ($S_DisconnectChoice -match '^(y|yes)$')
+	{
 		Disconnect-MgGraph -ErrorAction SilentlyContinue
 	}
 }
-catch {
+catch
+{
 	Write-Error $_
 	exit 1
 }

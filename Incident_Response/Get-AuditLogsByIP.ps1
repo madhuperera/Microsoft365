@@ -75,14 +75,16 @@ $ErrorActionPreference = 'Stop'
 # Connection
 # ---------------------------------------------------------------------------
 
-if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement)) {
+if (-not (Get-Module -ListAvailable -Name ExchangeOnlineManagement))
+{
     throw "ExchangeOnlineManagement module is not installed. Install it using Install-Module ExchangeOnlineManagement -Scope CurrentUser."
 }
 
 Import-Module ExchangeOnlineManagement -ErrorAction Stop
 
 $S_ExistingConnection = Get-ConnectionInformation -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Connected' } | Select-Object -First 1
-if ($S_ExistingConnection) {
+if ($S_ExistingConnection)
+{
     Write-Host "Existing Exchange Online session detected:" -ForegroundColor Yellow
     Write-Host "  Account     : $($S_ExistingConnection.UserPrincipalName)" -ForegroundColor Yellow
     Write-Host "  Organization: $($S_ExistingConnection.Organization)" -ForegroundColor Yellow
@@ -90,18 +92,21 @@ if ($S_ExistingConnection) {
     Write-Host ""
 
     $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-    if ($S_Choice -eq 'N') {
+    if ($S_Choice -eq 'N')
+    {
         Write-Host "Disconnecting existing session..." -ForegroundColor Cyan
         Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Reconnecting to Exchange Online..." -ForegroundColor Cyan
         Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop
         Write-Host "Connected to Exchange Online." -ForegroundColor Green
     }
-    else {
+    else
+    {
         Write-Host "Using existing Exchange Online session." -ForegroundColor Green
     }
 }
-else {
+else
+{
     Write-Host "Connecting to Exchange Online..." -ForegroundColor Cyan
     Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop
     Write-Host "Connected to Exchange Online." -ForegroundColor Green
@@ -122,7 +127,8 @@ Write-Host "  Account    : $S_Account"     -ForegroundColor Cyan
 Write-Host ("=" * 70) -ForegroundColor Cyan
 Write-Host ""
 
-try {
+try
+{
     # ---------------------------------------------------------------------------
     # Search with pagination (max 5000 records per call, loop until exhausted)
     # ---------------------------------------------------------------------------
@@ -130,56 +136,80 @@ try {
     Write-Host "Searching audit logs..." -ForegroundColor Cyan
     Write-Host "  IP(s)       : $($IPAddresses -join ', ')"
     Write-Host "  Date range  : $FromDate  ->  $ToDate"
-    if ($UserUPNs)   { Write-Host "  User(s)     : $($UserUPNs -join ', ')" }
-    if ($Operations) { Write-Host "  Operation(s): $($Operations -join ', ')" }
+    if ($UserUPNs)
+    {
+        Write-Host "  User(s)     : $($UserUPNs -join ', ')"
+    }
 
-    $sessionId  = [System.Guid]::NewGuid().ToString()
-    $allRecords = [System.Collections.Generic.List[object]]::new()
+    if ($Operations)
+    {
+        Write-Host "  Operation(s): $($Operations -join ', ')"
+    }
 
-    do {
-        $searchParams = @{
+    $S_SessionId = [System.Guid]::NewGuid().ToString()
+    $S_AllRecords = [System.Collections.Generic.List[object]]::new()
+
+    do
+    {
+        $S_SearchParams = @{
             StartDate      = $FromDate
             EndDate        = $ToDate
             IPAddresses    = $IPAddresses
             ResultSize     = 5000
-            SessionId      = $sessionId
+            SessionId      = $S_SessionId
             SessionCommand = 'ReturnLargeSet'
             ErrorAction    = 'Stop'
         }
-        if ($UserUPNs)   { $searchParams['UserIds']    = $UserUPNs }
-        if ($Operations) { $searchParams['Operations'] = $Operations }
-
-        $batch = Search-UnifiedAuditLog @searchParams
-        if ($batch) {
-            $allRecords.AddRange([object[]]$batch)
-            Write-Host "  Retrieved $($allRecords.Count) record(s) so far..." -ForegroundColor Gray
+        if ($UserUPNs)
+        {
+            $S_SearchParams['UserIds'] = $UserUPNs
         }
-    } while ($batch -and $batch.Count -eq 5000)
 
-    if ($allRecords.Count -eq 0) {
+        if ($Operations)
+        {
+            $S_SearchParams['Operations'] = $Operations
+        }
+
+        $S_Batch = Search-UnifiedAuditLog @S_SearchParams
+        if ($S_Batch)
+        {
+            $S_AllRecords.AddRange([object[]]$S_Batch)
+            Write-Host "  Retrieved $($S_AllRecords.Count) record(s) so far..." -ForegroundColor Gray
+        }
+    } while ($S_Batch -and $S_Batch.Count -eq 5000)
+
+    if ($S_AllRecords.Count -eq 0)
+    {
         Write-Host "`nNo records found for the specified criteria." -ForegroundColor Yellow
         return
     }
 
-    Write-Host "`nTotal records found: $($allRecords.Count)" -ForegroundColor Green
+    Write-Host "`nTotal records found: $($S_AllRecords.Count)" -ForegroundColor Green
 
     # ---------------------------------------------------------------------------
     # Parse each record — operation-specific fields + raw fallback
     # ---------------------------------------------------------------------------
 
-    $parsedRecords = foreach ($entry in $allRecords) {
-        $auditData = $null
-        try { $auditData = $entry.AuditData | ConvertFrom-Json } catch { }
+    $S_ParsedRecords = foreach ($S_Entry in $S_AllRecords)
+    {
+        $S_AuditData = $null
+        try
+        {
+            $S_AuditData = $S_Entry.AuditData | ConvertFrom-Json
+        }
+        catch
+        {
+        }
 
-        $row = [ordered]@{
-            CreationDate = $entry.CreationDate
-            UserId       = $entry.UserIds
-            Operation    = $entry.Operations
-            ClientIP     = if ($auditData.ClientIP)            { $auditData.ClientIP }
-                           elseif ($auditData.ActorIpAddress) { $auditData.ActorIpAddress }
-                           else { $null }
-            RecordType   = $entry.RecordType
-            ResultStatus = $auditData.ResultStatus
+        $S_Row = [ordered]@{
+            CreationDate      = $S_Entry.CreationDate
+            UserId            = $S_Entry.UserIds
+            Operation         = $S_Entry.Operations
+            ClientIP          = if ($S_AuditData.ClientIP) { $S_AuditData.ClientIP }
+                                elseif ($S_AuditData.ActorIpAddress) { $S_AuditData.ActorIpAddress }
+                                else { $null }
+            RecordType        = $S_Entry.RecordType
+            ResultStatus      = $S_AuditData.ResultStatus
             EmailSubject      = $null
             EmailFolder       = $null
             SourceFolder      = $null
@@ -189,75 +219,77 @@ try {
             RawAuditData      = $null
         }
 
-        switch ($entry.Operations) {
+        switch ($S_Entry.Operations)
+        {
             { $_ -in 'Update', 'Create' } {
-                $item = $auditData.Item
-                $row['EmailSubject'] = $item.Subject
-                $row['EmailFolder']  = $item.ParentFolder.Path
-                $row['Attachments']  = $item.Attachments | ConvertTo-Json -Compress
+                $S_Item = $S_AuditData.Item
+                $S_Row['EmailSubject'] = $S_Item.Subject
+                $S_Row['EmailFolder'] = $S_Item.ParentFolder.Path
+                $S_Row['Attachments'] = $S_Item.Attachments | ConvertTo-Json -Compress
             }
             { $_ -in 'MoveToDeletedItems', 'HardDelete', 'SoftDelete' } {
-                $affected = $auditData.AffectedItems
-                $row['EmailSubject'] = $affected.Subject
-                $row['EmailFolder']  = $affected.ParentFolder.Path
+                $S_Affected = $S_AuditData.AffectedItems
+                $S_Row['EmailSubject'] = $S_Affected.Subject
+                $S_Row['EmailFolder'] = $S_Affected.ParentFolder.Path
             }
             'Move' {
-                $affected = $auditData.AffectedItems
-                $row['EmailSubject']      = $affected.Subject
-                $row['SourceFolder']      = $auditData.Folder.Path
-                $row['DestinationFolder'] = $auditData.DestFolder.Path
+                $S_Affected = $S_AuditData.AffectedItems
+                $S_Row['EmailSubject'] = $S_Affected.Subject
+                $S_Row['SourceFolder'] = $S_AuditData.Folder.Path
+                $S_Row['DestinationFolder'] = $S_AuditData.DestFolder.Path
             }
             'New-InboxRule' {
-                $row['RuleContent'] = $auditData.Parameters | ConvertTo-Json -Compress
+                $S_Row['RuleContent'] = $S_AuditData.Parameters | ConvertTo-Json -Compress
             }
             default {
-                $row['RawAuditData'] = $entry.AuditData
+                $S_Row['RawAuditData'] = $S_Entry.AuditData
             }
         }
 
-        [PSCustomObject]$row
+        [PSCustomObject]$S_Row
     }
 
     # ---------------------------------------------------------------------------
     # Export
     # ---------------------------------------------------------------------------
 
-    if (-not (Test-Path -LiteralPath $OutputPath)) {
+    if (-not (Test-Path -LiteralPath $OutputPath))
+    {
         New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
     }
 
-    $reportTime = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
-    $reportDate = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $ipTag      = ($IPAddresses -join '_') -replace '[^\w\-]', '-'
+    $S_ReportTime = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
+    $S_ReportDate = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $S_IpTag = ($IPAddresses -join '_') -replace '[^\w\-]', '-'
 
-    $csvName = "AuditLogsByIP_${ipTag}_${reportTime}.csv"
-    $csvPath = Join-Path -Path $OutputPath -ChildPath $csvName
-    $parsedRecords | Export-Csv -LiteralPath $csvPath -NoTypeInformation -Encoding UTF8
-    Write-Host "`nCSV report saved to: $csvPath" -ForegroundColor Green
+    $S_CsvName = "AuditLogsByIP_${S_IpTag}_${S_ReportTime}.csv"
+    $S_CsvPath = Join-Path -Path $OutputPath -ChildPath $S_CsvName
+    $S_ParsedRecords | Export-Csv -LiteralPath $S_CsvPath -NoTypeInformation -Encoding UTF8
+    Write-Host "`nCSV report saved to: $S_CsvPath" -ForegroundColor Green
 
     # ---------------------------------------------------------------------------
     # Build simple HTML report
     # ---------------------------------------------------------------------------
 
-    $opsSummary = $parsedRecords | Group-Object -Property Operation | Sort-Object Count -Descending
-    $userSummary = $parsedRecords | Group-Object -Property UserId | Sort-Object Count -Descending | Select-Object -First 20
+    $S_OpsSummary = $S_ParsedRecords | Group-Object -Property Operation | Sort-Object Count -Descending
+    $S_UserSummary = $S_ParsedRecords | Group-Object -Property UserId | Sort-Object Count -Descending | Select-Object -First 20
 
-    $opsRows = ($opsSummary | ForEach-Object {
+    $S_OpsRows = ($S_OpsSummary | ForEach-Object {
         "<tr><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.Name))</td><td>$($_.Count)</td></tr>"
     }) -join "`n"
 
-    $userRows = ($userSummary | ForEach-Object {
+    $S_UserRows = ($S_UserSummary | ForEach-Object {
         "<tr><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.Name))</td><td>$($_.Count)</td></tr>"
     }) -join "`n"
 
-    $detailRows = ($parsedRecords | ForEach-Object {
-        $created = if ($_.CreationDate) { ([datetime]$_.CreationDate).ToString('yyyy-MM-dd HH:mm:ss') } else { '' }
-        "<tr><td>$created</td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.UserId))</td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.Operation))</td><td><code>$([System.Net.WebUtility]::HtmlEncode([string]$_.ClientIP))</code></td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.ResultStatus))</td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.EmailSubject))</td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.EmailFolder))</td></tr>"
+    $S_DetailRows = ($S_ParsedRecords | ForEach-Object {
+        $S_Created = if ($_.CreationDate) { ([datetime]$_.CreationDate).ToString('yyyy-MM-dd HH:mm:ss') } else { '' }
+        "<tr><td>$S_Created</td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.UserId))</td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.Operation))</td><td><code>$([System.Net.WebUtility]::HtmlEncode([string]$_.ClientIP))</code></td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.ResultStatus))</td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.EmailSubject))</td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.EmailFolder))</td></tr>"
     }) -join "`n"
 
-    $ipListHtml = ($IPAddresses | ForEach-Object { "<span class='ip-chip'>$([System.Net.WebUtility]::HtmlEncode($_))</span>" }) -join ' '
+    $S_IpListHtml = ($IPAddresses | ForEach-Object { "<span class='ip-chip'>$([System.Net.WebUtility]::HtmlEncode($_))</span>" }) -join ' '
 
-    $html = @"
+    $S_Html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -290,30 +322,30 @@ try {
     <div class="header">
         <h1>Audit Logs by IP Report</h1>
         <div class="meta">
-            <div class="lbl">Generated</div><div class="val">$reportDate</div>
+            <div class="lbl">Generated</div><div class="val">$S_ReportDate</div>
             <div class="lbl">Tenant</div><div class="val">$([System.Net.WebUtility]::HtmlEncode($S_TenantName))</div>
             <div class="lbl">Tenant ID</div><div class="val"><code style="background:rgba(255,255,255,0.1);color:#fff;">$S_TenantId</code></div>
             <div class="lbl">Period</div><div class="val">$($FromDate.ToString('yyyy-MM-dd HH:mm')) &rarr; $($ToDate.ToString('yyyy-MM-dd HH:mm'))</div>
-            <div class="lbl">IP(s)</div><div class="val">$ipListHtml</div>
+            <div class="lbl">IP(s)</div><div class="val">$S_IpListHtml</div>
         </div>
     </div>
 
     <div class="summary-cards">
         <div class="card">
             <div class="label">Total Records</div>
-            <div class="value">$($parsedRecords.Count)</div>
+            <div class="value">$($S_ParsedRecords.Count)</div>
         </div>
         <div class="card">
             <div class="label">Unique Users</div>
-            <div class="value">$(($parsedRecords | Select-Object -ExpandProperty UserId -Unique).Count)</div>
+            <div class="value">$(($S_ParsedRecords | Select-Object -ExpandProperty UserId -Unique).Count)</div>
         </div>
         <div class="card">
             <div class="label">Unique Operations</div>
-            <div class="value">$($opsSummary.Count)</div>
+            <div class="value">$($S_OpsSummary.Count)</div>
         </div>
         <div class="card">
             <div class="label">Unique Client IPs</div>
-            <div class="value">$(($parsedRecords | Select-Object -ExpandProperty ClientIP -Unique | Where-Object { $_ }).Count)</div>
+            <div class="value">$(($S_ParsedRecords | Select-Object -ExpandProperty ClientIP -Unique | Where-Object { $_ }).Count)</div>
         </div>
     </div>
 
@@ -322,7 +354,7 @@ try {
         <table>
             <thead><tr><th>Operation</th><th>Count</th></tr></thead>
             <tbody>
-$opsRows
+$S_OpsRows
             </tbody>
         </table>
     </div>
@@ -332,7 +364,7 @@ $opsRows
         <table>
             <thead><tr><th>User</th><th>Count</th></tr></thead>
             <tbody>
-$userRows
+$S_UserRows
             </tbody>
         </table>
     </div>
@@ -352,34 +384,37 @@ $userRows
                 </tr>
             </thead>
             <tbody>
-$detailRows
+$S_DetailRows
             </tbody>
         </table>
     </div>
 
     <div class="footer">
-        CSV data: $(Split-Path $csvPath -Leaf) | Report generated by Get-AuditLogsByIP.ps1
+        CSV data: $(Split-Path $S_CsvPath -Leaf) | Report generated by Get-AuditLogsByIP.ps1
     </div>
 </body>
 </html>
 "@
 
-    $htmlName = "AuditLogsByIP_${ipTag}_${reportTime}.html"
-    $S_HtmlPath = Join-Path -Path $OutputPath -ChildPath $htmlName
-    $html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
+    $S_HtmlName = "AuditLogsByIP_${S_IpTag}_${S_ReportTime}.html"
+    $S_HtmlPath = Join-Path -Path $OutputPath -ChildPath $S_HtmlName
+    $S_Html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
     Write-Host "HTML report saved to: $S_HtmlPath" -ForegroundColor Green
 
     Write-Host "`nOperations summary:" -ForegroundColor Cyan
-    $opsSummary | Select-Object Name, Count | Format-Table -AutoSize
+    $S_OpsSummary | Select-Object Name, Count | Format-Table -AutoSize
 }
-finally {
+finally
+{
     $S_DisconnectChoice = Read-Host "`nDisconnect from Exchange Online? [Y] Yes  [N] Keep session  (Default: N)"
-    if ($S_DisconnectChoice -eq 'Y') {
+    if ($S_DisconnectChoice -eq 'Y')
+    {
         Write-Host "Disconnecting from Exchange Online..." -ForegroundColor Cyan
         Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Disconnected." -ForegroundColor Green
     }
-    else {
+    else
+    {
         Write-Host "Exchange Online session kept alive." -ForegroundColor Green
     }
 }

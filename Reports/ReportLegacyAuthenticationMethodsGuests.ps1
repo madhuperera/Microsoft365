@@ -28,10 +28,11 @@ param (
 
 $ErrorActionPreference = 'Stop'
 
-if (-not $OutputPath)
+$S_OutputPath = $OutputPath
+if (-not $S_OutputPath)
 {
     $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-    $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportLegacyAuthenticationMethodsGuests_$S_Timestamp.csv"
+    $S_OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportLegacyAuthenticationMethodsGuests_$S_Timestamp.csv"
 }
 
 $S_RequiredGraphScopes = @(
@@ -87,61 +88,68 @@ if ($S_ContextConfirmation -ne 'Y')
 }
 
 Write-Host "Finding Azure AD Guest accounts"
-[array]$S_Users = Get-MgUser -Filter "userType eq 'Guest'" -ConsistencyLevel eventual -CountVariable Records -All
-If (!($S_Users)) { Write-Host "No guest users found in Azure AD... exiting!"; break }
+[array]$S_Users = Get-MgUser -Filter "userType eq 'Guest'" -ConsistencyLevel eventual -CountVariable S_Records -All
+if (-not $S_Users)
+{
+    Write-Host "No guest users found in Azure AD... exiting!"
+    break
+}
 
-$i = 0
+$S_i = 0
 $S_Report = [System.Collections.Generic.List[Object]]::new()
-ForEach ($User in $S_Users)
+foreach ($S_User in $S_Users)
 {
- $i++
- Write-Host ("Processing user {0} {1}/{2}." -f $User.DisplayName, $i, $S_Users.Count)
-$AuthMethods = Get-MgUserAuthenticationMethod -UserId $User.Id
+    $S_i++
+    Write-Host ("Processing user {0} {1}/{2}." -f $S_User.DisplayName, $S_i, $S_Users.Count)
+    $S_AuthMethods = Get-MgUserAuthenticationMethod -UserId $S_User.Id
+    Start-Sleep -Milliseconds $S_GraphRequestDelayMilliseconds
 
-$ModernTypes = @()
-$LegacyTypes = @()
-$ModernOdataTypes = @(
-  "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod",
-  "#microsoft.graph.fido2AuthenticationMethod"
-)
+    $S_ModernTypes = @()
+    $S_LegacyTypes = @()
+    $S_ModernOdataTypes = @(
+        "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod",
+        "#microsoft.graph.fido2AuthenticationMethod"
+    )
 
-foreach ($Method in $AuthMethods) {
-  $Type = $Method.AdditionalProperties['@odata.type']
-  switch ($Type) {
-    "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod" { $ModernTypes += "Microsoft Authenticator" }
-    "#microsoft.graph.fido2AuthenticationMethod" { $ModernTypes += "Passkey" }
-    "#microsoft.graph.passwordAuthenticationMethod" { $LegacyTypes += "Password" }
-    "#microsoft.graph.phoneAuthenticationMethod" { $LegacyTypes += "Phone" }
-    "#microsoft.graph.emailAuthenticationMethod" { $LegacyTypes += "Email" }
-    "#microsoft.graph.passwordlessMicrosoftAuthenticatorAuthenticationMethod" { $LegacyTypes += "Passwordless" }
-    default { $LegacyTypes += $Type }
-  }
-}
+    foreach ($S_Method in $S_AuthMethods)
+    {
+        $S_Type = $S_Method.AdditionalProperties['@odata.type']
+        switch ($S_Type)
+        {
+            "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod" { $S_ModernTypes += "Microsoft Authenticator" }
+            "#microsoft.graph.fido2AuthenticationMethod" { $S_ModernTypes += "Passkey" }
+            "#microsoft.graph.passwordAuthenticationMethod" { $S_LegacyTypes += "Password" }
+            "#microsoft.graph.phoneAuthenticationMethod" { $S_LegacyTypes += "Phone" }
+            "#microsoft.graph.emailAuthenticationMethod" { $S_LegacyTypes += "Email" }
+            "#microsoft.graph.passwordlessMicrosoftAuthenticatorAuthenticationMethod" { $S_LegacyTypes += "Passwordless" }
+            default { $S_LegacyTypes += $S_Type }
+        }
+    }
 
-if ($ModernTypes.Count -gt 0) 
-{
-  $DisplayMethod = "Modern Authentication"
-  $P1 = $ModernTypes -join ", "
-} 
-elseif ($LegacyTypes.Count -gt 0) 
-{
-  $DisplayMethod = "Legacy Authentication"
-  $P1 = $LegacyTypes -join ", "
-} 
-else 
-{
-  $DisplayMethod = "No Methods"
-  $P1 = ""
-}
+    if ($S_ModernTypes.Count -gt 0)
+    {
+        $S_DisplayMethod = "Modern Authentication"
+        $S_P1 = $S_ModernTypes -join ", "
+    }
+    elseif ($S_LegacyTypes.Count -gt 0)
+    {
+        $S_DisplayMethod = "Legacy Authentication"
+        $S_P1 = $S_LegacyTypes -join ", "
+    }
+    else
+    {
+        $S_DisplayMethod = "No Methods"
+        $S_P1 = ""
+    }
 
-$ReportLine = [PSCustomObject]@{
-  User    = $User.DisplayName
-  UPN     = $User.UserPrincipalName
-  Type    = $DisplayMethod
-  Methods = $P1
-  Id      = $User.Id
-}
-$S_Report.Add($ReportLine)
+    $S_ReportLine = [PSCustomObject]@{
+        User    = $S_User.DisplayName
+        UPN     = $S_User.UserPrincipalName
+        Type    = $S_DisplayMethod
+        Methods = $S_P1
+        Id      = $S_User.Id
+    }
+    $S_Report.Add($S_ReportLine)
 
 } #End ForEach User
  
@@ -153,8 +161,8 @@ Write-Host "----------------------------"
 Write-Host ""
 $S_Report | Group-Object Type | Sort-Object Count -Descending | Select-Object Name, Count | Format-Table -AutoSize
 
-$S_Report | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
-Write-Host "Report exported to: $OutputPath" -ForegroundColor Green
+$S_Report | Export-Csv -Path $S_OutputPath -NoTypeInformation -Encoding UTF8
+Write-Host "Report exported to: $S_OutputPath" -ForegroundColor Green
 
 $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
 if ($S_DisconnectChoice -eq 'Y')
