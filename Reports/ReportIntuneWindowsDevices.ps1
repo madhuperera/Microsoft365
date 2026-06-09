@@ -343,7 +343,17 @@ try
     $S_Breakdown | Select-Object OsGeneration, WinBuild, Total, Outdated | Export-Csv -Path $S_BreakdownCsv -NoTypeInformation -Encoding UTF8
 
     # --- HTML helpers ---
-    $S_Enc = { param($s) if ($null -eq $s -or $s -eq '') { '-' } else { [System.Net.WebUtility]::HtmlEncode([string]$s) } }
+    $S_Enc = {
+        param($s)
+        if ($null -eq $s -or $s -eq '')
+        {
+            '-'
+        }
+        else
+        {
+            [System.Net.WebUtility]::HtmlEncode([string]$s)
+        }
+    }
     $S_ReportDate = Get-Date -Format "dd MMM yyyy HH:mm"
 
     $S_Win10Threshold = if ($PSBoundParameters.ContainsKey('MinimumSupportedWindows10Build'))
@@ -473,7 +483,16 @@ try
                 '"' + $b + '"'
             }) -join ','
         $counts = ($Items | ForEach-Object { $_.Total }) -join ','
-        $outFlag = ($Items | ForEach-Object { if ($_.Outdated) { 'true' } else { 'false' } }) -join ','
+        $outFlag = ($Items | ForEach-Object {
+                if ($_.Outdated)
+                {
+                    'true'
+                }
+                else
+                {
+                    'false'
+                }
+            }) -join ','
         "{`"labels`":[$labels],`"data`":[$counts],`"outdated`":[$outFlag]}"
     }
 
@@ -536,6 +555,14 @@ try
             {
                 '-'
             }
+            $S_DaysSinceSyncDisplay = if ($S_DaysVal -ge 0)
+            {
+                "$S_DaysVal days"
+            }
+            else
+            {
+                'Never'
+            }
             $S_RowAttr = "data-generation=`"$($_.OsGeneration)`" data-status=`"$($_.SupportStatus)`""
             "<tr $S_RowAttr>" +
             "<td>$(& $S_Enc $_.DeviceName)</td>" +
@@ -551,7 +578,7 @@ try
             "<td><span class='badge $S_CompClass'>$(& $S_Enc $_.ComplianceState)</span></td>" +
             "<td>$S_EnrolDisp</td>" +
             "<td>$S_LastSyncDisp</td>" +
-            "<td>$(if ($S_DaysVal -ge 0) { "$S_DaysVal days" } else { 'Never' })</td>" +
+            "<td>$S_DaysSinceSyncDisplay</td>" +
             "</tr>"
         }) -join "`n"
 

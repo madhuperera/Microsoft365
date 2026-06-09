@@ -113,11 +113,29 @@ else
 }
 
 $S_Context = Get-ConnectionInformation -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Connected' } | Select-Object -First 1
-$S_TenantName = if ($S_Context -and $S_Context.Organization)    { [string]$S_Context.Organization }
-              elseif ($S_Context -and $S_Context.DelegatedOrganization) { [string]$S_Context.DelegatedOrganization }
-              else { 'Unknown' }
-$S_TenantId   = if ($S_Context) { [string]$S_Context.TenantId }          else { 'Unknown' }
-$S_Account    = if ($S_Context) { [string]$S_Context.UserPrincipalName } else { 'Unknown' }
+if ($S_Context -and $S_Context.Organization)
+{
+    $S_TenantName = [string]$S_Context.Organization
+}
+elseif ($S_Context -and $S_Context.DelegatedOrganization)
+{
+    $S_TenantName = [string]$S_Context.DelegatedOrganization
+}
+else
+{
+    $S_TenantName = 'Unknown'
+}
+
+if ($S_Context)
+{
+    $S_TenantId = [string]$S_Context.TenantId
+    $S_Account = [string]$S_Context.UserPrincipalName
+}
+else
+{
+    $S_TenantId = 'Unknown'
+    $S_Account = 'Unknown'
+}
 
 Write-Host ""
 Write-Host ("=" * 70) -ForegroundColor Cyan
@@ -201,13 +219,24 @@ try
         {
         }
 
+        if ($S_AuditData.ClientIP)
+        {
+            $S_ClientIP = $S_AuditData.ClientIP
+        }
+        elseif ($S_AuditData.ActorIpAddress)
+        {
+            $S_ClientIP = $S_AuditData.ActorIpAddress
+        }
+        else
+        {
+            $S_ClientIP = $null
+        }
+
         $S_Row = [ordered]@{
             CreationDate      = $S_Entry.CreationDate
             UserId            = $S_Entry.UserIds
             Operation         = $S_Entry.Operations
-            ClientIP          = if ($S_AuditData.ClientIP) { $S_AuditData.ClientIP }
-                                elseif ($S_AuditData.ActorIpAddress) { $S_AuditData.ActorIpAddress }
-                                else { $null }
+            ClientIP          = $S_ClientIP
             RecordType        = $S_Entry.RecordType
             ResultStatus      = $S_AuditData.ResultStatus
             EmailSubject      = $null
@@ -283,7 +312,15 @@ try
     }) -join "`n"
 
     $S_DetailRows = ($S_ParsedRecords | ForEach-Object {
-        $S_Created = if ($_.CreationDate) { ([datetime]$_.CreationDate).ToString('yyyy-MM-dd HH:mm:ss') } else { '' }
+        if ($_.CreationDate)
+        {
+            $S_Created = ([datetime]$_.CreationDate).ToString('yyyy-MM-dd HH:mm:ss')
+        }
+        else
+        {
+            $S_Created = ''
+        }
+
         "<tr><td>$S_Created</td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.UserId))</td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.Operation))</td><td><code>$([System.Net.WebUtility]::HtmlEncode([string]$_.ClientIP))</code></td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.ResultStatus))</td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.EmailSubject))</td><td>$([System.Net.WebUtility]::HtmlEncode([string]$_.EmailFolder))</td></tr>"
     }) -join "`n"
 

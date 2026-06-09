@@ -329,7 +329,17 @@ try
     $S_Report | Sort-Object Platform, DeviceName | Export-Csv -Path $S_CsvFile -NoTypeInformation -Encoding UTF8
 
     # --- HTML helpers ---
-    $S_Enc = { param($s) if ($null -eq $s -or $s -eq '') { '-' } else { [System.Net.WebUtility]::HtmlEncode([string]$s) } }
+    $S_Enc = {
+        param($s)
+        if ($null -eq $s -or $s -eq '')
+        {
+            '-'
+        }
+        else
+        {
+            [System.Net.WebUtility]::HtmlEncode([string]$s)
+        }
+    }
     $S_ReportDate = Get-Date -Format "dd MMM yyyy HH:mm"
 
     # Build version spread cards HTML
@@ -375,7 +385,16 @@ try
         }
         $labels = ($Spread | ForEach-Object { '"' + $_.Version + '"' }) -join ','
         $counts = ($Spread | ForEach-Object { $_.Count }) -join ','
-        $outFlag = ($Spread | ForEach-Object { if ($_.Outdated) { 'true' } else { 'false' } }) -join ','
+        $outFlag = ($Spread | ForEach-Object {
+                if ($_.Outdated)
+                {
+                    'true'
+                }
+                else
+                {
+                    'false'
+                }
+            }) -join ','
         "{`"labels`":[$labels],`"data`":[$counts],`"outdated`":[$outFlag]}"
     }
 
@@ -421,13 +440,29 @@ try
                 'noncompliant' { 'badge-inactive' }
                 default { 'badge-disabled' }
             }
+            $S_MajorVersionDisplay = if ($null -ne $_.MajorVersion)
+            {
+                $_.MajorVersion
+            }
+            else
+            {
+                '-'
+            }
+            $S_DaysSinceSyncDisplay = if ($S_DaysVal -ge 0)
+            {
+                "$S_DaysVal days"
+            }
+            else
+            {
+                'Never'
+            }
             $S_RowAttr = "data-platform=`"$($_.Platform)`" data-status=`"$($_.SupportStatus)`""
             "<tr $S_RowAttr>" +
             "<td>$(& $S_Enc $_.DeviceName)</td>" +
             "<td>$(& $S_Enc $_.User)</td>" +
             "<td>$(& $S_Enc $_.Platform)</td>" +
             "<td>$(& $S_Enc $_.OSVersion)</td>" +
-            "<td>$(if ($null -ne $_.MajorVersion) { $_.MajorVersion } else { '-' })</td>" +
+            "<td>$S_MajorVersionDisplay</td>" +
             "<td><span class='badge $S_StatusClass'>$($_.SupportStatus)</span></td>" +
             "<td>$(& $S_Enc $_.Manufacturer)</td>" +
             "<td>$(& $S_Enc $_.Model)</td>" +
@@ -435,7 +470,7 @@ try
             "<td><span class='badge $S_CompClass'>$(& $S_Enc $_.ComplianceState)</span></td>" +
             "<td>$S_EnrolDisp</td>" +
             "<td>$S_LastSyncDisp</td>" +
-            "<td>$(if ($S_DaysVal -ge 0) { "$S_DaysVal days" } else { 'Never' })</td>" +
+            "<td>$S_DaysSinceSyncDisplay</td>" +
             "</tr>"
         }) -join "`n"
 

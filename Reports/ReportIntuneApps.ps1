@@ -361,7 +361,17 @@ try
     # --- HTML report ---
     $S_ReportDate = Get-Date -Format 'dd MMM yyyy HH:mm'
 
-    $S_Enc = { param($s) if ($null -eq $s -or $s -eq '') { '-' } else { [System.Net.WebUtility]::HtmlEncode([string]$s) } }
+    $S_Enc = {
+        param($s)
+        if ($null -eq $s -or $s -eq '')
+        {
+            '-'
+        }
+        else
+        {
+            [System.Net.WebUtility]::HtmlEncode([string]$s)
+        }
+    }
 
     $S_TableRows = ($S_Report | ForEach-Object {
             $S_Created = if ($_.CreatedDateTime)

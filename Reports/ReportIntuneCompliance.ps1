@@ -420,7 +420,11 @@ try
             {
                 $S_Cname = if ($S_Schema[$S_I].Column)
                 {
-                    [string]$S_Schema[$S_I].Column } elseif ($S_Schema[$S_I].PropertyName) { [string]$S_Schema[$S_I].PropertyName
+                    [string]$S_Schema[$S_I].Column
+                }
+                elseif ($S_Schema[$S_I].PropertyName)
+                {
+                    [string]$S_Schema[$S_I].PropertyName
                 }
                 else
                 {
@@ -642,13 +646,27 @@ try
     }
 
     # --- HTML helpers ---
-    $S_Enc = { param($s) if ($null -eq $s -or $s -eq '') { '-' } else { [System.Net.WebUtility]::HtmlEncode([string]$s) } }
+    $S_Enc = {
+        param($s)
+        if ($null -eq $s -or $s -eq '')
+        {
+            '-'
+        }
+        else
+        {
+            [System.Net.WebUtility]::HtmlEncode([string]$s)
+        }
+    }
     $S_ReportDate = Get-Date -Format "dd MMM yyyy HH:mm"
 
     # Banner state
     $S_SecureByDefaultDisp = if ($null -eq $S_SecureByDefault)
     {
-        'Unknown' } elseif ($S_SecureByDefault) { 'On'
+        'Unknown'
+    }
+    elseif ($S_SecureByDefault)
+    {
+        'On'
     }
     else
     {
@@ -1017,7 +1035,15 @@ filterTable();
     Write-Host "Intune Compliance Report" -ForegroundColor Cyan
     Write-Host "--------------------------------------------"
     Write-Host ("Tenant                    : {0} ({1})" -f $S_TenantDisplayName, $S_TenantId)
-    Write-Host ("secureByDefault           : {0}" -f $S_SecureByDefaultDisp) -ForegroundColor $(if ($S_SecureByDefault -eq $true) { 'Green' } else { 'Red' })
+    $S_SecureByDefaultColour = if ($S_SecureByDefault -eq $true)
+    {
+        'Green'
+    }
+    else
+    {
+        'Red'
+    }
+    Write-Host ("secureByDefault           : {0}" -f $S_SecureByDefaultDisp) -ForegroundColor $S_SecureByDefaultColour
     Write-Host ("Check-in threshold (days) : {0}" -f $S_CheckinThresholdDays)
     Write-Host ("Total reporting devices   : {0}" -f $S_TenantTotal)
     Write-Host ("  Compliant               : {0}" -f $S_TenantStates.Compliant) -ForegroundColor Green
