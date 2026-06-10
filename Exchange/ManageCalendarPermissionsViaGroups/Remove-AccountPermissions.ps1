@@ -30,13 +30,13 @@ param (
 
 $ErrorActionPreference = 'Stop'
 
-$AllMembers = Get-DistributionGroupMember -Identity $DistributionGroupName `
+$S_AllMembers = Get-DistributionGroupMember -Identity $DistributionGroupName `
     | Select-Object DisplayName, PrimarySmtpAddress `
     | Sort-Object DisplayName
 
-foreach ($Member in $AllMembers)
+foreach ($S_Member in $S_AllMembers)
 {
-    Write-Host "$($Member.DisplayName)" -ForegroundColor Green
-    Remove-MailboxFolderPermission -Identity $($Member.PrimarySmtpAddress + ":\Calendar") -User $OldAccount -Confirm:$false
+    Write-Host "$($S_Member.DisplayName)" -ForegroundColor Green
+    Remove-MailboxFolderPermission -Identity $($S_Member.PrimarySmtpAddress + ":\Calendar") -User $OldAccount -Confirm:$false
     Write-Host "`n"
 }

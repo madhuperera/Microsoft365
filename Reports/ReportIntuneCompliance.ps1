@@ -40,420 +40,763 @@
 
 [CmdletBinding()]
 param(
-	[Parameter(Mandatory = $false)]
-	[ValidateNotNullOrEmpty()]
-	[string]$ReportPath,
+    [Parameter(Mandatory = $false)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ReportPath,
 
-	[Parameter(Mandatory = $false)]
-	[switch]$IncludeDeviceStatusDetails
+    [Parameter(Mandatory = $false)]
+    [switch]$IncludeDeviceStatusDetails
 )
 
 $ErrorActionPreference = "Stop"
 
+$S_ReportPath = $ReportPath
+
 $S_RequiredGraphScopes = @(
-	'DeviceManagementConfiguration.Read.All'
-	'DeviceManagementManagedDevices.Read.All'
-	'DeviceManagementServiceConfig.Read.All'
-	'Organization.Read.All'
+    'DeviceManagementConfiguration.Read.All'
+    'DeviceManagementManagedDevices.Read.All'
+    'DeviceManagementServiceConfig.Read.All'
+    'Organization.Read.All'
 )
 
-try {
-	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Authentication)) {
-		throw "Microsoft.Graph.Authentication module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
-	}
-	Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
+try
+{
+    if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Authentication))
+    {
+        throw "Microsoft.Graph.Authentication module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
+    }
+    Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
 
-	# --- Connect to Graph ---
-	$S_ExistingContext = Get-MgContext
-	if ($S_ExistingContext)
-	{
-		Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
-		Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
-		Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
-		Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
-		Write-Host ""
+    # --- Connect to Graph ---
+    $S_ExistingContext = Get-MgContext
+    if ($S_ExistingContext)
+    {
+        Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
+        Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
+        Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
+        Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
+        Write-Host ""
 
-		$S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-		if ($S_Choice -eq 'N')
-		{
-			Disconnect-MgGraph | Out-Null
-			Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
-		}
-	}
-	else
-	{
-		Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
-	}
-	$S_ExistingContext = Get-MgContext
+        $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+        if ($S_Choice -eq 'N')
+        {
+            Disconnect-MgGraph | Out-Null
+            Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
+        }
+    }
+    else
+    {
+        Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
+    }
+    $S_ExistingContext = Get-MgContext
 
-	Write-Host ""
-	Write-Host "Active Graph context:" -ForegroundColor Cyan
-	Write-Host "  Account    : $($S_ExistingContext.Account)" -ForegroundColor Cyan
-	Write-Host "  TenantId   : $($S_ExistingContext.TenantId)" -ForegroundColor Cyan
-	Write-Host "  Scopes     : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Cyan
-	Write-Host ""
+    Write-Host ""
+    Write-Host "Active Graph context:" -ForegroundColor Cyan
+    Write-Host "  Account    : $($S_ExistingContext.Account)" -ForegroundColor Cyan
+    Write-Host "  TenantId   : $($S_ExistingContext.TenantId)" -ForegroundColor Cyan
+    Write-Host "  Scopes     : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Cyan
+    Write-Host ""
 
-	$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
-	if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation)) { $S_ContextConfirmation = 'N' }
-	if ($S_ContextConfirmation.ToUpperInvariant() -ne 'Y') {
-		throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
-	}
+    $S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
+    if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
+    {
+        $S_ContextConfirmation = 'N'
+    }
+    if ($S_ContextConfirmation.ToUpperInvariant() -ne 'Y')
+    {
+        throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
+    }
 
-	# --- Tenant info ---
-	$tenantDisplayName = $null
-	try {
-		$orgResp = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization' -ErrorAction Stop
-		if ($orgResp.value) { $tenantDisplayName = $orgResp.value[0].displayName }
-	} catch { }
-	if (-not $tenantDisplayName) { $tenantDisplayName = $S_ExistingContext.TenantId }
-	$tenantId = if ($S_ExistingContext.TenantId) { $S_ExistingContext.TenantId } else { 'Unknown' }
+    # --- Tenant info ---
+    $S_TenantDisplayName = $null
+    try
+    {
+        $S_OrgResp = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization' -ErrorAction Stop
+        if ($S_OrgResp.value)
+        {
+            $S_TenantDisplayName = $S_OrgResp.value[0].displayName
+        }
+    }
+    catch
+    {
+    }
+    if (-not $S_TenantDisplayName)
+    {
+        $S_TenantDisplayName = $S_ExistingContext.TenantId
+    }
+    $S_TenantId = if ($S_ExistingContext.TenantId)
+    {
+        $S_ExistingContext.TenantId
+    }
+    else
+    {
+        'Unknown'
+    }
 
-	# --- Tenant compliance settings ---
-	Write-Host "Reading tenant compliance settings..." -ForegroundColor Cyan
-	$secureByDefault = $null
-	$checkinThresholdDays = $null
-	try {
-		$settings = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/beta/deviceManagement/settings' -ErrorAction Stop
-		$secureByDefault = $settings.secureByDefault
-		$checkinThresholdDays = $settings.deviceComplianceCheckinThresholdDays
-	} catch {
-		Write-Warning "Failed to read tenant compliance settings: $($_.Exception.Message)"
-	}
-	if ($null -eq $checkinThresholdDays -or $checkinThresholdDays -le 0) { $checkinThresholdDays = 30 }
-	Write-Host ("  secureByDefault                      : {0}" -f $secureByDefault) -ForegroundColor Green
-	Write-Host ("  deviceComplianceCheckinThresholdDays : {0}" -f $checkinThresholdDays) -ForegroundColor Green
+    # --- Tenant compliance settings ---
+    Write-Host "Reading tenant compliance settings..." -ForegroundColor Cyan
+    $S_SecureByDefault = $null
+    $S_CheckinThresholdDays = $null
+    try
+    {
+        $S_Settings = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/beta/deviceManagement/settings' -ErrorAction Stop
+        $S_SecureByDefault = $S_Settings.secureByDefault
+        $S_CheckinThresholdDays = $S_Settings.deviceComplianceCheckinThresholdDays
+    }
+    catch
+    {
+        Write-Warning "Failed to read tenant compliance settings: $($_.Exception.Message)"
+    }
+    if ($null -eq $S_CheckinThresholdDays -or $S_CheckinThresholdDays -le 0)
+    {
+        $S_CheckinThresholdDays = 30
+    }
+    Write-Host ("  secureByDefault                      : {0}" -f $S_SecureByDefault) -ForegroundColor Green
+    Write-Host ("  deviceComplianceCheckinThresholdDays : {0}" -f $S_CheckinThresholdDays) -ForegroundColor Green
 
-	# --- Tenant-wide compliance state summary ---
-	Write-Host "Fetching tenant-wide compliance summary..." -ForegroundColor Cyan
-	$tenantSummary = $null
-	try {
-		$tenantSummary = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/beta/deviceManagement/deviceCompliancePolicyDeviceStateSummary' -ErrorAction Stop
-	} catch {
-		Write-Warning "Failed to read deviceCompliancePolicyDeviceStateSummary: $($_.Exception.Message)"
-	}
+    # --- Tenant-wide compliance state summary ---
+    Write-Host "Fetching tenant-wide compliance summary..." -ForegroundColor Cyan
+    $S_TenantSummary = $null
+    try
+    {
+        $S_TenantSummary = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/beta/deviceManagement/deviceCompliancePolicyDeviceStateSummary' -ErrorAction Stop
+    }
+    catch
+    {
+        Write-Warning "Failed to read deviceCompliancePolicyDeviceStateSummary: $($_.Exception.Message)"
+    }
 
-	$tenantStates = [ordered]@{
-		Compliant      = if ($tenantSummary) { [int]$tenantSummary.compliantDeviceCount }     else { 0 }
-		NonCompliant   = if ($tenantSummary) { [int]$tenantSummary.nonCompliantDeviceCount }  else { 0 }
-		InGracePeriod  = if ($tenantSummary) { [int]$tenantSummary.inGracePeriodCount }       else { 0 }
-		Error          = if ($tenantSummary) { [int]$tenantSummary.errorDeviceCount }         else { 0 }
-		Conflict       = if ($tenantSummary) { [int]$tenantSummary.conflictDeviceCount }      else { 0 }
-		NotApplicable  = if ($tenantSummary) { [int]$tenantSummary.notApplicableDeviceCount } else { 0 }
-		Remediated     = if ($tenantSummary) { [int]$tenantSummary.remediatedDeviceCount }    else { 0 }
-		ConfigManager  = if ($tenantSummary) { [int]$tenantSummary.configManagerCount }       else { 0 }
-		Unknown        = if ($tenantSummary) { [int]$tenantSummary.unknownDeviceCount }       else { 0 }
-	}
-	$tenantTotal = ($tenantStates.Values | Measure-Object -Sum).Sum
+    $S_TenantStates = [ordered]@{
+        Compliant     = if ($S_TenantSummary)
+        {
+            [int]$S_TenantSummary.compliantDeviceCount
+        }
+        else
+        {
+            0
+        }
+        NonCompliant  = if ($S_TenantSummary)
+        {
+            [int]$S_TenantSummary.nonCompliantDeviceCount
+        }
+        else
+        {
+            0
+        }
+        InGracePeriod = if ($S_TenantSummary)
+        {
+            [int]$S_TenantSummary.inGracePeriodCount
+        }
+        else
+        {
+            0
+        }
+        Error         = if ($S_TenantSummary)
+        {
+            [int]$S_TenantSummary.errorDeviceCount
+        }
+        else
+        {
+            0
+        }
+        Conflict      = if ($S_TenantSummary)
+        {
+            [int]$S_TenantSummary.conflictDeviceCount
+        }
+        else
+        {
+            0
+        }
+        NotApplicable = if ($S_TenantSummary)
+        {
+            [int]$S_TenantSummary.notApplicableDeviceCount
+        }
+        else
+        {
+            0
+        }
+        Remediated    = if ($S_TenantSummary)
+        {
+            [int]$S_TenantSummary.remediatedDeviceCount
+        }
+        else
+        {
+            0
+        }
+        ConfigManager = if ($S_TenantSummary)
+        {
+            [int]$S_TenantSummary.configManagerCount
+        }
+        else
+        {
+            0
+        }
+        Unknown       = if ($S_TenantSummary)
+        {
+            [int]$S_TenantSummary.unknownDeviceCount
+        }
+        else
+        {
+            0
+        }
+    }
+    $S_TenantTotal = ($S_TenantStates.Values | Measure-Object -Sum).Sum
 
-	# --- Managed devices (used for active-devices view) ---
-	Write-Host "Fetching managed devices..." -ForegroundColor Cyan
-	$select = 'id,deviceName,userPrincipalName,userDisplayName,operatingSystem,osVersion,complianceState,managedDeviceOwnerType,lastSyncDateTime,enrolledDateTime'
-	$uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices?`$select=$select&`$top=200"
-	$devices = New-Object System.Collections.Generic.List[object]
-	do {
-		$resp = Invoke-MgGraphRequest -Method GET -Uri $uri -ErrorAction Stop
-		if ($resp.value) {
-			foreach ($d in $resp.value) { $devices.Add([pscustomobject]$d) | Out-Null }
-		}
-		$uri = $resp.'@odata.nextLink'
-	} while ($uri)
-	Write-Host ("  Retrieved {0} managed devices" -f $devices.Count) -ForegroundColor Green
+    # --- Managed devices (used for active-devices view) ---
+    Write-Host "Fetching managed devices..." -ForegroundColor Cyan
+    $S_Select = 'id,deviceName,userPrincipalName,userDisplayName,operatingSystem,osVersion,complianceState,managedDeviceOwnerType,lastSyncDateTime,enrolledDateTime'
+    $S_Uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices?`$select=$S_Select&`$top=200"
+    $S_Devices = New-Object System.Collections.Generic.List[object]
+    do
+    {
+        $S_Resp = Invoke-MgGraphRequest -Method GET -Uri $S_Uri -ErrorAction Stop
+        if ($S_Resp.value)
+        {
+            foreach ($d in $S_Resp.value)
+            {
+                $S_Devices.Add([pscustomobject]$d) | Out-Null
+            }
+        }
+        $S_Uri = $S_Resp.'@odata.nextLink'
+    } while ($S_Uri)
+    Write-Host ("  Retrieved {0} managed devices" -f $S_Devices.Count) -ForegroundColor Green
 
-	# --- Active vs stale split based on check-in threshold ---
-	$now = Get-Date
-	$activeCutoff = $now.AddDays(-[int]$checkinThresholdDays)
-	$activeStates = [ordered]@{
-		compliant    = 0
-		noncompliant = 0
-		ingraceperiod = 0
-		error        = 0
-		conflict     = 0
-		notapplicable = 0
-		configmanager = 0
-		unknown      = 0
-	}
-	$staleCount = 0
-	foreach ($d in $devices) {
-		$last = if ($d.lastSyncDateTime) { [datetime]$d.lastSyncDateTime } else { $null }
-		if (-not $last -or $last -lt $activeCutoff) { $staleCount++; continue }
-		$key = if ($d.complianceState) { ([string]$d.complianceState).ToLowerInvariant() } else { 'unknown' }
-		if (-not $activeStates.Contains($key)) { $activeStates[$key] = 0 }
-		$activeStates[$key]++
-	}
-	$activeTotal = ($activeStates.Values | Measure-Object -Sum).Sum
+    # --- Active vs stale split based on check-in threshold ---
+    $S_Now = Get-Date
+    $S_ActiveCutoff = $S_Now.AddDays( - [int]$S_CheckinThresholdDays)
+    $S_ActiveStates = [ordered]@{
+        compliant     = 0
+        noncompliant  = 0
+        ingraceperiod = 0
+        error         = 0
+        conflict      = 0
+        notapplicable = 0
+        configmanager = 0
+        unknown       = 0
+    }
+    $S_StaleCount = 0
+    foreach ($d in $S_Devices)
+    {
+        $S_Last = if ($d.lastSyncDateTime)
+        {
+            [datetime]$d.lastSyncDateTime
+        }
+        else
+        {
+            $null
+        }
+        if (-not $S_Last -or $S_Last -lt $S_ActiveCutoff)
+        {
+            $S_StaleCount++; continue
+        }
+        $S_Key = if ($d.complianceState)
+        {
+            ([string]$d.complianceState).ToLowerInvariant()
+        }
+        else
+        {
+            'unknown'
+        }
+        if (-not $S_ActiveStates.Contains($S_Key))
+        {
+            $S_ActiveStates[$S_Key] = 0
+        }
+        $S_ActiveStates[$S_Key]++
+    }
+    $S_ActiveTotal = ($S_ActiveStates.Values | Measure-Object -Sum).Sum
 
-	# --- Compliance policies + status overview ---
-	Write-Host "Fetching compliance policies..." -ForegroundColor Cyan
-	$policies = New-Object System.Collections.Generic.List[object]
-	$pUri = 'https://graph.microsoft.com/beta/deviceManagement/deviceCompliancePolicies?$expand=assignments'
-	do {
-		$resp = Invoke-MgGraphRequest -Method GET -Uri $pUri -ErrorAction Stop
-		if ($resp.value) {
-			foreach ($p in $resp.value) { $policies.Add([pscustomobject]$p) | Out-Null }
-		}
-		$pUri = $resp.'@odata.nextLink'
-	} while ($pUri)
-	Write-Host ("  Retrieved {0} compliance policies" -f $policies.Count) -ForegroundColor Green
+    # --- Compliance policies + status overview ---
+    Write-Host "Fetching compliance policies..." -ForegroundColor Cyan
+    $S_Policies = New-Object System.Collections.Generic.List[object]
+    $S_PUri = 'https://graph.microsoft.com/beta/deviceManagement/deviceCompliancePolicies?$expand=assignments'
+    do
+    {
+        $S_Resp = Invoke-MgGraphRequest -Method GET -Uri $S_PUri -ErrorAction Stop
+        if ($S_Resp.value)
+        {
+            foreach ($p in $S_Resp.value)
+            {
+                $S_Policies.Add([pscustomobject]$p) | Out-Null
+            }
+        }
+        $S_PUri = $S_Resp.'@odata.nextLink'
+    } while ($S_PUri)
+    Write-Host ("  Retrieved {0} compliance policies" -f $S_Policies.Count) -ForegroundColor Green
 
-	$osTypeMap = @{
-		'#microsoft.graph.windows10CompliancePolicy'              = 'Windows 10/11'
-		'#microsoft.graph.windowsPhone81CompliancePolicy'         = 'Windows Phone'
-		'#microsoft.graph.windows81CompliancePolicy'              = 'Windows 8.1'
-		'#microsoft.graph.iosCompliancePolicy'                    = 'iOS / iPadOS'
-		'#microsoft.graph.macOSCompliancePolicy'                  = 'macOS'
-		'#microsoft.graph.androidCompliancePolicy'                = 'Android (Device Admin)'
-		'#microsoft.graph.androidWorkProfileCompliancePolicy'     = 'Android Work Profile'
-		'#microsoft.graph.androidDeviceOwnerCompliancePolicy'     = 'Android (Device Owner)'
-		'#microsoft.graph.aospDeviceOwnerCompliancePolicy'        = 'AOSP (Device Owner)'
-		'#microsoft.graph.androidForWorkCompliancePolicy'         = 'Android for Work'
-		'#microsoft.graph.linuxCompliancePolicy'                  = 'Linux'
-	}
+    $S_OsTypeMap = @{
+        '#microsoft.graph.windows10CompliancePolicy'          = 'Windows 10/11'
+        '#microsoft.graph.windowsPhone81CompliancePolicy'     = 'Windows Phone'
+        '#microsoft.graph.windows81CompliancePolicy'          = 'Windows 8.1'
+        '#microsoft.graph.iosCompliancePolicy'                = 'iOS / iPadOS'
+        '#microsoft.graph.macOSCompliancePolicy'              = 'macOS'
+        '#microsoft.graph.androidCompliancePolicy'            = 'Android (Device Admin)'
+        '#microsoft.graph.androidWorkProfileCompliancePolicy' = 'Android Work Profile'
+        '#microsoft.graph.androidDeviceOwnerCompliancePolicy' = 'Android (Device Owner)'
+        '#microsoft.graph.aospDeviceOwnerCompliancePolicy'    = 'AOSP (Device Owner)'
+        '#microsoft.graph.androidForWorkCompliancePolicy'     = 'Android for Work'
+        '#microsoft.graph.linuxCompliancePolicy'              = 'Linux'
+    }
 
-	$policyReport = New-Object System.Collections.Generic.List[object]
-	$deviceStatusRows = New-Object System.Collections.Generic.List[object]
+    $S_PolicyReport = New-Object System.Collections.Generic.List[object]
+    $S_DeviceStatusRows = New-Object System.Collections.Generic.List[object]
 
-	# Iterate every policy and pull per-device compliance from the v2 Intune
-	# Reports endpoint (getCompliancePolicyDevicesReport). This is the same
-	# data source the Intune portal uses for the Compliant / Noncompliant /
-	# Others tile, so totals match the UI exactly. The endpoint returns a
-	# columnar { Schema:[{Column,PropertyType}], Values:[[...]] } payload.
-	$policyIndex = 0
-	foreach ($pol in $policies) {
-		$policyIndex++
-		Write-Host ("  [{0}/{1}] {2}" -f $policyIndex, $policies.Count, $pol.displayName) -ForegroundColor DarkGray
+    # Iterate every policy and pull per-device compliance from the v2 Intune
+    # Reports endpoint (getCompliancePolicyDevicesReport). This is the same
+    # data source the Intune portal uses for the Compliant / Noncompliant /
+    # Others tile, so totals match the UI exactly. The endpoint returns a
+    # columnar { Schema:[{Column,PropertyType}], Values:[[...]] } payload.
+    $S_PolicyIndex = 0
+    foreach ($pol in $S_Policies)
+    {
+        $S_PolicyIndex++
+        Write-Host ("  [{0}/{1}] {2}" -f $S_PolicyIndex, $S_Policies.Count, $pol.displayName) -ForegroundColor DarkGray
 
-		$odata = $pol.'@odata.type'
-		$os = if ($odata -and $osTypeMap.ContainsKey($odata)) { $osTypeMap[$odata] } else { ($odata -replace '#microsoft\.graph\.', '') }
+        $S_Odata = $pol.'@odata.type'
+        $S_Os = if ($S_Odata -and $S_OsTypeMap.ContainsKey($S_Odata))
+        {
+            $S_OsTypeMap[$S_Odata]
+        }
+        else
+        {
+            ($S_Odata -replace '#microsoft\.graph\.', '')
+        }
 
-		$statusCounts = [ordered]@{
-			Compliant      = 0
-			Noncompliant   = 0
-			InGracePeriod  = 0
-			Conflict       = 0
-			Error          = 0
-			NotApplicable  = 0
-			ConfigManager  = 0
-			NotEvaluated   = 0
-			RemediatedNoncompliance = 0
-			Unknown        = 0
-		}
+        $S_StatusCounts = [ordered]@{
+            Compliant               = 0
+            Noncompliant            = 0
+            InGracePeriod           = 0
+            Conflict                = 0
+            Error                   = 0
+            NotApplicable           = 0
+            ConfigManager           = 0
+            NotEvaluated            = 0
+            RemediatedNoncompliance = 0
+            Unknown                 = 0
+        }
 
-		$top = 1000
-		$skip = 0
-		$keepFetching = $true
-		while ($keepFetching) {
-			$body = @{
-				filter = "(PolicyId eq '$($pol.id)')"
-				skip   = $skip
-				top    = $top
-				select = @('DeviceId','DeviceName','UPN','UserEmail','UserName','OS','OSDescription','OSVersion','OwnerType','LastContact','ComplianceState','PolicyId','PolicyName','PolicyPlatformType','ReportStatus','DeviceModel','DeviceType','IMEI')
-			} | ConvertTo-Json -Depth 5 -Compress
+        $S_Top = 1000
+        $S_Skip = 0
+        $S_KeepFetching = $true
+        while ($S_KeepFetching)
+        {
+            $S_Body = @{
+                filter = "(PolicyId eq '$($pol.id)')"
+                skip   = $S_Skip
+                top    = $S_Top
+                select = @('DeviceId', 'DeviceName', 'UPN', 'UserEmail', 'UserName', 'OS', 'OSDescription', 'OSVersion', 'OwnerType', 'LastContact', 'ComplianceState', 'PolicyId', 'PolicyName', 'PolicyPlatformType', 'ReportStatus', 'DeviceModel', 'DeviceType', 'IMEI')
+            } | ConvertTo-Json -Depth 5 -Compress
 
-			$resp = $null
-			try {
-				$resp = Invoke-MgGraphRequest -Method POST `
-					-Uri 'https://graph.microsoft.com/beta/deviceManagement/reports/getCompliancePolicyDevicesReport' `
-					-ContentType 'application/json' `
-					-Body $body `
-					-ErrorAction Stop
-			} catch {
-				Write-Warning ("getCompliancePolicyDevicesReport failed for {0}: {1}" -f $pol.displayName, $_.Exception.Message)
-				break
-			}
+            $S_Resp = $null
+            try
+            {
+                $S_Resp = Invoke-MgGraphRequest -Method POST `
+                    -Uri 'https://graph.microsoft.com/beta/deviceManagement/reports/getCompliancePolicyDevicesReport' `
+                    -ContentType 'application/json' `
+                    -Body $S_Body `
+                    -ErrorAction Stop
+            }
+            catch
+            {
+                Write-Warning ("getCompliancePolicyDevicesReport failed for {0}: {1}" -f $pol.displayName, $_.Exception.Message)
+                break
+            }
 
-			# Response can come back as a hashtable or a JSON byte stream depending on module version.
-			if ($resp -is [byte[]]) {
-				$resp = [System.Text.Encoding]::UTF8.GetString($resp) | ConvertFrom-Json
-			}
+            # Response can come back as a hashtable or a JSON byte stream depending on module version.
+            if ($S_Resp -is [byte[]])
+            {
+                $S_Resp = [System.Text.Encoding]::UTF8.GetString($S_Resp) | ConvertFrom-Json
+            }
 
-			$schema = $resp.Schema
-			$values = $resp.Values
-			if (-not $schema -or -not $values -or $values.Count -eq 0) { break }
+            $S_Schema = $S_Resp.Schema
+            $S_Values = $S_Resp.Values
+            if (-not $S_Schema -or -not $S_Values -or $S_Values.Count -eq 0)
+            {
+                break
+            }
 
-			# Build column-name -> index map for this page
-			$colIdx = @{}
-			for ($i = 0; $i -lt $schema.Count; $i++) {
-				$cname = if ($schema[$i].Column) { [string]$schema[$i].Column } elseif ($schema[$i].PropertyName) { [string]$schema[$i].PropertyName } else { $null }
-				if ($cname) { $colIdx[$cname] = $i }
-			}
-			$ixState  = $colIdx['ComplianceState']
-			$ixDevice = $colIdx['DeviceName']
-			$ixUpn    = $colIdx['UPN']
-			$ixOs     = $colIdx['OS']
-			$ixOsVer  = $colIdx['OSVersion']
-			$ixOwner  = $colIdx['OwnerType']
-			$ixLast   = $colIdx['LastContact']
-			$ixDevId  = $colIdx['DeviceId']
-			$ixModel  = $colIdx['DeviceModel']
+            # Build column-name -> index map for this page
+            $S_ColIdx = @{}
+            for ($S_I = 0; $S_I -lt $S_Schema.Count; $S_I++)
+            {
+                $S_Cname = if ($S_Schema[$S_I].Column)
+                {
+                    [string]$S_Schema[$S_I].Column
+                }
+                elseif ($S_Schema[$S_I].PropertyName)
+                {
+                    [string]$S_Schema[$S_I].PropertyName
+                }
+                else
+                {
+                    $null
+                }
+                if ($S_Cname)
+                {
+                    $S_ColIdx[$S_Cname] = $S_I
+                }
+            }
+            $S_IxState = $S_ColIdx['ComplianceState']
+            $S_IxDevice = $S_ColIdx['DeviceName']
+            $S_IxUpn = $S_ColIdx['UPN']
+            $S_IxOs = $S_ColIdx['OS']
+            $S_IxOsVer = $S_ColIdx['OSVersion']
+            $S_IxOwner = $S_ColIdx['OwnerType']
+            $S_IxLast = $S_ColIdx['LastContact']
+            $S_IxDevId = $S_ColIdx['DeviceId']
+            $S_IxModel = $S_ColIdx['DeviceModel']
 
-			foreach ($row in $values) {
-				$rawState = if ($null -ne $ixState) { [string]$row[$ixState] } else { 'Unknown' }
-				if ([string]::IsNullOrWhiteSpace($rawState)) { $rawState = 'Unknown' }
+            foreach ($row in $S_Values)
+            {
+                $S_RawState = if ($null -ne $S_IxState)
+                {
+                    [string]$row[$S_IxState]
+                }
+                else
+                {
+                    'Unknown'
+                }
+                if ([string]::IsNullOrWhiteSpace($S_RawState))
+                {
+                    $S_RawState = 'Unknown'
+                }
 
-				# Normalize to a canonical key used in $statusCounts
-				$key = switch -Regex ($rawState) {
-					'^(?i)compliant$'                { 'Compliant'; break }
-					'^(?i)non[- ]?compliant$'        { 'Noncompliant'; break }
-					'^(?i)inGracePeriod$'            { 'InGracePeriod'; break }
-					'^(?i)in[- ]?grace[- ]?period$'  { 'InGracePeriod'; break }
-					'^(?i)conflict$'                 { 'Conflict'; break }
-					'^(?i)error$'                    { 'Error'; break }
-					'^(?i)not[- ]?applicable$'       { 'NotApplicable'; break }
-					'^(?i)configManager$'            { 'ConfigManager'; break }
-					'^(?i)not[- ]?evaluated$'        { 'NotEvaluated'; break }
-					'^(?i)remediated.*'              { 'RemediatedNoncompliance'; break }
-					default                           { 'Unknown' }
-				}
-				if (-not $statusCounts.Contains($key)) { $statusCounts[$key] = 0 }
-				$statusCounts[$key]++
+                # Normalize to a canonical key used in $statusCounts
+                $S_Key = switch -Regex ($S_RawState)
+                {
+                    '^(?i)compliant$' { 'Compliant'; break }
+                    '^(?i)non[- ]?compliant$' { 'Noncompliant'; break }
+                    '^(?i)inGracePeriod$' { 'InGracePeriod'; break }
+                    '^(?i)in[- ]?grace[- ]?period$' { 'InGracePeriod'; break }
+                    '^(?i)conflict$' { 'Conflict'; break }
+                    '^(?i)error$' { 'Error'; break }
+                    '^(?i)not[- ]?applicable$' { 'NotApplicable'; break }
+                    '^(?i)configManager$' { 'ConfigManager'; break }
+                    '^(?i)not[- ]?evaluated$' { 'NotEvaluated'; break }
+                    '^(?i)remediated.*' { 'RemediatedNoncompliance'; break }
+                    default { 'Unknown' }
+                }
+                if (-not $S_StatusCounts.Contains($S_Key))
+                {
+                    $S_StatusCounts[$S_Key] = 0
+                }
+                $S_StatusCounts[$S_Key]++
 
-				if ($IncludeDeviceStatusDetails) {
-					$deviceStatusRows.Add([pscustomobject]@{
-						PolicyName        = $pol.displayName
-						PolicyOS          = $os
-						DeviceId          = if ($null -ne $ixDevId)  { $row[$ixDevId] }  else { '' }
-						DeviceDisplayName = if ($null -ne $ixDevice) { $row[$ixDevice] } else { '' }
-						UserPrincipalName = if ($null -ne $ixUpn)    { $row[$ixUpn] }    else { '' }
-						OS                = if ($null -ne $ixOs)     { $row[$ixOs] }    else { '' }
-						OSVersion         = if ($null -ne $ixOsVer)  { $row[$ixOsVer] } else { '' }
-						OwnerType         = if ($null -ne $ixOwner)  { $row[$ixOwner] } else { '' }
-						LastContact       = if ($null -ne $ixLast)   { $row[$ixLast] }  else { '' }
-						DeviceModel       = if ($null -ne $ixModel)  { $row[$ixModel] } else { '' }
-						ComplianceState   = $rawState
-						MappedBucket      = $key
-					}) | Out-Null
-				}
-			}
+                if ($IncludeDeviceStatusDetails)
+                {
+                    $S_DeviceStatusRows.Add([pscustomobject]@{
+                            PolicyName        = $pol.displayName
+                            PolicyOS          = $S_Os
+                            DeviceId          = if ($null -ne $S_IxDevId)
+                            {
+                                $row[$S_IxDevId]
+                            }
+                            else
+                            {
+                                ''
+                            }
+                            DeviceDisplayName = if ($null -ne $S_IxDevice)
+                            {
+                                $row[$S_IxDevice]
+                            }
+                            else
+                            {
+                                ''
+                            }
+                            UserPrincipalName = if ($null -ne $S_IxUpn)
+                            {
+                                $row[$S_IxUpn]
+                            }
+                            else
+                            {
+                                ''
+                            }
+                            OS                = if ($null -ne $S_IxOs)
+                            {
+                                $row[$S_IxOs]
+                            }
+                            else
+                            {
+                                ''
+                            }
+                            OSVersion         = if ($null -ne $S_IxOsVer)
+                            {
+                                $row[$S_IxOsVer]
+                            }
+                            else
+                            {
+                                ''
+                            }
+                            OwnerType         = if ($null -ne $S_IxOwner)
+                            {
+                                $row[$S_IxOwner]
+                            }
+                            else
+                            {
+                                ''
+                            }
+                            LastContact       = if ($null -ne $S_IxLast)
+                            {
+                                $row[$S_IxLast]
+                            }
+                            else
+                            {
+                                ''
+                            }
+                            DeviceModel       = if ($null -ne $S_IxModel)
+                            {
+                                $row[$S_IxModel]
+                            }
+                            else
+                            {
+                                ''
+                            }
+                            ComplianceState   = $S_RawState
+                            MappedBucket      = $S_Key
+                        }) | Out-Null
+                }
+            }
 
-			if ($values.Count -lt $top) { $keepFetching = $false } else { $skip += $top }
-		}
+            if ($S_Values.Count -lt $S_Top)
+            {
+                $S_KeepFetching = $false
+            }
+            else
+            {
+                $S_Skip += $S_Top
+            }
+        }
 
-		# Map raw statuses to Intune portal tiles:
-		#   Compliant  = Compliant + InGracePeriod (portal counts grace as compliant in the bar)
-		#   Noncompliant = Noncompliant + RemediatedNoncompliance
-		#   Others     = Conflict + Error + NotApplicable + ConfigManager + NotEvaluated + Unknown
-		$compliant    = [int]$statusCounts['Compliant'] + [int]$statusCounts['InGracePeriod']
-		$nonCompliant = [int]$statusCounts['Noncompliant'] + [int]$statusCounts['RemediatedNoncompliance']
-		$others       = [int]$statusCounts['Conflict'] + [int]$statusCounts['Error'] + [int]$statusCounts['NotApplicable'] + [int]$statusCounts['ConfigManager'] + [int]$statusCounts['NotEvaluated'] + [int]$statusCounts['Unknown']
-		$total = $compliant + $nonCompliant + $others
-		$pctCompliant = if (($compliant + $nonCompliant) -gt 0) { [math]::Round(($compliant / ($compliant + $nonCompliant)) * 100, 1) } else { $null }
+        # Map raw statuses to Intune portal tiles:
+        #   Compliant  = Compliant + InGracePeriod (portal counts grace as compliant in the bar)
+        #   Noncompliant = Noncompliant + RemediatedNoncompliance
+        #   Others     = Conflict + Error + NotApplicable + ConfigManager + NotEvaluated + Unknown
+        $S_Compliant = [int]$S_StatusCounts['Compliant'] + [int]$S_StatusCounts['InGracePeriod']
+        $S_NonCompliant = [int]$S_StatusCounts['Noncompliant'] + [int]$S_StatusCounts['RemediatedNoncompliance']
+        $S_Others = [int]$S_StatusCounts['Conflict'] + [int]$S_StatusCounts['Error'] + [int]$S_StatusCounts['NotApplicable'] + [int]$S_StatusCounts['ConfigManager'] + [int]$S_StatusCounts['NotEvaluated'] + [int]$S_StatusCounts['Unknown']
+        $S_Total = $S_Compliant + $S_NonCompliant + $S_Others
+        $S_PctCompliant = if (($S_Compliant + $S_NonCompliant) -gt 0)
+        {
+            [math]::Round(($S_Compliant / ($S_Compliant + $S_NonCompliant)) * 100, 1)
+        }
+        else
+        {
+            $null
+        }
 
-		$assignedGroupCount = if ($pol.assignments) { @($pol.assignments).Count } else { 0 }
+        $S_AssignedGroupCount = if ($pol.assignments)
+        {
+            @($pol.assignments).Count
+        }
+        else
+        {
+            0
+        }
 
-		$policyReport.Add([pscustomobject]@{
-			DisplayName          = $pol.displayName
-			OperatingSystem      = $os
-			OdataType            = $odata
-			AssignmentCount      = $assignedGroupCount
-			Compliant            = $compliant
-			NonCompliant         = $nonCompliant
-			Others               = $others
-			RawCompliant         = [int]$statusCounts['Compliant']
-			InGracePeriod        = [int]$statusCounts['InGracePeriod']
-			Remediated           = [int]$statusCounts['RemediatedNoncompliance']
-			InError              = [int]$statusCounts['Error']
-			Conflict             = [int]$statusCounts['Conflict']
-			NotApplicable        = [int]$statusCounts['NotApplicable']
-			NotEvaluated         = [int]$statusCounts['NotEvaluated']
-			ConfigManager        = [int]$statusCounts['ConfigManager']
-			Unknown              = [int]$statusCounts['Unknown']
-			TotalReporting       = $total
-			PercentCompliant     = $pctCompliant
-			LastModifiedDateTime = $pol.lastModifiedDateTime
-			Id                   = $pol.id
-		}) | Out-Null
-	}
+        $S_PolicyReport.Add([pscustomobject]@{
+                DisplayName          = $pol.displayName
+                OperatingSystem      = $S_Os
+                OdataType            = $S_Odata
+                AssignmentCount      = $S_AssignedGroupCount
+                Compliant            = $S_Compliant
+                NonCompliant         = $S_NonCompliant
+                Others               = $S_Others
+                RawCompliant         = [int]$S_StatusCounts['Compliant']
+                InGracePeriod        = [int]$S_StatusCounts['InGracePeriod']
+                Remediated           = [int]$S_StatusCounts['RemediatedNoncompliance']
+                InError              = [int]$S_StatusCounts['Error']
+                Conflict             = [int]$S_StatusCounts['Conflict']
+                NotApplicable        = [int]$S_StatusCounts['NotApplicable']
+                NotEvaluated         = [int]$S_StatusCounts['NotEvaluated']
+                ConfigManager        = [int]$S_StatusCounts['ConfigManager']
+                Unknown              = [int]$S_StatusCounts['Unknown']
+                TotalReporting       = $S_Total
+                PercentCompliant     = $S_PctCompliant
+                LastModifiedDateTime = $pol.lastModifiedDateTime
+                Id                   = $pol.id
+            }) | Out-Null
+    }
 
-	# --- Output paths ---
-	if (-not $ReportPath) { $ReportPath = (Get-Location).Path }
-	$reportFolder = if (Test-Path $ReportPath -PathType Container) { $ReportPath } else { Split-Path -Parent $ReportPath }
-	if ($reportFolder -and -not (Test-Path $reportFolder)) {
-		New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
-	}
-	$S_Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-	$policyCsv      = Join-Path $reportFolder ("ReportIntuneCompliance_Policies_{0}.csv"      -f $S_Timestamp)
-	$deviceStatusCsv = Join-Path $reportFolder ("ReportIntuneCompliance_DeviceStatuses_{0}.csv" -f $S_Timestamp)
-	$htmlFile       = Join-Path $reportFolder ("ReportIntuneCompliance_{0}.html"             -f $S_Timestamp)
+    # --- Output paths ---
+    if (-not $S_ReportPath)
+    {
+        $S_ReportPath = (Get-Location).Path
+    }
+    $S_ReportFolder = if (Test-Path $S_ReportPath -PathType Container)
+    {
+        $S_ReportPath
+    }
+    else
+    {
+        Split-Path -Parent $S_ReportPath
+    }
+    if ($S_ReportFolder -and -not (Test-Path $S_ReportFolder))
+    {
+        New-Item -ItemType Directory -Path $S_ReportFolder -Force | Out-Null
+    }
+    $S_Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    $S_PolicyCsv = Join-Path $S_ReportFolder ("ReportIntuneCompliance_Policies_{0}.csv" -f $S_Timestamp)
+    $S_DeviceStatusCsv = Join-Path $S_ReportFolder ("ReportIntuneCompliance_DeviceStatuses_{0}.csv" -f $S_Timestamp)
+    $S_HtmlFile = Join-Path $S_ReportFolder ("ReportIntuneCompliance_{0}.html" -f $S_Timestamp)
 
-	# --- CSV exports ---
-	$policyReport | Sort-Object OperatingSystem, DisplayName | Export-Csv -Path $policyCsv -NoTypeInformation -Encoding UTF8
-	if ($IncludeDeviceStatusDetails -and $deviceStatusRows.Count -gt 0) {
-		$deviceStatusRows | Sort-Object PolicyName, DeviceDisplayName | Export-Csv -Path $deviceStatusCsv -NoTypeInformation -Encoding UTF8
-	}
+    # --- CSV exports ---
+    $S_PolicyReport | Sort-Object OperatingSystem, DisplayName | Export-Csv -Path $S_PolicyCsv -NoTypeInformation -Encoding UTF8
+    if ($IncludeDeviceStatusDetails -and $S_DeviceStatusRows.Count -gt 0)
+    {
+        $S_DeviceStatusRows | Sort-Object PolicyName, DeviceDisplayName | Export-Csv -Path $S_DeviceStatusCsv -NoTypeInformation -Encoding UTF8
+    }
 
-	# --- HTML helpers ---
-	$enc = { param($s) if ($null -eq $s -or $s -eq '') { '-' } else { [System.Net.WebUtility]::HtmlEncode([string]$s) } }
-	$reportDate = Get-Date -Format "dd MMM yyyy HH:mm"
+    # --- HTML helpers ---
+    $S_Enc = {
+        param($s)
+        if ($null -eq $s -or $s -eq '')
+        {
+            '-'
+        }
+        else
+        {
+            [System.Net.WebUtility]::HtmlEncode([string]$s)
+        }
+    }
+    $S_ReportDate = Get-Date -Format "dd MMM yyyy HH:mm"
 
-	# Banner state
-	$secureByDefaultDisp = if ($null -eq $secureByDefault) { 'Unknown' } elseif ($secureByDefault) { 'On' } else { 'Off' }
-	$bannerClass = if ($secureByDefault -eq $true) { 'banner banner-good' } else { 'banner banner-bad' }
-	$bannerTitle = if ($secureByDefault -eq $true) {
-		'Tenant compliance settings look good'
-	} elseif ($secureByDefault -eq $false) {
-		'Action required: Devices without a compliance policy are being marked Compliant'
-	} else {
-		'Tenant compliance settings could not be read'
-	}
-	$bannerBody = if ($secureByDefault -eq $true) {
-		"Mark devices with no compliance policy assigned as Not compliant is currently <strong>On</strong>. Devices that have not checked in for <strong>$checkinThresholdDays</strong> days will be marked as Not compliant."
-	} elseif ($secureByDefault -eq $false) {
-		"Mark devices with no compliance policy assigned as is currently <strong>Compliant</strong> (insecure default). Change this to <strong>Not compliant</strong> in Intune > Endpoint security > Device compliance > Compliance policy settings. Current check-in threshold is <strong>$checkinThresholdDays</strong> days."
-	} else {
-		"Could not read deviceManagement/settings. Verify the signed-in account has the required Graph scopes."
-	}
+    # Banner state
+    $S_SecureByDefaultDisp = if ($null -eq $S_SecureByDefault)
+    {
+        'Unknown'
+    }
+    elseif ($S_SecureByDefault)
+    {
+        'On'
+    }
+    else
+    {
+        'Off'
+    }
+    $S_BannerClass = if ($S_SecureByDefault -eq $true)
+    {
+        'banner banner-good'
+    }
+    else
+    {
+        'banner banner-bad'
+    }
+    $S_BannerTitle = if ($S_SecureByDefault -eq $true)
+    {
+        'Tenant compliance settings look good'
+    }
+    elseif ($S_SecureByDefault -eq $false)
+    {
+        'Action required: Devices without a compliance policy are being marked Compliant'
+    }
+    else
+    {
+        'Tenant compliance settings could not be read'
+    }
+    $S_BannerBody = if ($S_SecureByDefault -eq $true)
+    {
+        "Mark devices with no compliance policy assigned as Not compliant is currently <strong>On</strong>. Devices that have not checked in for <strong>$S_CheckinThresholdDays</strong> days will be marked as Not compliant."
+    }
+    elseif ($S_SecureByDefault -eq $false)
+    {
+        "Mark devices with no compliance policy assigned as is currently <strong>Compliant</strong> (insecure default). Change this to <strong>Not compliant</strong> in Intune > Endpoint security > Device compliance > Compliance policy settings. Current check-in threshold is <strong>$S_CheckinThresholdDays</strong> days."
+    }
+    else
+    {
+        "Could not read deviceManagement/settings. Verify the signed-in account has the required Graph scopes."
+    }
 
-	function ConvertTo-PieJson {
-		param([System.Collections.IDictionary]$Map)
-		$entries = @()
-		foreach ($k in $Map.Keys) {
-			if ([int]$Map[$k] -gt 0) { $entries += [pscustomobject]@{ Label = $k; Value = [int]$Map[$k] } }
-		}
-		if (-not $entries -or $entries.Count -eq 0) { return '{"labels":[],"data":[]}' }
-		$labels = ($entries | ForEach-Object { '"' + $_.Label + '"' }) -join ','
-		$data   = ($entries | ForEach-Object { $_.Value }) -join ','
-		"{`"labels`":[$labels],`"data`":[$data]}"
-	}
+    function ConvertTo-PieJson
+    {
+        param([System.Collections.IDictionary]$Map)
+        $entries = @()
+        foreach ($k in $Map.Keys)
+        {
+            if ([int]$Map[$k] -gt 0)
+            {
+                $entries += [pscustomobject]@{ Label = $k; Value = [int]$Map[$k] }
+            }
+        }
+        if (-not $entries -or $entries.Count -eq 0)
+        {
+            return '{"labels":[],"data":[]}'
+        }
+        $labels = ($entries | ForEach-Object { '"' + $_.Label + '"' }) -join ','
+        $data = ($entries | ForEach-Object { $_.Value }) -join ','
+        "{`"labels`":[$labels],`"data`":[$data]}"
+    }
 
-	# Tenant pie data
-	$tenantPieJson = ConvertTo-PieJson -Map $tenantStates
-	$activePieJson = ConvertTo-PieJson -Map $activeStates
+    # Tenant pie data
+    $S_TenantPieJson = ConvertTo-PieJson -Map $S_TenantStates
+    $S_ActivePieJson = ConvertTo-PieJson -Map $S_ActiveStates
 
-	# Policy table rows
-	$policyRows = ($policyReport | Sort-Object OperatingSystem, DisplayName | ForEach-Object {
-		$pct = if ($null -ne $_.PercentCompliant) { ('{0}%' -f $_.PercentCompliant) } else { '-' }
-		$lm  = if ($_.LastModifiedDateTime) { ([datetime]$_.LastModifiedDateTime).ToString('dd MMM yyyy') } else { '-' }
-		$ncClass = if ($_.NonCompliant -gt 0) { 'cell-bad' } else { '' }
-		$cClass  = if ($_.Compliant -gt 0) { 'cell-good' } else { '' }
-		$othersTitle = ("Error: {0}, Conflict: {1}, Not Applicable: {2}, Not Evaluated: {3}, ConfigManager: {4}, Unknown: {5}" -f $_.InError, $_.Conflict, $_.NotApplicable, $_.NotEvaluated, $_.ConfigManager, $_.Unknown)
-		$rowAttr = "data-os=`"$(& $enc $_.OperatingSystem)`""
-		"<tr $rowAttr>" +
-			"<td>$(& $enc $_.DisplayName)</td>" +
-			"<td>$(& $enc $_.OperatingSystem)</td>" +
-			"<td>$($_.AssignmentCount)</td>" +
-			"<td class='$cClass' title='Compliant: $($_.RawCompliant), In Grace Period: $($_.InGracePeriod)'>$($_.Compliant)</td>" +
-			"<td class='$ncClass' title='Noncompliant: $([int]$_.NonCompliant - [int]$_.Remediated), Remediated: $($_.Remediated)'>$($_.NonCompliant)</td>" +
-			"<td title='$othersTitle'>$($_.Others)</td>" +
-			"<td>$($_.TotalReporting)</td>" +
-			"<td>$pct</td>" +
-			"<td>$lm</td>" +
-		"</tr>"
-	}) -join "`n"
+    # Policy table rows
+    $S_PolicyRows = ($S_PolicyReport | Sort-Object OperatingSystem, DisplayName | ForEach-Object {
+            $S_Pct = if ($null -ne $_.PercentCompliant)
+            {
+                ('{0}%' -f $_.PercentCompliant)
+            }
+            else
+            {
+                '-'
+            }
+            $S_Lm = if ($_.LastModifiedDateTime)
+            {
+                ([datetime]$_.LastModifiedDateTime).ToString('dd MMM yyyy')
+            }
+            else
+            {
+                '-'
+            }
+            $S_NcClass = if ($_.NonCompliant -gt 0)
+            {
+                'cell-bad'
+            }
+            else
+            {
+                ''
+            }
+            $S_CClass = if ($_.Compliant -gt 0)
+            {
+                'cell-good'
+            }
+            else
+            {
+                ''
+            }
+            $S_OthersTitle = ("Error: {0}, Conflict: {1}, Not Applicable: {2}, Not Evaluated: {3}, ConfigManager: {4}, Unknown: {5}" -f $_.InError, $_.Conflict, $_.NotApplicable, $_.NotEvaluated, $_.ConfigManager, $_.Unknown)
+            $S_RowAttr = "data-os=`"$(& $S_Enc $_.OperatingSystem)`""
+            "<tr $S_RowAttr>" +
+            "<td>$(& $S_Enc $_.DisplayName)</td>" +
+            "<td>$(& $S_Enc $_.OperatingSystem)</td>" +
+            "<td>$($_.AssignmentCount)</td>" +
+            "<td class='$S_CClass' title='Compliant: $($_.RawCompliant), In Grace Period: $($_.InGracePeriod)'>$($_.Compliant)</td>" +
+            "<td class='$S_NcClass' title='Noncompliant: $([int]$_.NonCompliant - [int]$_.Remediated), Remediated: $($_.Remediated)'>$($_.NonCompliant)</td>" +
+            "<td title='$S_OthersTitle'>$($_.Others)</td>" +
+            "<td>$($_.TotalReporting)</td>" +
+            "<td>$S_Pct</td>" +
+            "<td>$S_Lm</td>" +
+            "</tr>"
+        }) -join "`n"
 
-	# OS filter options
-	$osOptions = ($policyReport | Select-Object -ExpandProperty OperatingSystem -Unique | Sort-Object | ForEach-Object {
-		"<option value=`"$(& $enc $_)`">$(& $enc $_)</option>"
-	}) -join "`n"
+    # OS filter options
+    $S_OsOptions = ($S_PolicyReport | Select-Object -ExpandProperty OperatingSystem -Unique | Sort-Object | ForEach-Object {
+            "<option value=`"$(& $S_Enc $_)`">$(& $S_Enc $_)</option>"
+        }) -join "`n"
 
-	$drilldownNote = if ($IncludeDeviceStatusDetails -and $deviceStatusRows.Count -gt 0) {
-		"<p style='font-size:0.85em;color:#555;margin-top:8px;'>Per-device drill-down exported to <code>$(& $enc (Split-Path $deviceStatusCsv -Leaf))</code> ($($deviceStatusRows.Count) rows)</p>"
-	} elseif ($IncludeDeviceStatusDetails) {
-		"<p style='font-size:0.85em;color:#555;margin-top:8px;'>No per-device status rows returned.</p>"
-	} else {
-		"<p style='font-size:0.85em;color:#777;margin-top:8px;'>Re-run with <code>-IncludeDeviceStatusDetails</code> to also produce a per-device-per-policy CSV drill-down.</p>"
-	}
+    $S_DrilldownNote = if ($IncludeDeviceStatusDetails -and $S_DeviceStatusRows.Count -gt 0)
+    {
+        "<p style='font-size:0.85em;color:#555;margin-top:8px;'>Per-device drill-down exported to <code>$(& $S_Enc (Split-Path $S_DeviceStatusCsv -Leaf))</code> ($($S_DeviceStatusRows.Count) rows)</p>"
+    }
+    elseif ($IncludeDeviceStatusDetails)
+    {
+        "<p style='font-size:0.85em;color:#555;margin-top:8px;'>No per-device status rows returned.</p>"
+    }
+    else
+    {
+        "<p style='font-size:0.85em;color:#777;margin-top:8px;'>Re-run with <code>-IncludeDeviceStatusDetails</code> to also produce a per-device-per-policy CSV drill-down.</p>"
+    }
 
-	$html = @"
+    $S_Html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -515,32 +858,32 @@ try {
 <div class="header">
   <div>
     <h1>Intune Compliance Report</h1>
-    <p>Tenant: $(& $enc $tenantDisplayName) ($tenantId) &nbsp;|&nbsp; Generated: $reportDate</p>
+    <p>Tenant: $(& $S_Enc $S_TenantDisplayName) ($S_TenantId) &nbsp;|&nbsp; Generated: $S_ReportDate</p>
   </div>
   <div style="text-align:right;font-size:0.9em;opacity:0.9;">
-    Secure by default: <strong>$secureByDefaultDisp</strong><br/>
-    Check-in threshold: <strong>$checkinThresholdDays days</strong>
+    Secure by default: <strong>$S_SecureByDefaultDisp</strong><br/>
+    Check-in threshold: <strong>$S_CheckinThresholdDays days</strong>
   </div>
 </div>
 
 <!-- TENANT COMPLIANCE SETTINGS BANNER -->
-<div class="$bannerClass">
+<div class="$S_BannerClass">
   <div class="icon"></div>
   <div>
-    <h2>$bannerTitle</h2>
-    <p>$bannerBody</p>
+    <h2>$S_BannerTitle</h2>
+    <p>$S_BannerBody</p>
   </div>
 </div>
 
 <!-- OVERVIEW CARDS -->
 <div class="section-title">Overview</div>
 <div class="summary-cards">
-  <div class="card"><div class="label">Total Reporting Devices</div><div class="value" style="color:#1a1a2e;">$tenantTotal</div></div>
-  <div class="card"><div class="label">Compliant</div><div class="value" style="color:#27ae60;">$($tenantStates.Compliant)</div></div>
-  <div class="card"><div class="label">Non-compliant</div><div class="value" style="color:#e74c3c;">$($tenantStates.NonCompliant)</div></div>
-  <div class="card"><div class="label">In Grace Period</div><div class="value" style="color:#f39c12;">$($tenantStates.InGracePeriod)</div></div>
-  <div class="card"><div class="label">Active Devices (last $checkinThresholdDays days)</div><div class="value" style="color:#3498db;">$activeTotal</div><div class="sub">$staleCount stale / not checked in</div></div>
-  <div class="card"><div class="label">Total Policies</div><div class="value" style="color:#9b59b6;">$($policyReport.Count)</div></div>
+  <div class="card"><div class="label">Total Reporting Devices</div><div class="value" style="color:#1a1a2e;">$S_TenantTotal</div></div>
+  <div class="card"><div class="label">Compliant</div><div class="value" style="color:#27ae60;">$($S_TenantStates.Compliant)</div></div>
+  <div class="card"><div class="label">Non-compliant</div><div class="value" style="color:#e74c3c;">$($S_TenantStates.NonCompliant)</div></div>
+  <div class="card"><div class="label">In Grace Period</div><div class="value" style="color:#f39c12;">$($S_TenantStates.InGracePeriod)</div></div>
+  <div class="card"><div class="label">Active Devices (last $S_CheckinThresholdDays days)</div><div class="value" style="color:#3498db;">$S_ActiveTotal</div><div class="sub">$S_StaleCount stale / not checked in</div></div>
+  <div class="card"><div class="label">Total Policies</div><div class="value" style="color:#9b59b6;">$($S_PolicyReport.Count)</div></div>
 </div>
 
 <!-- CHARTS -->
@@ -552,7 +895,7 @@ try {
   </div>
   <div class="chart-section">
     <h2>Active Devices Compliance State</h2>
-    <div class="subtitle">Only devices that checked in within the last $checkinThresholdDays days ($staleCount stale devices excluded)</div>
+    <div class="subtitle">Only devices that checked in within the last $S_CheckinThresholdDays days ($S_StaleCount stale devices excluded)</div>
     <div class="chart-container"><canvas id="activePie"></canvas></div>
   </div>
 </div>
@@ -564,7 +907,7 @@ try {
     <input type="text" id="searchBox" placeholder="Search policy name or OS..." onkeyup="filterTable()" />
     <select id="osFilter" onchange="filterTable()">
       <option value="all">All Operating Systems</option>
-$osOptions
+$S_OsOptions
     </select>
     <span class="count-label" id="rowCount"></span>
   </div>
@@ -581,17 +924,17 @@ $osOptions
       <th onclick="sortTable(8)">Last Modified</th>
     </tr></thead>
     <tbody>
-$policyRows
+$S_PolicyRows
     </tbody>
   </table>
-  $drilldownNote
+  $S_DrilldownNote
 </div>
 
 <div class="footer">Report generated by ReportIntuneCompliance.ps1</div>
 
 <script>
-var tenantPieData = $tenantPieJson;
-var activePieData = $activePieJson;
+var tenantPieData = $S_TenantPieJson;
+var activePieData = $S_ActivePieJson;
 
 var stateColors = {
   'Compliant':     '#27ae60',
@@ -685,37 +1028,48 @@ filterTable();
 </html>
 "@
 
-	$html | Out-File -FilePath $htmlFile -Encoding UTF8
+    $S_Html | Out-File -FilePath $S_HtmlFile -Encoding UTF8
 
-	# --- Console summary ---
-	Write-Host ""
-	Write-Host "Intune Compliance Report" -ForegroundColor Cyan
-	Write-Host "--------------------------------------------"
-	Write-Host ("Tenant                    : {0} ({1})" -f $tenantDisplayName, $tenantId)
-	Write-Host ("secureByDefault           : {0}" -f $secureByDefaultDisp) -ForegroundColor $(if ($secureByDefault -eq $true) { 'Green' } else { 'Red' })
-	Write-Host ("Check-in threshold (days) : {0}" -f $checkinThresholdDays)
-	Write-Host ("Total reporting devices   : {0}" -f $tenantTotal)
-	Write-Host ("  Compliant               : {0}" -f $tenantStates.Compliant) -ForegroundColor Green
-	Write-Host ("  Non-compliant           : {0}" -f $tenantStates.NonCompliant) -ForegroundColor Red
-	Write-Host ("  In Grace Period         : {0}" -f $tenantStates.InGracePeriod) -ForegroundColor Yellow
-	Write-Host ("  Error                   : {0}" -f $tenantStates.Error)
-	Write-Host ("  Conflict                : {0}" -f $tenantStates.Conflict)
-	Write-Host ("  Not Applicable          : {0}" -f $tenantStates.NotApplicable)
-	Write-Host ("Active devices            : {0}  (Stale: {1})" -f $activeTotal, $staleCount)
-	Write-Host ("Total compliance policies : {0}" -f $policyReport.Count)
-	Write-Host ""
-	Write-Host ("CSV (policies)            : {0}" -f $policyCsv) -ForegroundColor Yellow
-	if ($IncludeDeviceStatusDetails -and $deviceStatusRows.Count -gt 0) {
-		Write-Host ("CSV (device statuses)     : {0}" -f $deviceStatusCsv) -ForegroundColor Yellow
-	}
-	Write-Host ("HTML report               : {0}" -f $htmlFile) -ForegroundColor Yellow
+    # --- Console summary ---
+    Write-Host ""
+    Write-Host "Intune Compliance Report" -ForegroundColor Cyan
+    Write-Host "--------------------------------------------"
+    Write-Host ("Tenant                    : {0} ({1})" -f $S_TenantDisplayName, $S_TenantId)
+    $S_SecureByDefaultColour = if ($S_SecureByDefault -eq $true)
+    {
+        'Green'
+    }
+    else
+    {
+        'Red'
+    }
+    Write-Host ("secureByDefault           : {0}" -f $S_SecureByDefaultDisp) -ForegroundColor $S_SecureByDefaultColour
+    Write-Host ("Check-in threshold (days) : {0}" -f $S_CheckinThresholdDays)
+    Write-Host ("Total reporting devices   : {0}" -f $S_TenantTotal)
+    Write-Host ("  Compliant               : {0}" -f $S_TenantStates.Compliant) -ForegroundColor Green
+    Write-Host ("  Non-compliant           : {0}" -f $S_TenantStates.NonCompliant) -ForegroundColor Red
+    Write-Host ("  In Grace Period         : {0}" -f $S_TenantStates.InGracePeriod) -ForegroundColor Yellow
+    Write-Host ("  Error                   : {0}" -f $S_TenantStates.Error)
+    Write-Host ("  Conflict                : {0}" -f $S_TenantStates.Conflict)
+    Write-Host ("  Not Applicable          : {0}" -f $S_TenantStates.NotApplicable)
+    Write-Host ("Active devices            : {0}  (Stale: {1})" -f $S_ActiveTotal, $S_StaleCount)
+    Write-Host ("Total compliance policies : {0}" -f $S_PolicyReport.Count)
+    Write-Host ""
+    Write-Host ("CSV (policies)            : {0}" -f $S_PolicyCsv) -ForegroundColor Yellow
+    if ($IncludeDeviceStatusDetails -and $S_DeviceStatusRows.Count -gt 0)
+    {
+        Write-Host ("CSV (device statuses)     : {0}" -f $S_DeviceStatusCsv) -ForegroundColor Yellow
+    }
+    Write-Host ("HTML report               : {0}" -f $S_HtmlFile) -ForegroundColor Yellow
 
-	$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
-	if ($S_DisconnectChoice -match '^(y|yes)$') {
-		Disconnect-MgGraph -ErrorAction SilentlyContinue
-	}
+    $S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
+    if ($S_DisconnectChoice -match '^(y|yes)$')
+    {
+        Disconnect-MgGraph -ErrorAction SilentlyContinue
+    }
 }
-catch {
-	Write-Error $_
-	exit 1
+catch
+{
+    Write-Error $_
+    exit 1
 }

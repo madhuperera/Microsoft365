@@ -42,300 +42,557 @@
 
 [CmdletBinding()]
 param(
-	[Parameter(Mandatory = $false)]
-	[ValidateRange(1, 999999)]
-	[int]$MinimumSupportedWindows10Build,
+    [Parameter(Mandatory = $false)]
+    [ValidateRange(1, 999999)]
+    [int]$MinimumSupportedWindows10Build,
 
-	[Parameter(Mandatory = $false)]
-	[ValidateRange(1, 999999)]
-	[int]$MinimumSupportedWindows11Build,
+    [Parameter(Mandatory = $false)]
+    [ValidateRange(1, 999999)]
+    [int]$MinimumSupportedWindows11Build,
 
-	[Parameter(Mandatory = $false)]
-	[ValidateNotNullOrEmpty()]
-	[string]$ReportPath
+    [Parameter(Mandatory = $false)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ReportPath
 )
 
 $ErrorActionPreference = "Stop"
 
+$S_ReportPath = $ReportPath
+
 $S_RequiredGraphScopes = @(
-	'DeviceManagementManagedDevices.Read.All'
-	'Organization.Read.All'
+    'DeviceManagementManagedDevices.Read.All'
+    'Organization.Read.All'
 )
 
-try {
-	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Authentication)) {
-		throw "Microsoft.Graph.Authentication module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
-	}
-	Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
+try
+{
+    if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Authentication))
+    {
+        throw "Microsoft.Graph.Authentication module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
+    }
+    Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
 
-	# --- Connect to Graph ---
-	$S_ExistingContext = Get-MgContext
-	if ($S_ExistingContext)
-	{
-		Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
-		Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
-		Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
-		Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
-		Write-Host ""
+    # --- Connect to Graph ---
+    $S_ExistingContext = Get-MgContext
+    if ($S_ExistingContext)
+    {
+        Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
+        Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
+        Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
+        Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
+        Write-Host ""
 
-		$S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-		if ($S_Choice -eq 'N')
-		{
-			Disconnect-MgGraph | Out-Null
-			Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
-		}
-	}
-	else
-	{
-		Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
-	}
-	$S_ExistingContext = Get-MgContext
+        $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+        if ($S_Choice -eq 'N')
+        {
+            Disconnect-MgGraph | Out-Null
+            Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
+        }
+    }
+    else
+    {
+        Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
+    }
+    $S_ExistingContext = Get-MgContext
 
-	Write-Host ""
-	Write-Host "Active Graph context:" -ForegroundColor Cyan
-	Write-Host "  Account    : $($S_ExistingContext.Account)" -ForegroundColor Cyan
-	Write-Host "  TenantId   : $($S_ExistingContext.TenantId)" -ForegroundColor Cyan
-	Write-Host "  Scopes     : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Cyan
-	Write-Host ""
+    Write-Host ""
+    Write-Host "Active Graph context:" -ForegroundColor Cyan
+    Write-Host "  Account    : $($S_ExistingContext.Account)" -ForegroundColor Cyan
+    Write-Host "  TenantId   : $($S_ExistingContext.TenantId)" -ForegroundColor Cyan
+    Write-Host "  Scopes     : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Cyan
+    Write-Host ""
 
-	$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
-	if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation)) { $S_ContextConfirmation = 'N' }
-	if ($S_ContextConfirmation.ToUpperInvariant() -ne 'Y') {
-		throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
-	}
+    $S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
+    if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
+    {
+        $S_ContextConfirmation = 'N'
+    }
+    if ($S_ContextConfirmation.ToUpperInvariant() -ne 'Y')
+    {
+        throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
+    }
 
-	# --- Tenant info ---
-	$tenantDisplayName = $null
-	try {
-		$orgResp = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization' -ErrorAction Stop
-		if ($orgResp.value) { $tenantDisplayName = $orgResp.value[0].displayName }
-	} catch { }
-	if (-not $tenantDisplayName) { $tenantDisplayName = $S_ExistingContext.TenantId }
-	$tenantId = if ($S_ExistingContext.TenantId) { $S_ExistingContext.TenantId } else { 'Unknown' }
+    # --- Tenant info ---
+    $S_TenantDisplayName = $null
+    try
+    {
+        $S_OrgResp = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization' -ErrorAction Stop
+        if ($S_OrgResp.value)
+        {
+            $S_TenantDisplayName = $S_OrgResp.value[0].displayName
+        }
+    }
+    catch
+    {
+    }
+    if (-not $S_TenantDisplayName)
+    {
+        $S_TenantDisplayName = $S_ExistingContext.TenantId
+    }
+    $S_TenantId = if ($S_ExistingContext.TenantId)
+    {
+        $S_ExistingContext.TenantId
+    }
+    else
+    {
+        'Unknown'
+    }
 
-	# --- Fetch managed Windows devices ---
-	Write-Host "Fetching Intune-managed Windows devices..." -ForegroundColor Cyan
-	$select = 'id,deviceName,userPrincipalName,userDisplayName,operatingSystem,osVersion,model,manufacturer,enrolledDateTime,lastSyncDateTime,complianceState,managedDeviceOwnerType,joinType,serialNumber'
-	$filter = "operatingSystem eq 'Windows'"
-	$encodedFilter = [System.Uri]::EscapeDataString($filter)
-	$uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices?`$filter=$encodedFilter&`$select=$select&`$top=200"
+    # --- Fetch managed Windows devices ---
+    Write-Host "Fetching Intune-managed Windows devices..." -ForegroundColor Cyan
+    $S_Select = 'id,deviceName,userPrincipalName,userDisplayName,operatingSystem,osVersion,model,manufacturer,enrolledDateTime,lastSyncDateTime,complianceState,managedDeviceOwnerType,joinType,serialNumber'
+    $S_Filter = "operatingSystem eq 'Windows'"
+    $S_EncodedFilter = [System.Uri]::EscapeDataString($S_Filter)
+    $S_Uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices?`$filter=$S_EncodedFilter&`$select=$S_Select&`$top=200"
 
-	$devices = New-Object System.Collections.Generic.List[object]
-	do {
-		$resp = Invoke-MgGraphRequest -Method GET -Uri $uri -ErrorAction Stop
-		if ($resp.value) {
-			foreach ($d in $resp.value) { $devices.Add([pscustomobject]$d) | Out-Null }
-		}
-		$uri = $resp.'@odata.nextLink'
-	} while ($uri)
+    $S_Devices = New-Object System.Collections.Generic.List[object]
+    do
+    {
+        $S_Resp = Invoke-MgGraphRequest -Method GET -Uri $S_Uri -ErrorAction Stop
+        if ($S_Resp.value)
+        {
+            foreach ($d in $S_Resp.value)
+            {
+                $S_Devices.Add([pscustomobject]$d) | Out-Null
+            }
+        }
+        $S_Uri = $S_Resp.'@odata.nextLink'
+    } while ($S_Uri)
 
-	Write-Host ("  Retrieved {0} Windows devices" -f $devices.Count) -ForegroundColor Green
+    Write-Host ("  Retrieved {0} Windows devices" -f $S_Devices.Count) -ForegroundColor Green
 
-	# --- Build report rows ---
-	# OS version format from Intune is typically "10.0.19045.4046".
-	# Win10 and Win11 both report major 10; Win11 is identified by build >= 22000.
-	$now = Get-Date
-	$report = foreach ($d in $devices) {
-		$rawVer = if ($d.osVersion) { [string]$d.osVersion } else { '' }
+    # --- Build report rows ---
+    # OS version format from Intune is typically "10.0.19045.4046".
+    # Win10 and Win11 both report major 10; Win11 is identified by build >= 22000.
+    $S_Now = Get-Date
+    $S_Report = foreach ($d in $S_Devices)
+    {
+        $S_RawVer = if ($d.osVersion)
+        {
+            [string]$d.osVersion
+        }
+        else
+        {
+            ''
+        }
 
-		$winBuild = $null
-		if ($rawVer -match '^\s*\d+\.\d+\.(\d+)') {
-			$winBuild = [int]$Matches[1]
-		}
+        $S_WinBuild = $null
+        if ($S_RawVer -match '^\s*\d+\.\d+\.(\d+)')
+        {
+            $S_WinBuild = [int]$Matches[1]
+        }
 
-		$osGeneration = 'Other Windows'
-		if ($null -ne $winBuild) {
-			if ($winBuild -ge 22000) { $osGeneration = 'Windows 11' }
-			elseif ($winBuild -ge 10240) { $osGeneration = 'Windows 10' }
-		}
+        $S_OsGeneration = 'Other Windows'
+        if ($null -ne $S_WinBuild)
+        {
+            if ($S_WinBuild -ge 22000)
+            {
+                $S_OsGeneration = 'Windows 11'
+            }
+            elseif ($S_WinBuild -ge 10240)
+            {
+                $S_OsGeneration = 'Windows 10'
+            }
+        }
 
-		$threshold = $null
-		if ($osGeneration -eq 'Windows 10' -and $PSBoundParameters.ContainsKey('MinimumSupportedWindows10Build')) {
-			$threshold = $MinimumSupportedWindows10Build
-		}
-		elseif ($osGeneration -eq 'Windows 11' -and $PSBoundParameters.ContainsKey('MinimumSupportedWindows11Build')) {
-			$threshold = $MinimumSupportedWindows11Build
-		}
+        $S_Threshold = $null
+        if ($S_OsGeneration -eq 'Windows 10' -and $PSBoundParameters.ContainsKey('MinimumSupportedWindows10Build'))
+        {
+            $S_Threshold = $MinimumSupportedWindows10Build
+        }
+        elseif ($S_OsGeneration -eq 'Windows 11' -and $PSBoundParameters.ContainsKey('MinimumSupportedWindows11Build'))
+        {
+            $S_Threshold = $MinimumSupportedWindows11Build
+        }
 
-		$supportStatus = 'Unknown'
-		if ($null -eq $winBuild) {
-			$supportStatus = 'Unknown'
-		}
-		elseif ($null -ne $threshold) {
-			if ($winBuild -lt $threshold) { $supportStatus = 'Outdated' } else { $supportStatus = 'Supported' }
-		}
-		else {
-			$supportStatus = 'NoThreshold'
-		}
+        $S_SupportStatus = 'Unknown'
+        if ($null -eq $S_WinBuild)
+        {
+            $S_SupportStatus = 'Unknown'
+        }
+        elseif ($null -ne $S_Threshold)
+        {
+            if ($S_WinBuild -lt $S_Threshold)
+            {
+                $S_SupportStatus = 'Outdated'
+            }
+            else
+            {
+                $S_SupportStatus = 'Supported'
+            }
+        }
+        else
+        {
+            $S_SupportStatus = 'NoThreshold'
+        }
 
-		$lastSync = if ($d.lastSyncDateTime) { [datetime]$d.lastSyncDateTime } else { $null }
-		$daysSinceSync = if ($lastSync) { [int]($now - $lastSync).TotalDays } else { $null }
+        $S_LastSync = if ($d.lastSyncDateTime)
+        {
+            [datetime]$d.lastSyncDateTime
+        }
+        else
+        {
+            $null
+        }
+        $S_DaysSinceSync = if ($S_LastSync)
+        {
+            [int]($S_Now - $S_LastSync).TotalDays
+        }
+        else
+        {
+            $null
+        }
 
-		[pscustomobject]@{
-			DeviceName        = $d.deviceName
-			User              = if ($d.userDisplayName) { $d.userDisplayName } else { $d.userPrincipalName }
-			UserPrincipalName = $d.userPrincipalName
-			OsGeneration      = $osGeneration
-			OSVersion         = $rawVer
-			WinBuild          = $winBuild
-			MinimumSupported  = $threshold
-			SupportStatus     = $supportStatus
-			Manufacturer      = $d.manufacturer
-			Model             = $d.model
-			Ownership         = $d.managedDeviceOwnerType
-			JoinType          = $d.joinType
-			ComplianceState   = $d.complianceState
-			EnrolledDateTime  = $d.enrolledDateTime
-			LastSyncDateTime  = $d.lastSyncDateTime
-			DaysSinceLastSync = $daysSinceSync
-			SerialNumber      = $d.serialNumber
-		}
-	}
+        [pscustomobject]@{
+            DeviceName        = $d.deviceName
+            User              = if ($d.userDisplayName)
+            {
+                $d.userDisplayName
+            }
+            else
+            {
+                $d.userPrincipalName
+            }
+            UserPrincipalName = $d.userPrincipalName
+            OsGeneration      = $S_OsGeneration
+            OSVersion         = $S_RawVer
+            WinBuild          = $S_WinBuild
+            MinimumSupported  = $S_Threshold
+            SupportStatus     = $S_SupportStatus
+            Manufacturer      = $d.manufacturer
+            Model             = $d.model
+            Ownership         = $d.managedDeviceOwnerType
+            JoinType          = $d.joinType
+            ComplianceState   = $d.complianceState
+            EnrolledDateTime  = $d.enrolledDateTime
+            LastSyncDateTime  = $d.lastSyncDateTime
+            DaysSinceLastSync = $S_DaysSinceSync
+            SerialNumber      = $d.serialNumber
+        }
+    }
 
-	# --- Stats ---
-	$totalDevices = $report.Count
-	$win10Devices = $report | Where-Object { $_.OsGeneration -eq 'Windows 10' }
-	$win11Devices = $report | Where-Object { $_.OsGeneration -eq 'Windows 11' }
-	$otherDevices = $report | Where-Object { $_.OsGeneration -eq 'Other Windows' }
+    # --- Stats ---
+    $S_TotalDevices = $S_Report.Count
+    $S_Win10Devices = $S_Report | Where-Object { $_.OsGeneration -eq 'Windows 10' }
+    $S_Win11Devices = $S_Report | Where-Object { $_.OsGeneration -eq 'Windows 11' }
+    $S_OtherDevices = $S_Report | Where-Object { $_.OsGeneration -eq 'Other Windows' }
 
-	$totalWin10  = $win10Devices.Count
-	$totalWin11  = $win11Devices.Count
-	$totalOther  = $otherDevices.Count
+    $S_TotalWin10 = $S_Win10Devices.Count
+    $S_TotalWin11 = $S_Win11Devices.Count
+    $S_TotalOther = $S_OtherDevices.Count
 
-	$outdatedWin10 = ($win10Devices | Where-Object { $_.SupportStatus -eq 'Outdated' }).Count
-	$outdatedWin11 = ($win11Devices | Where-Object { $_.SupportStatus -eq 'Outdated' }).Count
-	$totalOutdated = $outdatedWin10 + $outdatedWin11
+    $S_OutdatedWin10 = ($S_Win10Devices | Where-Object { $_.SupportStatus -eq 'Outdated' }).Count
+    $S_OutdatedWin11 = ($S_Win11Devices | Where-Object { $_.SupportStatus -eq 'Outdated' }).Count
+    $S_TotalOutdated = $S_OutdatedWin10 + $S_OutdatedWin11
 
-	# --- Build OsGeneration + WinBuild breakdown (matches the Intune-style table) ---
-	$generationOrder = @{ 'Other Windows' = 0; 'Windows 10' = 1; 'Windows 11' = 2 }
-	$breakdown = $report | Group-Object OsGeneration, WinBuild | ForEach-Object {
-		$first = $_.Group[0]
-		$gen = $first.OsGeneration
-		$build = $first.WinBuild
-		$min = $null
-		if ($gen -eq 'Windows 10' -and $PSBoundParameters.ContainsKey('MinimumSupportedWindows10Build')) { $min = $MinimumSupportedWindows10Build }
-		elseif ($gen -eq 'Windows 11' -and $PSBoundParameters.ContainsKey('MinimumSupportedWindows11Build')) { $min = $MinimumSupportedWindows11Build }
-		$outdated = ($null -ne $min -and $null -ne $build -and $build -lt $min)
-		[pscustomobject]@{
-			OsGeneration = $gen
-			WinBuild     = if ($null -eq $build) { 0 } else { $build }
-			Total        = $_.Count
-			Outdated     = $outdated
-		}
-	} | Sort-Object @{Expression={$generationOrder[$_.OsGeneration]}}, WinBuild
+    # --- Build OsGeneration + WinBuild breakdown (matches the Intune-style table) ---
+    $S_GenerationOrder = @{ 'Other Windows' = 0; 'Windows 10' = 1; 'Windows 11' = 2 }
+    $S_Breakdown = $S_Report | Group-Object OsGeneration, WinBuild | ForEach-Object {
+        $S_First = $_.Group[0]
+        $S_Gen = $S_First.OsGeneration
+        $S_Build = $S_First.WinBuild
+        $S_Min = $null
+        if ($S_Gen -eq 'Windows 10' -and $PSBoundParameters.ContainsKey('MinimumSupportedWindows10Build'))
+        {
+            $S_Min = $MinimumSupportedWindows10Build
+        }
+        elseif ($S_Gen -eq 'Windows 11' -and $PSBoundParameters.ContainsKey('MinimumSupportedWindows11Build'))
+        {
+            $S_Min = $MinimumSupportedWindows11Build
+        }
+        $S_Outdated = ($null -ne $S_Min -and $null -ne $S_Build -and $S_Build -lt $S_Min)
+        [pscustomobject]@{
+            OsGeneration = $S_Gen
+            WinBuild     = if ($null -eq $S_Build)
+            {
+                0
+            }
+            else
+            {
+                $S_Build
+            }
+            Total        = $_.Count
+            Outdated     = $S_Outdated
+        }
+    } | Sort-Object @{Expression = { $S_GenerationOrder[$_.OsGeneration] } }, WinBuild
 
-	# --- Output paths ---
-	if (-not $ReportPath) { $ReportPath = (Get-Location).Path }
-	$reportFolder = if (Test-Path $ReportPath -PathType Container) { $ReportPath } else { Split-Path -Parent $ReportPath }
-	if ($reportFolder -and -not (Test-Path $reportFolder)) {
-		New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
-	}
-	$S_Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-	$csvFile  = Join-Path $reportFolder ("ReportIntuneWindowsDevices_{0}.csv"  -f $S_Timestamp)
-	$breakdownCsv = Join-Path $reportFolder ("ReportIntuneWindowsDevices_Breakdown_{0}.csv" -f $S_Timestamp)
-	$htmlFile = Join-Path $reportFolder ("ReportIntuneWindowsDevices_{0}.html" -f $S_Timestamp)
+    # --- Output paths ---
+    if (-not $S_ReportPath)
+    {
+        $S_ReportPath = (Get-Location).Path
+    }
+    $S_ReportFolder = if (Test-Path $S_ReportPath -PathType Container)
+    {
+        $S_ReportPath
+    }
+    else
+    {
+        Split-Path -Parent $S_ReportPath
+    }
+    if ($S_ReportFolder -and -not (Test-Path $S_ReportFolder))
+    {
+        New-Item -ItemType Directory -Path $S_ReportFolder -Force | Out-Null
+    }
+    $S_Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    $S_CsvFile = Join-Path $S_ReportFolder ("ReportIntuneWindowsDevices_{0}.csv" -f $S_Timestamp)
+    $S_BreakdownCsv = Join-Path $S_ReportFolder ("ReportIntuneWindowsDevices_Breakdown_{0}.csv" -f $S_Timestamp)
+    $S_HtmlFile = Join-Path $S_ReportFolder ("ReportIntuneWindowsDevices_{0}.html" -f $S_Timestamp)
 
-	# --- CSV exports ---
-	$report | Sort-Object OsGeneration, WinBuild, DeviceName | Export-Csv -Path $csvFile -NoTypeInformation -Encoding UTF8
-	$breakdown | Select-Object OsGeneration, WinBuild, Total, Outdated | Export-Csv -Path $breakdownCsv -NoTypeInformation -Encoding UTF8
+    # --- CSV exports ---
+    $S_Report | Sort-Object OsGeneration, WinBuild, DeviceName | Export-Csv -Path $S_CsvFile -NoTypeInformation -Encoding UTF8
+    $S_Breakdown | Select-Object OsGeneration, WinBuild, Total, Outdated | Export-Csv -Path $S_BreakdownCsv -NoTypeInformation -Encoding UTF8
 
-	# --- HTML helpers ---
-	$enc = { param($s) if ($null -eq $s -or $s -eq '') { '-' } else { [System.Net.WebUtility]::HtmlEncode([string]$s) } }
-	$reportDate = Get-Date -Format "dd MMM yyyy HH:mm"
+    # --- HTML helpers ---
+    $S_Enc = {
+        param($s)
+        if ($null -eq $s -or $s -eq '')
+        {
+            '-'
+        }
+        else
+        {
+            [System.Net.WebUtility]::HtmlEncode([string]$s)
+        }
+    }
+    $S_ReportDate = Get-Date -Format "dd MMM yyyy HH:mm"
 
-	$win10Threshold = if ($PSBoundParameters.ContainsKey('MinimumSupportedWindows10Build')) { $MinimumSupportedWindows10Build } else { $null }
-	$win11Threshold = if ($PSBoundParameters.ContainsKey('MinimumSupportedWindows11Build')) { $MinimumSupportedWindows11Build } else { $null }
-	$win10ThresholdDisp = if ($null -ne $win10Threshold) { $win10Threshold } else { 'not set' }
-	$win11ThresholdDisp = if ($null -ne $win11Threshold) { $win11Threshold } else { 'not set' }
+    $S_Win10Threshold = if ($PSBoundParameters.ContainsKey('MinimumSupportedWindows10Build'))
+    {
+        $MinimumSupportedWindows10Build
+    }
+    else
+    {
+        $null
+    }
+    $S_Win11Threshold = if ($PSBoundParameters.ContainsKey('MinimumSupportedWindows11Build'))
+    {
+        $MinimumSupportedWindows11Build
+    }
+    else
+    {
+        $null
+    }
+    $S_Win10ThresholdDisp = if ($null -ne $S_Win10Threshold)
+    {
+        $S_Win10Threshold
+    }
+    else
+    {
+        'not set'
+    }
+    $S_Win11ThresholdDisp = if ($null -ne $S_Win11Threshold)
+    {
+        $S_Win11Threshold
+    }
+    else
+    {
+        'not set'
+    }
 
-	# Breakdown table rows (the OsGeneration / WinBuild / Total view)
-	$breakdownRows = ($breakdown | ForEach-Object {
-		$cls = if ($_.Outdated) { ' class="outdated-row"' } else { '' }
-		$buildText = if ($_.WinBuild -eq 0) { '-' } else { $_.WinBuild }
-		$badge = if ($_.Outdated) { " <span class='badge badge-inactive'>Outdated</span>" } else { '' }
-		"<tr$cls><td>$(& $enc $_.OsGeneration)$badge</td><td>$buildText</td><td>$($_.Total)</td></tr>"
-	}) -join "`n"
+    # Breakdown table rows (the OsGeneration / WinBuild / Total view)
+    $S_BreakdownRows = ($S_Breakdown | ForEach-Object {
+            $S_Cls = if ($_.Outdated)
+            {
+                ' class="outdated-row"'
+            }
+            else
+            {
+                ''
+            }
+            $S_BuildText = if ($_.WinBuild -eq 0)
+            {
+                '-'
+            }
+            else
+            {
+                $_.WinBuild
+            }
+            $S_Badge = if ($_.Outdated)
+            {
+                " <span class='badge badge-inactive'>Outdated</span>"
+            }
+            else
+            {
+                ''
+            }
+            "<tr$S_Cls><td>$(& $S_Enc $_.OsGeneration)$S_Badge</td><td>$S_BuildText</td><td>$($_.Total)</td></tr>"
+        }) -join "`n"
 
-	# Build version spread cards per OsGeneration
-	function Build-SpreadCardsHtml {
-		param([object[]]$Items, [string]$Label)
-		if (-not $Items -or $Items.Count -eq 0) {
-			return "<div class='dist-card'><div class='dist-label'>No $Label devices</div><div class='dist-value'>0</div></div>"
-		}
-		($Items | ForEach-Object {
-			$cls = if ($_.Outdated) { 'dist-card outdated' } else { 'dist-card' }
-			$badge = if ($_.Outdated) { "<div class='outdated-badge'>Outdated</div>" } else { '' }
-			$buildText = if ($_.WinBuild -eq 0) { 'Unknown' } else { $_.WinBuild }
-			"<div class='$cls'><div class='dist-label'>$Label $buildText</div><div class='dist-value'>$($_.Total)</div>$badge</div>"
-		}) -join "`n"
-	}
+    # Build version spread cards per OsGeneration
+    function Build-SpreadCardsHtml
+    {
+        param([object[]]$Items, [string]$Label)
+        if (-not $Items -or $Items.Count -eq 0)
+        {
+            return "<div class='dist-card'><div class='dist-label'>No $Label devices</div><div class='dist-value'>0</div></div>"
+        }
+        ($Items | ForEach-Object {
+            $cls = if ($_.Outdated)
+            {
+                'dist-card outdated'
+            }
+            else
+            {
+                'dist-card'
+            }
+            $badge = if ($_.Outdated)
+            {
+                "<div class='outdated-badge'>Outdated</div>"
+            }
+            else
+            {
+                ''
+            }
+            $buildText = if ($_.WinBuild -eq 0)
+            {
+                'Unknown'
+            }
+            else
+            {
+                $_.WinBuild
+            }
+            "<div class='$cls'><div class='dist-label'>$Label $buildText</div><div class='dist-value'>$($_.Total)</div>$badge</div>"
+        }) -join "`n"
+    }
 
-	$win10Items = $breakdown | Where-Object { $_.OsGeneration -eq 'Windows 10' }
-	$win11Items = $breakdown | Where-Object { $_.OsGeneration -eq 'Windows 11' }
-	$otherItems = $breakdown | Where-Object { $_.OsGeneration -eq 'Other Windows' }
+    $S_Win10Items = $S_Breakdown | Where-Object { $_.OsGeneration -eq 'Windows 10' }
+    $S_Win11Items = $S_Breakdown | Where-Object { $_.OsGeneration -eq 'Windows 11' }
+    $S_OtherItems = $S_Breakdown | Where-Object { $_.OsGeneration -eq 'Other Windows' }
 
-	$win10CardsHtml = Build-SpreadCardsHtml -Items $win10Items -Label 'Build'
-	$win11CardsHtml = Build-SpreadCardsHtml -Items $win11Items -Label 'Build'
-	$otherCardsHtml = Build-SpreadCardsHtml -Items $otherItems -Label 'Build'
+    $S_Win10CardsHtml = Build-SpreadCardsHtml -Items $S_Win10Items -Label 'Build'
+    $S_Win11CardsHtml = Build-SpreadCardsHtml -Items $S_Win11Items -Label 'Build'
+    $S_OtherCardsHtml = Build-SpreadCardsHtml -Items $S_OtherItems -Label 'Build'
 
-	# Build chart data JSON
-	function ConvertTo-ChartJson {
-		param([object[]]$Items)
-		if (-not $Items -or $Items.Count -eq 0) { return '{"labels":[],"data":[],"outdated":[]}' }
-		$labels = ($Items | ForEach-Object {
-			$b = if ($_.WinBuild -eq 0) { 'Unknown' } else { [string]$_.WinBuild }
-			'"' + $b + '"'
-		}) -join ','
-		$counts  = ($Items | ForEach-Object { $_.Total }) -join ','
-		$outFlag = ($Items | ForEach-Object { if ($_.Outdated) { 'true' } else { 'false' } }) -join ','
-		"{`"labels`":[$labels],`"data`":[$counts],`"outdated`":[$outFlag]}"
-	}
+    # Build chart data JSON
+    function ConvertTo-ChartJson
+    {
+        param([object[]]$Items)
+        if (-not $Items -or $Items.Count -eq 0)
+        {
+            return '{"labels":[],"data":[],"outdated":[]}'
+        }
+        $labels = ($Items | ForEach-Object {
+                $b = if ($_.WinBuild -eq 0)
+                {
+                    'Unknown'
+                }
+                else
+                {
+                    [string]$_.WinBuild
+                }
+                '"' + $b + '"'
+            }) -join ','
+        $counts = ($Items | ForEach-Object { $_.Total }) -join ','
+        $outFlag = ($Items | ForEach-Object {
+                if ($_.Outdated)
+                {
+                    'true'
+                }
+                else
+                {
+                    'false'
+                }
+            }) -join ','
+        "{`"labels`":[$labels],`"data`":[$counts],`"outdated`":[$outFlag]}"
+    }
 
-	$win10ChartJson = ConvertTo-ChartJson -Items $win10Items
-	$win11ChartJson = ConvertTo-ChartJson -Items $win11Items
-	$otherChartJson = ConvertTo-ChartJson -Items $otherItems
+    $S_Win10ChartJson = ConvertTo-ChartJson -Items $S_Win10Items
+    $S_Win11ChartJson = ConvertTo-ChartJson -Items $S_Win11Items
+    $S_OtherChartJson = ConvertTo-ChartJson -Items $S_OtherItems
 
-	# Device table rows
-	$tableRows = ($report | Sort-Object OsGeneration, WinBuild, DeviceName | ForEach-Object {
-		$daysVal      = if ($null -ne $_.DaysSinceLastSync) { $_.DaysSinceLastSync } else { -1 }
-		$lastSyncDisp = if ($_.LastSyncDateTime) { ([datetime]$_.LastSyncDateTime).ToString("dd MMM yyyy") } else { '-' }
-		$enrolDisp    = if ($_.EnrolledDateTime) { ([datetime]$_.EnrolledDateTime).ToString("dd MMM yyyy") } else { '-' }
-		$statusClass  = switch ($_.SupportStatus) {
-			'Outdated'    { 'badge-inactive' }
-			'Supported'   { 'badge-active' }
-			'NoThreshold' { 'badge-disabled' }
-			default        { 'badge-disabled' }
-		}
-		$statusText = if ($_.SupportStatus -eq 'NoThreshold') { 'No Threshold' } else { $_.SupportStatus }
-		$compClass = switch ($_.ComplianceState) {
-			'compliant'    { 'badge-active' }
-			'noncompliant' { 'badge-inactive' }
-			default         { 'badge-disabled' }
-		}
-		$buildText = if ($null -ne $_.WinBuild) { $_.WinBuild } else { '-' }
-		$rowAttr = "data-generation=`"$($_.OsGeneration)`" data-status=`"$($_.SupportStatus)`""
-		"<tr $rowAttr>" +
-			"<td>$(& $enc $_.DeviceName)</td>" +
-			"<td>$(& $enc $_.User)</td>" +
-			"<td>$(& $enc $_.OsGeneration)</td>" +
-			"<td>$(& $enc $_.OSVersion)</td>" +
-			"<td>$buildText</td>" +
-			"<td><span class='badge $statusClass'>$statusText</span></td>" +
-			"<td>$(& $enc $_.Manufacturer)</td>" +
-			"<td>$(& $enc $_.Model)</td>" +
-			"<td>$(& $enc $_.Ownership)</td>" +
-			"<td>$(& $enc $_.JoinType)</td>" +
-			"<td><span class='badge $compClass'>$(& $enc $_.ComplianceState)</span></td>" +
-			"<td>$enrolDisp</td>" +
-			"<td>$lastSyncDisp</td>" +
-			"<td>$(if ($daysVal -ge 0) { "$daysVal days" } else { 'Never' })</td>" +
-		"</tr>"
-	}) -join "`n"
+    # Device table rows
+    $S_TableRows = ($S_Report | Sort-Object OsGeneration, WinBuild, DeviceName | ForEach-Object {
+            $S_DaysVal = if ($null -ne $_.DaysSinceLastSync)
+            {
+                $_.DaysSinceLastSync
+            }
+            else
+            {
+                -1
+            }
+            $S_LastSyncDisp = if ($_.LastSyncDateTime)
+            {
+                ([datetime]$_.LastSyncDateTime).ToString("dd MMM yyyy")
+            }
+            else
+            {
+                '-'
+            }
+            $S_EnrolDisp = if ($_.EnrolledDateTime)
+            {
+                ([datetime]$_.EnrolledDateTime).ToString("dd MMM yyyy")
+            }
+            else
+            {
+                '-'
+            }
+            $S_StatusClass = switch ($_.SupportStatus)
+            {
+                'Outdated' { 'badge-inactive' }
+                'Supported' { 'badge-active' }
+                'NoThreshold' { 'badge-disabled' }
+                default { 'badge-disabled' }
+            }
+            $S_StatusText = if ($_.SupportStatus -eq 'NoThreshold')
+            {
+                'No Threshold'
+            }
+            else
+            {
+                $_.SupportStatus
+            }
+            $S_CompClass = switch ($_.ComplianceState)
+            {
+                'compliant' { 'badge-active' }
+                'noncompliant' { 'badge-inactive' }
+                default { 'badge-disabled' }
+            }
+            $S_BuildText = if ($null -ne $_.WinBuild)
+            {
+                $_.WinBuild
+            }
+            else
+            {
+                '-'
+            }
+            $S_DaysSinceSyncDisplay = if ($S_DaysVal -ge 0)
+            {
+                "$S_DaysVal days"
+            }
+            else
+            {
+                'Never'
+            }
+            $S_RowAttr = "data-generation=`"$($_.OsGeneration)`" data-status=`"$($_.SupportStatus)`""
+            "<tr $S_RowAttr>" +
+            "<td>$(& $S_Enc $_.DeviceName)</td>" +
+            "<td>$(& $S_Enc $_.User)</td>" +
+            "<td>$(& $S_Enc $_.OsGeneration)</td>" +
+            "<td>$(& $S_Enc $_.OSVersion)</td>" +
+            "<td>$S_BuildText</td>" +
+            "<td><span class='badge $S_StatusClass'>$S_StatusText</span></td>" +
+            "<td>$(& $S_Enc $_.Manufacturer)</td>" +
+            "<td>$(& $S_Enc $_.Model)</td>" +
+            "<td>$(& $S_Enc $_.Ownership)</td>" +
+            "<td>$(& $S_Enc $_.JoinType)</td>" +
+            "<td><span class='badge $S_CompClass'>$(& $S_Enc $_.ComplianceState)</span></td>" +
+            "<td>$S_EnrolDisp</td>" +
+            "<td>$S_LastSyncDisp</td>" +
+            "<td>$S_DaysSinceSyncDisplay</td>" +
+            "</tr>"
+        }) -join "`n"
 
-	$pctOutdated = if ($totalDevices -gt 0) { [math]::Round(($totalOutdated / $totalDevices) * 100, 1) } else { 0 }
+    $S_PctOutdated = if ($S_TotalDevices -gt 0)
+    {
+        [math]::Round(($S_TotalOutdated / $S_TotalDevices) * 100, 1)
+    }
+    else
+    {
+        0
+    }
 
-	# --- HTML report ---
-	$html = @"
+    # --- HTML report ---
+    $S_Html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -406,22 +663,22 @@ try {
 <div class="header">
   <div class="header-left">
     <h1>Intune Windows Devices Report</h1>
-    <p>Tenant: $(& $enc $tenantDisplayName) ($tenantId) &nbsp;|&nbsp; Generated: $reportDate</p>
+    <p>Tenant: $(& $S_Enc $S_TenantDisplayName) ($S_TenantId) &nbsp;|&nbsp; Generated: $S_ReportDate</p>
   </div>
   <div class="header-right">
-    Min supported Windows 10 build: <strong>$win10ThresholdDisp</strong><br/>
-    Min supported Windows 11 build: <strong>$win11ThresholdDisp</strong>
+    Min supported Windows 10 build: <strong>$S_Win10ThresholdDisp</strong><br/>
+    Min supported Windows 11 build: <strong>$S_Win11ThresholdDisp</strong>
   </div>
 </div>
 
 <!-- OVERVIEW -->
 <div class="section-title">Overview</div>
 <div class="summary-cards">
-  <div class="card"><div class="label">Total Windows Devices</div><div class="value" style="color:#1a1a2e;">$totalDevices</div></div>
-  <div class="card"><div class="label">Windows 10</div><div class="value" style="color:#3498db;">$totalWin10</div><div class="sub">$outdatedWin10 outdated</div></div>
-  <div class="card"><div class="label">Windows 11</div><div class="value" style="color:#27ae60;">$totalWin11</div><div class="sub">$outdatedWin11 outdated</div></div>
-  <div class="card"><div class="label">Other Windows</div><div class="value" style="color:#9b59b6;">$totalOther</div></div>
-  <div class="card"><div class="label">Total Outdated</div><div class="value" style="color:#e74c3c;">$totalOutdated</div><div class="sub">$pctOutdated% of total</div></div>
+  <div class="card"><div class="label">Total Windows Devices</div><div class="value" style="color:#1a1a2e;">$S_TotalDevices</div></div>
+  <div class="card"><div class="label">Windows 10</div><div class="value" style="color:#3498db;">$S_TotalWin10</div><div class="sub">$S_OutdatedWin10 outdated</div></div>
+  <div class="card"><div class="label">Windows 11</div><div class="value" style="color:#27ae60;">$S_TotalWin11</div><div class="sub">$S_OutdatedWin11 outdated</div></div>
+  <div class="card"><div class="label">Other Windows</div><div class="value" style="color:#9b59b6;">$S_TotalOther</div></div>
+  <div class="card"><div class="label">Total Outdated</div><div class="value" style="color:#e74c3c;">$S_TotalOutdated</div><div class="sub">$S_PctOutdated% of total</div></div>
 </div>
 
 <!-- BREAKDOWN TABLE (matches the OsGeneration / WinBuild / Total view) -->
@@ -430,30 +687,30 @@ try {
   <table>
     <thead><tr><th>OsGeneration</th><th>WinBuild</th><th>Total</th></tr></thead>
     <tbody>
-$breakdownRows
+$S_BreakdownRows
     </tbody>
   </table>
 </div>
 
 <!-- VERSION SPREAD CARDS -->
 <div class="dist-section">
-  <div class="section-title">Windows 10 Build Spread (Min Supported: $win10ThresholdDisp)</div>
+  <div class="section-title">Windows 10 Build Spread (Min Supported: $S_Win10ThresholdDisp)</div>
   <div class="dist-cards">
-$win10CardsHtml
+$S_Win10CardsHtml
   </div>
 </div>
 
 <div class="dist-section">
-  <div class="section-title">Windows 11 Build Spread (Min Supported: $win11ThresholdDisp)</div>
+  <div class="section-title">Windows 11 Build Spread (Min Supported: $S_Win11ThresholdDisp)</div>
   <div class="dist-cards">
-$win11CardsHtml
+$S_Win11CardsHtml
   </div>
 </div>
 
 <div class="dist-section">
   <div class="section-title">Other Windows Build Spread</div>
   <div class="dist-cards">
-$otherCardsHtml
+$S_OtherCardsHtml
   </div>
 </div>
 
@@ -502,7 +759,7 @@ $otherCardsHtml
       <th onclick="sortTable(13)">Days Since Sync</th>
     </tr></thead>
     <tbody>
-$tableRows
+$S_TableRows
     </tbody>
   </table>
 </div>
@@ -510,9 +767,9 @@ $tableRows
 <div class="footer">Report generated by ReportIntuneWindowsDevices.ps1</div>
 
 <script>
-var win10Data = $win10ChartJson;
-var win11Data = $win11ChartJson;
-var otherData = $otherChartJson;
+var win10Data = $S_Win10ChartJson;
+var win11Data = $S_Win11ChartJson;
+var otherData = $S_OtherChartJson;
 
 function buildChart(canvasId, payload, baseColor) {
   if (!payload.labels.length) { return; }
@@ -582,33 +839,35 @@ filterTable();
 </html>
 "@
 
-	$html | Out-File -FilePath $htmlFile -Encoding UTF8
+    $S_Html | Out-File -FilePath $S_HtmlFile -Encoding UTF8
 
-	# --- Console summary ---
-	Write-Host ""
-	Write-Host "Intune Windows Devices Report" -ForegroundColor Cyan
-	Write-Host "--------------------------------------------"
-	Write-Host ("Tenant                       : {0} ({1})" -f $tenantDisplayName, $tenantId)
-	Write-Host ("Min supported Windows 10     : {0}" -f $win10ThresholdDisp)
-	Write-Host ("Min supported Windows 11     : {0}" -f $win11ThresholdDisp)
-	Write-Host ("Total Windows devices        : {0}" -f $totalDevices)
-	Write-Host ("  Windows 10                 : {0}  (Outdated: {1})" -f $totalWin10, $outdatedWin10) -ForegroundColor Cyan
-	Write-Host ("  Windows 11                 : {0}  (Outdated: {1})" -f $totalWin11, $outdatedWin11) -ForegroundColor Green
-	Write-Host ("  Other Windows              : {0}" -f $totalOther) -ForegroundColor DarkGray
-	Write-Host ("Total outdated               : {0}  ({1}%)" -f $totalOutdated, $pctOutdated) -ForegroundColor Red
-	Write-Host ""
-	Write-Host "OsGeneration / WinBuild / Total" -ForegroundColor Cyan
-	$breakdown | Format-Table OsGeneration, WinBuild, Total, Outdated -AutoSize | Out-String | Write-Host
-	Write-Host ("CSV report (devices)         : {0}" -f $csvFile) -ForegroundColor Yellow
-	Write-Host ("CSV report (breakdown)       : {0}" -f $breakdownCsv) -ForegroundColor Yellow
-	Write-Host ("HTML report                  : {0}" -f $htmlFile) -ForegroundColor Yellow
+    # --- Console summary ---
+    Write-Host ""
+    Write-Host "Intune Windows Devices Report" -ForegroundColor Cyan
+    Write-Host "--------------------------------------------"
+    Write-Host ("Tenant                       : {0} ({1})" -f $S_TenantDisplayName, $S_TenantId)
+    Write-Host ("Min supported Windows 10     : {0}" -f $S_Win10ThresholdDisp)
+    Write-Host ("Min supported Windows 11     : {0}" -f $S_Win11ThresholdDisp)
+    Write-Host ("Total Windows devices        : {0}" -f $S_TotalDevices)
+    Write-Host ("  Windows 10                 : {0}  (Outdated: {1})" -f $S_TotalWin10, $S_OutdatedWin10) -ForegroundColor Cyan
+    Write-Host ("  Windows 11                 : {0}  (Outdated: {1})" -f $S_TotalWin11, $S_OutdatedWin11) -ForegroundColor Green
+    Write-Host ("  Other Windows              : {0}" -f $S_TotalOther) -ForegroundColor DarkGray
+    Write-Host ("Total outdated               : {0}  ({1}%)" -f $S_TotalOutdated, $S_PctOutdated) -ForegroundColor Red
+    Write-Host ""
+    Write-Host "OsGeneration / WinBuild / Total" -ForegroundColor Cyan
+    $S_Breakdown | Format-Table OsGeneration, WinBuild, Total, Outdated -AutoSize | Out-String | Write-Host
+    Write-Host ("CSV report (devices)         : {0}" -f $S_CsvFile) -ForegroundColor Yellow
+    Write-Host ("CSV report (breakdown)       : {0}" -f $S_BreakdownCsv) -ForegroundColor Yellow
+    Write-Host ("HTML report                  : {0}" -f $S_HtmlFile) -ForegroundColor Yellow
 
-	$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
-	if ($S_DisconnectChoice -match '^(y|yes)$') {
-		Disconnect-MgGraph -ErrorAction SilentlyContinue
-	}
+    $S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
+    if ($S_DisconnectChoice -match '^(y|yes)$')
+    {
+        Disconnect-MgGraph -ErrorAction SilentlyContinue
+    }
 }
-catch {
-	Write-Error $_
-	exit 1
+catch
+{
+    Write-Error $_
+    exit 1
 }

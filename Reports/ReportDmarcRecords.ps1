@@ -28,9 +28,9 @@ Connect-ExchangeOnline -ShowBanner:$false
 
 $S_AllDomains = (Get-AcceptedDomain | Where-Object {$_.DomainName -notlike "*.onmicrosoft.com"}).DomainName
 
-foreach ($Domain in $S_AllDomains)
+foreach ($S_Domain in $S_AllDomains)
 {
-    Write-Output "`nReport on $Domain"
+    Write-Output "`nReport on $S_Domain"
 
-    Resolve-DnsName -Type TXT -Server $S_DNSServerToUse -Name $("_dmarc." + $Domain)
+    Resolve-DnsName -Type TXT -Server $S_DNSServerToUse -Name $("_dmarc." + $S_Domain)
 }

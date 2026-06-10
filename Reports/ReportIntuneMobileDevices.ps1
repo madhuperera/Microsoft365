@@ -33,268 +33,458 @@
 
 [CmdletBinding()]
 param(
-	[Parameter(Mandatory = $true)]
-	[ValidateRange(1, 99)]
-	[int]$LatestSupportedAndroid,
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(1, 99)]
+    [int]$LatestSupportedAndroid,
 
-	[Parameter(Mandatory = $true)]
-	[ValidateRange(1, 99)]
-	[int]$LatestSupportedIOS,
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(1, 99)]
+    [int]$LatestSupportedIOS,
 
-	[Parameter(Mandatory = $false)]
-	[ValidateNotNullOrEmpty()]
-	[string]$ReportPath
+    [Parameter(Mandatory = $false)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ReportPath
 )
 
 $ErrorActionPreference = "Stop"
 
+$S_ReportPath = $ReportPath
+
 $S_RequiredGraphScopes = @(
-	'DeviceManagementManagedDevices.Read.All'
-	'Organization.Read.All'
+    'DeviceManagementManagedDevices.Read.All'
+    'Organization.Read.All'
 )
 
-try {
-	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Authentication)) {
-		throw "Microsoft.Graph.Authentication module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
-	}
-	Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
+try
+{
+    if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Authentication))
+    {
+        throw "Microsoft.Graph.Authentication module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
+    }
+    Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
 
-	# --- Connect to Graph ---
-	$S_ExistingContext = Get-MgContext
-	if ($S_ExistingContext)
-	{
-		Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
-		Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
-		Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
-		Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
-		Write-Host ""
+    # --- Connect to Graph ---
+    $S_ExistingContext = Get-MgContext
+    if ($S_ExistingContext)
+    {
+        Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
+        Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
+        Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
+        Write-Host "  Scopes  : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Yellow
+        Write-Host ""
 
-		$S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-		if ($S_Choice -eq 'N')
-		{
-			Disconnect-MgGraph | Out-Null
-			Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
-		}
-	}
-	else
-	{
-		Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
-	}
-	$S_ExistingContext = Get-MgContext
+        $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+        if ($S_Choice -eq 'N')
+        {
+            Disconnect-MgGraph | Out-Null
+            Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
+        }
+    }
+    else
+    {
+        Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
+    }
+    $S_ExistingContext = Get-MgContext
 
-	Write-Host ""
-	Write-Host "Active Graph context:" -ForegroundColor Cyan
-	Write-Host "  Account    : $($S_ExistingContext.Account)" -ForegroundColor Cyan
-	Write-Host "  TenantId   : $($S_ExistingContext.TenantId)" -ForegroundColor Cyan
-	Write-Host "  Scopes     : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Cyan
-	Write-Host ""
+    Write-Host ""
+    Write-Host "Active Graph context:" -ForegroundColor Cyan
+    Write-Host "  Account    : $($S_ExistingContext.Account)" -ForegroundColor Cyan
+    Write-Host "  TenantId   : $($S_ExistingContext.TenantId)" -ForegroundColor Cyan
+    Write-Host "  Scopes     : $($S_ExistingContext.Scopes -join ', ')" -ForegroundColor Cyan
+    Write-Host ""
 
-	$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
-	if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation)) { $S_ContextConfirmation = 'N' }
-	if ($S_ContextConfirmation.ToUpperInvariant() -ne 'Y') {
-		throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
-	}
+    $S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
+    if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
+    {
+        $S_ContextConfirmation = 'N'
+    }
+    if ($S_ContextConfirmation.ToUpperInvariant() -ne 'Y')
+    {
+        throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
+    }
 
-	# --- Tenant info ---
-	$tenantDisplayName = $null
-	try {
-		$orgResp = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization' -ErrorAction Stop
-		if ($orgResp.value) { $tenantDisplayName = $orgResp.value[0].displayName }
-	} catch { }
-	if (-not $tenantDisplayName) { $tenantDisplayName = $S_ExistingContext.TenantId }
-	$tenantId = if ($S_ExistingContext.TenantId) { $S_ExistingContext.TenantId } else { 'Unknown' }
+    # --- Tenant info ---
+    $S_TenantDisplayName = $null
+    try
+    {
+        $S_OrgResp = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization' -ErrorAction Stop
+        if ($S_OrgResp.value)
+        {
+            $S_TenantDisplayName = $S_OrgResp.value[0].displayName
+        }
+    }
+    catch
+    {
+    }
+    if (-not $S_TenantDisplayName)
+    {
+        $S_TenantDisplayName = $S_ExistingContext.TenantId
+    }
+    $S_TenantId = if ($S_ExistingContext.TenantId)
+    {
+        $S_ExistingContext.TenantId
+    }
+    else
+    {
+        'Unknown'
+    }
 
-	# --- Fetch managed devices (Android, iOS, iPadOS) ---
-	Write-Host "Fetching Intune-managed Android and iOS/iPadOS devices..." -ForegroundColor Cyan
-	$select = 'id,deviceName,userPrincipalName,userDisplayName,operatingSystem,osVersion,model,manufacturer,deviceType,enrolledDateTime,lastSyncDateTime,complianceState,managedDeviceOwnerType,joinType,serialNumber'
-	$filter = "(operatingSystem eq 'Android' or operatingSystem eq 'iOS' or operatingSystem eq 'iPadOS')"
-	$encodedFilter = [System.Uri]::EscapeDataString($filter)
-	$uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices?`$filter=$encodedFilter&`$select=$select&`$top=200"
+    # --- Fetch managed devices (Android, iOS, iPadOS) ---
+    Write-Host "Fetching Intune-managed Android and iOS/iPadOS devices..." -ForegroundColor Cyan
+    $S_Select = 'id,deviceName,userPrincipalName,userDisplayName,operatingSystem,osVersion,model,manufacturer,deviceType,enrolledDateTime,lastSyncDateTime,complianceState,managedDeviceOwnerType,joinType,serialNumber'
+    $S_Filter = "(operatingSystem eq 'Android' or operatingSystem eq 'iOS' or operatingSystem eq 'iPadOS')"
+    $S_EncodedFilter = [System.Uri]::EscapeDataString($S_Filter)
+    $S_Uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices?`$filter=$S_EncodedFilter&`$select=$S_Select&`$top=200"
 
-	$devices = New-Object System.Collections.Generic.List[object]
-	do {
-		$resp = Invoke-MgGraphRequest -Method GET -Uri $uri -ErrorAction Stop
-		if ($resp.value) {
-			foreach ($d in $resp.value) { $devices.Add([pscustomobject]$d) | Out-Null }
-		}
-		$uri = $resp.'@odata.nextLink'
-	} while ($uri)
+    $S_Devices = New-Object System.Collections.Generic.List[object]
+    do
+    {
+        $S_Resp = Invoke-MgGraphRequest -Method GET -Uri $S_Uri -ErrorAction Stop
+        if ($S_Resp.value)
+        {
+            foreach ($d in $S_Resp.value)
+            {
+                $S_Devices.Add([pscustomobject]$d) | Out-Null
+            }
+        }
+        $S_Uri = $S_Resp.'@odata.nextLink'
+    } while ($S_Uri)
 
-	Write-Host ("  Retrieved {0} mobile devices" -f $devices.Count) -ForegroundColor Green
+    Write-Host ("  Retrieved {0} mobile devices" -f $S_Devices.Count) -ForegroundColor Green
 
-	# --- Build report rows ---
-	$now = Get-Date
-	$report = foreach ($d in $devices) {
-		$os = $d.operatingSystem
-		$rawVer = if ($d.osVersion) { [string]$d.osVersion } else { '' }
+    # --- Build report rows ---
+    $S_Now = Get-Date
+    $S_Report = foreach ($d in $S_Devices)
+    {
+        $S_Os = $d.operatingSystem
+        $S_RawVer = if ($d.osVersion)
+        {
+            [string]$d.osVersion
+        }
+        else
+        {
+            ''
+        }
 
-		# Treat iOS devices with iPad models as iPadOS for clarity
-		$platform = $os
-		if ($os -eq 'iOS' -and ($d.model -match 'iPad' -or $d.deviceType -eq 'iPad')) {
-			$platform = 'iPadOS'
-		}
+        # Treat iOS devices with iPad models as iPadOS for clarity
+        $S_Platform = $S_Os
+        if ($S_Os -eq 'iOS' -and ($d.model -match 'iPad' -or $d.deviceType -eq 'iPad'))
+        {
+            $S_Platform = 'iPadOS'
+        }
 
-		$majorVer = $null
-		if ($rawVer -match '^\s*(\d+)') { $majorVer = [int]$Matches[1] }
+        $S_MajorVer = $null
+        if ($S_RawVer -match '^\s*(\d+)')
+        {
+            $S_MajorVer = [int]$Matches[1]
+        }
 
-		$threshold = switch ($platform) {
-			'Android' { $LatestSupportedAndroid }
-			'iOS'     { $LatestSupportedIOS }
-			'iPadOS'  { $LatestSupportedIOS }
-			default   { $null }
-		}
+        $S_Threshold = switch ($S_Platform)
+        {
+            'Android' { $LatestSupportedAndroid }
+            'iOS' { $LatestSupportedIOS }
+            'iPadOS' { $LatestSupportedIOS }
+            default { $null }
+        }
 
-		$supportStatus = 'Unknown'
-		if ($null -ne $majorVer -and $null -ne $threshold) {
-			if ($majorVer -lt $threshold) { $supportStatus = 'Outdated' }
-			else { $supportStatus = 'Supported' }
-		}
+        $S_SupportStatus = 'Unknown'
+        if ($null -ne $S_MajorVer -and $null -ne $S_Threshold)
+        {
+            if ($S_MajorVer -lt $S_Threshold)
+            {
+                $S_SupportStatus = 'Outdated'
+            }
+            else
+            {
+                $S_SupportStatus = 'Supported'
+            }
+        }
 
-		$lastSync = if ($d.lastSyncDateTime) { [datetime]$d.lastSyncDateTime } else { $null }
-		$daysSinceSync = if ($lastSync) { [int]($now - $lastSync).TotalDays } else { $null }
+        $S_LastSync = if ($d.lastSyncDateTime)
+        {
+            [datetime]$d.lastSyncDateTime
+        }
+        else
+        {
+            $null
+        }
+        $S_DaysSinceSync = if ($S_LastSync)
+        {
+            [int]($S_Now - $S_LastSync).TotalDays
+        }
+        else
+        {
+            $null
+        }
 
-		[pscustomobject]@{
-			DeviceName        = $d.deviceName
-			User              = if ($d.userDisplayName) { $d.userDisplayName } else { $d.userPrincipalName }
-			UserPrincipalName = $d.userPrincipalName
-			Platform          = $platform
-			OperatingSystem   = $os
-			OSVersion         = $rawVer
-			MajorVersion      = $majorVer
-			LatestSupported   = $threshold
-			SupportStatus     = $supportStatus
-			Manufacturer      = $d.manufacturer
-			Model             = $d.model
-			Ownership         = $d.managedDeviceOwnerType
-			ComplianceState   = $d.complianceState
-			EnrolledDateTime  = $d.enrolledDateTime
-			LastSyncDateTime  = $d.lastSyncDateTime
-			DaysSinceLastSync = $daysSinceSync
-			SerialNumber      = $d.serialNumber
-		}
-	}
+        [pscustomobject]@{
+            DeviceName        = $d.deviceName
+            User              = if ($d.userDisplayName)
+            {
+                $d.userDisplayName
+            }
+            else
+            {
+                $d.userPrincipalName
+            }
+            UserPrincipalName = $d.userPrincipalName
+            Platform          = $S_Platform
+            OperatingSystem   = $S_Os
+            OSVersion         = $S_RawVer
+            MajorVersion      = $S_MajorVer
+            LatestSupported   = $S_Threshold
+            SupportStatus     = $S_SupportStatus
+            Manufacturer      = $d.manufacturer
+            Model             = $d.model
+            Ownership         = $d.managedDeviceOwnerType
+            ComplianceState   = $d.complianceState
+            EnrolledDateTime  = $d.enrolledDateTime
+            LastSyncDateTime  = $d.lastSyncDateTime
+            DaysSinceLastSync = $S_DaysSinceSync
+            SerialNumber      = $d.serialNumber
+        }
+    }
 
-	# --- Stats ---
-	$totalDevices  = $report.Count
-	$androidDevices = $report | Where-Object { $_.Platform -eq 'Android' }
-	$iosDevices     = $report | Where-Object { $_.Platform -eq 'iOS' }
-	$ipadDevices    = $report | Where-Object { $_.Platform -eq 'iPadOS' }
+    # --- Stats ---
+    $S_TotalDevices = $S_Report.Count
+    $S_AndroidDevices = $S_Report | Where-Object { $_.Platform -eq 'Android' }
+    $S_IosDevices = $S_Report | Where-Object { $_.Platform -eq 'iOS' }
+    $S_IpadDevices = $S_Report | Where-Object { $_.Platform -eq 'iPadOS' }
 
-	$totalAndroid = $androidDevices.Count
-	$totalIos     = $iosDevices.Count
-	$totalIpad    = $ipadDevices.Count
+    $S_TotalAndroid = $S_AndroidDevices.Count
+    $S_TotalIos = $S_IosDevices.Count
+    $S_TotalIpad = $S_IpadDevices.Count
 
-	$outdatedAndroid = ($androidDevices | Where-Object { $_.SupportStatus -eq 'Outdated' }).Count
-	$outdatedIos     = ($iosDevices     | Where-Object { $_.SupportStatus -eq 'Outdated' }).Count
-	$outdatedIpad    = ($ipadDevices    | Where-Object { $_.SupportStatus -eq 'Outdated' }).Count
-	$totalOutdated   = $outdatedAndroid + $outdatedIos + $outdatedIpad
+    $S_OutdatedAndroid = ($S_AndroidDevices | Where-Object { $_.SupportStatus -eq 'Outdated' }).Count
+    $S_OutdatedIos = ($S_IosDevices     | Where-Object { $_.SupportStatus -eq 'Outdated' }).Count
+    $S_OutdatedIpad = ($S_IpadDevices    | Where-Object { $_.SupportStatus -eq 'Outdated' }).Count
+    $S_TotalOutdated = $S_OutdatedAndroid + $S_OutdatedIos + $S_OutdatedIpad
 
-	function Get-VersionSpread {
-		param([object[]]$Devices, [int]$Threshold)
-		$grouped = $Devices | Group-Object MajorVersion | Sort-Object {
-			if ([string]::IsNullOrEmpty($_.Name)) { -1 } else { [int]$_.Name }
-		} -Descending
-		foreach ($g in $grouped) {
-			$ver = if ([string]::IsNullOrEmpty($g.Name)) { 'Unknown' } else { $g.Name }
-			$verNum = if ($ver -eq 'Unknown') { $null } else { [int]$ver }
-			$outdated = ($null -ne $verNum -and $verNum -lt $Threshold)
-			[pscustomobject]@{
-				Version  = $ver
-				Count    = $g.Count
-				Outdated = $outdated
-			}
-		}
-	}
+    function Get-VersionSpread
+    {
+        param([object[]]$Devices, [int]$Threshold)
+        $grouped = $Devices | Group-Object MajorVersion | Sort-Object {
+            if ([string]::IsNullOrEmpty($_.Name))
+            {
+                -1
+            }
+            else
+            {
+                [int]$_.Name
+            }
+        } -Descending
+        foreach ($g in $grouped)
+        {
+            $ver = if ([string]::IsNullOrEmpty($g.Name))
+            {
+                'Unknown'
+            }
+            else
+            {
+                $g.Name
+            }
+            $verNum = if ($ver -eq 'Unknown')
+            {
+                $null
+            }
+            else
+            {
+                [int]$ver
+            }
+            $outdated = ($null -ne $verNum -and $verNum -lt $Threshold)
+            [pscustomobject]@{
+                Version  = $ver
+                Count    = $g.Count
+                Outdated = $outdated
+            }
+        }
+    }
 
-	$androidSpread = @(Get-VersionSpread -Devices $androidDevices -Threshold $LatestSupportedAndroid)
-	$iosSpread     = @(Get-VersionSpread -Devices $iosDevices     -Threshold $LatestSupportedIOS)
-	$ipadSpread    = @(Get-VersionSpread -Devices $ipadDevices    -Threshold $LatestSupportedIOS)
+    $S_AndroidSpread = @(Get-VersionSpread -Devices $S_AndroidDevices -Threshold $LatestSupportedAndroid)
+    $S_IosSpread = @(Get-VersionSpread -Devices $S_IosDevices     -Threshold $LatestSupportedIOS)
+    $S_IpadSpread = @(Get-VersionSpread -Devices $S_IpadDevices    -Threshold $LatestSupportedIOS)
 
-	# --- Output paths ---
-	if (-not $ReportPath) { $ReportPath = (Get-Location).Path }
-	$reportFolder = if (Test-Path $ReportPath -PathType Container) { $ReportPath } else { Split-Path -Parent $ReportPath }
-	if ($reportFolder -and -not (Test-Path $reportFolder)) {
-		New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
-	}
-	$S_Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-	$csvFile  = Join-Path $reportFolder ("ReportIntuneMobileDevices_{0}.csv"  -f $S_Timestamp)
-	$htmlFile = Join-Path $reportFolder ("ReportIntuneMobileDevices_{0}.html" -f $S_Timestamp)
+    # --- Output paths ---
+    if (-not $S_ReportPath)
+    {
+        $S_ReportPath = (Get-Location).Path
+    }
+    $S_ReportFolder = if (Test-Path $S_ReportPath -PathType Container)
+    {
+        $S_ReportPath
+    }
+    else
+    {
+        Split-Path -Parent $S_ReportPath
+    }
+    if ($S_ReportFolder -and -not (Test-Path $S_ReportFolder))
+    {
+        New-Item -ItemType Directory -Path $S_ReportFolder -Force | Out-Null
+    }
+    $S_Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    $S_CsvFile = Join-Path $S_ReportFolder ("ReportIntuneMobileDevices_{0}.csv" -f $S_Timestamp)
+    $S_HtmlFile = Join-Path $S_ReportFolder ("ReportIntuneMobileDevices_{0}.html" -f $S_Timestamp)
 
-	# --- CSV export ---
-	$report | Sort-Object Platform, DeviceName | Export-Csv -Path $csvFile -NoTypeInformation -Encoding UTF8
+    # --- CSV export ---
+    $S_Report | Sort-Object Platform, DeviceName | Export-Csv -Path $S_CsvFile -NoTypeInformation -Encoding UTF8
 
-	# --- HTML helpers ---
-	$enc = { param($s) if ($null -eq $s -or $s -eq '') { '-' } else { [System.Net.WebUtility]::HtmlEncode([string]$s) } }
-	$reportDate = Get-Date -Format "dd MMM yyyy HH:mm"
+    # --- HTML helpers ---
+    $S_Enc = {
+        param($s)
+        if ($null -eq $s -or $s -eq '')
+        {
+            '-'
+        }
+        else
+        {
+            [System.Net.WebUtility]::HtmlEncode([string]$s)
+        }
+    }
+    $S_ReportDate = Get-Date -Format "dd MMM yyyy HH:mm"
 
-	# Build version spread cards HTML
-	function Build-SpreadCardsHtml {
-		param([object[]]$Spread, [string]$PlatformLabel)
-		if (-not $Spread -or $Spread.Count -eq 0) {
-			return "<div class='dist-card'><div class='dist-label'>No $PlatformLabel devices</div><div class='dist-value'>0</div></div>"
-		}
-		($Spread | ForEach-Object {
-			$cls = if ($_.Outdated) { 'dist-card outdated' } else { 'dist-card' }
-			$badge = if ($_.Outdated) { "<div class='outdated-badge'>Outdated</div>" } else { '' }
-			"<div class='$cls'><div class='dist-label'>$PlatformLabel $($_.Version)</div><div class='dist-value'>$($_.Count)</div>$badge</div>"
-		}) -join "`n"
-	}
+    # Build version spread cards HTML
+    function Build-SpreadCardsHtml
+    {
+        param([object[]]$Spread, [string]$PlatformLabel)
+        if (-not $Spread -or $Spread.Count -eq 0)
+        {
+            return "<div class='dist-card'><div class='dist-label'>No $PlatformLabel devices</div><div class='dist-value'>0</div></div>"
+        }
+        ($Spread | ForEach-Object {
+            $cls = if ($_.Outdated)
+            {
+                'dist-card outdated'
+            }
+            else
+            {
+                'dist-card'
+            }
+            $badge = if ($_.Outdated)
+            {
+                "<div class='outdated-badge'>Outdated</div>"
+            }
+            else
+            {
+                ''
+            }
+            "<div class='$cls'><div class='dist-label'>$PlatformLabel $($_.Version)</div><div class='dist-value'>$($_.Count)</div>$badge</div>"
+        }) -join "`n"
+    }
 
-	$androidCardsHtml = Build-SpreadCardsHtml -Spread $androidSpread -PlatformLabel 'Android'
-	$iosCardsHtml     = Build-SpreadCardsHtml -Spread $iosSpread     -PlatformLabel 'iOS'
-	$ipadCardsHtml    = Build-SpreadCardsHtml -Spread $ipadSpread    -PlatformLabel 'iPadOS'
+    $S_AndroidCardsHtml = Build-SpreadCardsHtml -Spread $S_AndroidSpread -PlatformLabel 'Android'
+    $S_IosCardsHtml = Build-SpreadCardsHtml -Spread $S_IosSpread     -PlatformLabel 'iOS'
+    $S_IpadCardsHtml = Build-SpreadCardsHtml -Spread $S_IpadSpread    -PlatformLabel 'iPadOS'
 
-	# Build chart data JSON
-	function ConvertTo-ChartJson {
-		param([object[]]$Spread)
-		if (-not $Spread -or $Spread.Count -eq 0) { return '{"labels":[],"data":[],"outdated":[]}' }
-		$labels  = ($Spread | ForEach-Object { '"' + $_.Version + '"' }) -join ','
-		$counts  = ($Spread | ForEach-Object { $_.Count }) -join ','
-		$outFlag = ($Spread | ForEach-Object { if ($_.Outdated) { 'true' } else { 'false' } }) -join ','
-		"{`"labels`":[$labels],`"data`":[$counts],`"outdated`":[$outFlag]}"
-	}
+    # Build chart data JSON
+    function ConvertTo-ChartJson
+    {
+        param([object[]]$Spread)
+        if (-not $Spread -or $Spread.Count -eq 0)
+        {
+            return '{"labels":[],"data":[],"outdated":[]}'
+        }
+        $labels = ($Spread | ForEach-Object { '"' + $_.Version + '"' }) -join ','
+        $counts = ($Spread | ForEach-Object { $_.Count }) -join ','
+        $outFlag = ($Spread | ForEach-Object {
+                if ($_.Outdated)
+                {
+                    'true'
+                }
+                else
+                {
+                    'false'
+                }
+            }) -join ','
+        "{`"labels`":[$labels],`"data`":[$counts],`"outdated`":[$outFlag]}"
+    }
 
-	$androidChartJson = ConvertTo-ChartJson -Spread $androidSpread
-	$iosChartJson     = ConvertTo-ChartJson -Spread $iosSpread
-	$ipadChartJson    = ConvertTo-ChartJson -Spread $ipadSpread
+    $S_AndroidChartJson = ConvertTo-ChartJson -Spread $S_AndroidSpread
+    $S_IosChartJson = ConvertTo-ChartJson -Spread $S_IosSpread
+    $S_IpadChartJson = ConvertTo-ChartJson -Spread $S_IpadSpread
 
-	# Build table rows
-	$tableRows = ($report | Sort-Object Platform, DeviceName | ForEach-Object {
-		$daysVal      = if ($null -ne $_.DaysSinceLastSync) { $_.DaysSinceLastSync } else { -1 }
-		$lastSyncDisp = if ($_.LastSyncDateTime) { ([datetime]$_.LastSyncDateTime).ToString("dd MMM yyyy") } else { '-' }
-		$enrolDisp    = if ($_.EnrolledDateTime) { ([datetime]$_.EnrolledDateTime).ToString("dd MMM yyyy") } else { '-' }
-		$statusClass  = switch ($_.SupportStatus) {
-			'Outdated'  { 'badge-inactive' }
-			'Supported' { 'badge-active' }
-			default      { 'badge-disabled' }
-		}
-		$compClass = switch ($_.ComplianceState) {
-			'compliant'    { 'badge-active' }
-			'noncompliant' { 'badge-inactive' }
-			default         { 'badge-disabled' }
-		}
-		$rowAttr = "data-platform=`"$($_.Platform)`" data-status=`"$($_.SupportStatus)`""
-		"<tr $rowAttr>" +
-			"<td>$(& $enc $_.DeviceName)</td>" +
-			"<td>$(& $enc $_.User)</td>" +
-			"<td>$(& $enc $_.Platform)</td>" +
-			"<td>$(& $enc $_.OSVersion)</td>" +
-			"<td>$(if ($null -ne $_.MajorVersion) { $_.MajorVersion } else { '-' })</td>" +
-			"<td><span class='badge $statusClass'>$($_.SupportStatus)</span></td>" +
-			"<td>$(& $enc $_.Manufacturer)</td>" +
-			"<td>$(& $enc $_.Model)</td>" +
-			"<td>$(& $enc $_.Ownership)</td>" +
-			"<td><span class='badge $compClass'>$(& $enc $_.ComplianceState)</span></td>" +
-			"<td>$enrolDisp</td>" +
-			"<td>$lastSyncDisp</td>" +
-			"<td>$(if ($daysVal -ge 0) { "$daysVal days" } else { 'Never' })</td>" +
-		"</tr>"
-	}) -join "`n"
+    # Build table rows
+    $S_TableRows = ($S_Report | Sort-Object Platform, DeviceName | ForEach-Object {
+            $S_DaysVal = if ($null -ne $_.DaysSinceLastSync)
+            {
+                $_.DaysSinceLastSync
+            }
+            else
+            {
+                -1
+            }
+            $S_LastSyncDisp = if ($_.LastSyncDateTime)
+            {
+                ([datetime]$_.LastSyncDateTime).ToString("dd MMM yyyy")
+            }
+            else
+            {
+                '-'
+            }
+            $S_EnrolDisp = if ($_.EnrolledDateTime)
+            {
+                ([datetime]$_.EnrolledDateTime).ToString("dd MMM yyyy")
+            }
+            else
+            {
+                '-'
+            }
+            $S_StatusClass = switch ($_.SupportStatus)
+            {
+                'Outdated' { 'badge-inactive' }
+                'Supported' { 'badge-active' }
+                default { 'badge-disabled' }
+            }
+            $S_CompClass = switch ($_.ComplianceState)
+            {
+                'compliant' { 'badge-active' }
+                'noncompliant' { 'badge-inactive' }
+                default { 'badge-disabled' }
+            }
+            $S_MajorVersionDisplay = if ($null -ne $_.MajorVersion)
+            {
+                $_.MajorVersion
+            }
+            else
+            {
+                '-'
+            }
+            $S_DaysSinceSyncDisplay = if ($S_DaysVal -ge 0)
+            {
+                "$S_DaysVal days"
+            }
+            else
+            {
+                'Never'
+            }
+            $S_RowAttr = "data-platform=`"$($_.Platform)`" data-status=`"$($_.SupportStatus)`""
+            "<tr $S_RowAttr>" +
+            "<td>$(& $S_Enc $_.DeviceName)</td>" +
+            "<td>$(& $S_Enc $_.User)</td>" +
+            "<td>$(& $S_Enc $_.Platform)</td>" +
+            "<td>$(& $S_Enc $_.OSVersion)</td>" +
+            "<td>$S_MajorVersionDisplay</td>" +
+            "<td><span class='badge $S_StatusClass'>$($_.SupportStatus)</span></td>" +
+            "<td>$(& $S_Enc $_.Manufacturer)</td>" +
+            "<td>$(& $S_Enc $_.Model)</td>" +
+            "<td>$(& $S_Enc $_.Ownership)</td>" +
+            "<td><span class='badge $S_CompClass'>$(& $S_Enc $_.ComplianceState)</span></td>" +
+            "<td>$S_EnrolDisp</td>" +
+            "<td>$S_LastSyncDisp</td>" +
+            "<td>$S_DaysSinceSyncDisplay</td>" +
+            "</tr>"
+        }) -join "`n"
 
-	$pctOutdated = if ($totalDevices -gt 0) { [math]::Round(($totalOutdated / $totalDevices) * 100, 1) } else { 0 }
+    $S_PctOutdated = if ($S_TotalDevices -gt 0)
+    {
+        [math]::Round(($S_TotalOutdated / $S_TotalDevices) * 100, 1)
+    }
+    else
+    {
+        0
+    }
 
-	# --- HTML report ---
-	$html = @"
+    # --- HTML report ---
+    $S_Html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -359,7 +549,7 @@ try {
 <div class="header">
   <div class="header-left">
     <h1>Intune Mobile Devices Report</h1>
-    <p>Tenant: $(& $enc $tenantDisplayName) ($tenantId) &nbsp;|&nbsp; Generated: $reportDate</p>
+    <p>Tenant: $(& $S_Enc $S_TenantDisplayName) ($S_TenantId) &nbsp;|&nbsp; Generated: $S_ReportDate</p>
   </div>
   <div class="header-right">
     Latest supported Android: <strong>$LatestSupportedAndroid</strong><br/>
@@ -370,32 +560,32 @@ try {
 <!-- OVERVIEW -->
 <div class="section-title">Overview</div>
 <div class="summary-cards">
-  <div class="card"><div class="label">Total Mobile Devices</div><div class="value" style="color:#1a1a2e;">$totalDevices</div></div>
-  <div class="card"><div class="label">Android</div><div class="value" style="color:#27ae60;">$totalAndroid</div><div class="sub">$outdatedAndroid outdated</div></div>
-  <div class="card"><div class="label">iOS</div><div class="value" style="color:#3498db;">$totalIos</div><div class="sub">$outdatedIos outdated</div></div>
-  <div class="card"><div class="label">iPadOS</div><div class="value" style="color:#9b59b6;">$totalIpad</div><div class="sub">$outdatedIpad outdated</div></div>
-  <div class="card"><div class="label">Total Outdated</div><div class="value" style="color:#e74c3c;">$totalOutdated</div><div class="sub">$pctOutdated% of total</div></div>
+  <div class="card"><div class="label">Total Mobile Devices</div><div class="value" style="color:#1a1a2e;">$S_TotalDevices</div></div>
+  <div class="card"><div class="label">Android</div><div class="value" style="color:#27ae60;">$S_TotalAndroid</div><div class="sub">$S_OutdatedAndroid outdated</div></div>
+  <div class="card"><div class="label">iOS</div><div class="value" style="color:#3498db;">$S_TotalIos</div><div class="sub">$S_OutdatedIos outdated</div></div>
+  <div class="card"><div class="label">iPadOS</div><div class="value" style="color:#9b59b6;">$S_TotalIpad</div><div class="sub">$S_OutdatedIpad outdated</div></div>
+  <div class="card"><div class="label">Total Outdated</div><div class="value" style="color:#e74c3c;">$S_TotalOutdated</div><div class="sub">$S_PctOutdated% of total</div></div>
 </div>
 
 <!-- VERSION SPREAD -->
 <div class="dist-section">
   <div class="section-title">Android Version Spread (Latest Supported: $LatestSupportedAndroid)</div>
   <div class="dist-cards">
-$androidCardsHtml
+$S_AndroidCardsHtml
   </div>
 </div>
 
 <div class="dist-section">
   <div class="section-title">iOS Version Spread (Latest Supported: $LatestSupportedIOS)</div>
   <div class="dist-cards">
-$iosCardsHtml
+$S_IosCardsHtml
   </div>
 </div>
 
 <div class="dist-section">
   <div class="section-title">iPadOS Version Spread (Latest Supported: $LatestSupportedIOS)</div>
   <div class="dist-cards">
-$ipadCardsHtml
+$S_IpadCardsHtml
   </div>
 </div>
 
@@ -442,7 +632,7 @@ $ipadCardsHtml
       <th onclick="sortTable(12)">Days Since Sync</th>
     </tr></thead>
     <tbody>
-$tableRows
+$S_TableRows
     </tbody>
   </table>
 </div>
@@ -450,9 +640,9 @@ $tableRows
 <div class="footer">Report generated by ReportIntuneMobileDevices.ps1</div>
 
 <script>
-var androidData = $androidChartJson;
-var iosData     = $iosChartJson;
-var ipadData    = $ipadChartJson;
+var androidData = $S_AndroidChartJson;
+var iosData     = $S_IosChartJson;
+var ipadData    = $S_IpadChartJson;
 
 function buildChart(canvasId, payload, baseColor) {
   if (!payload.labels.length) { return; }
@@ -522,30 +712,32 @@ filterTable();
 </html>
 "@
 
-	$html | Out-File -FilePath $htmlFile -Encoding UTF8
+    $S_Html | Out-File -FilePath $S_HtmlFile -Encoding UTF8
 
-	# --- Console summary ---
-	Write-Host ""
-	Write-Host "Intune Mobile Devices Report" -ForegroundColor Cyan
-	Write-Host "--------------------------------------------"
-	Write-Host ("Tenant                   : {0} ({1})" -f $tenantDisplayName, $tenantId)
-	Write-Host ("Latest supported Android : {0}" -f $LatestSupportedAndroid)
-	Write-Host ("Latest supported iOS     : {0}" -f $LatestSupportedIOS)
-	Write-Host ("Total mobile devices     : {0}" -f $totalDevices)
-	Write-Host ("  Android                : {0}  (Outdated: {1})" -f $totalAndroid, $outdatedAndroid) -ForegroundColor Green
-	Write-Host ("  iOS                    : {0}  (Outdated: {1})" -f $totalIos, $outdatedIos) -ForegroundColor Green
-	Write-Host ("  iPadOS                 : {0}  (Outdated: {1})" -f $totalIpad, $outdatedIpad) -ForegroundColor Green
-	Write-Host ("Total outdated           : {0}  ({1}%)" -f $totalOutdated, $pctOutdated) -ForegroundColor Red
-	Write-Host ""
-	Write-Host ("CSV report               : {0}" -f $csvFile) -ForegroundColor Yellow
-	Write-Host ("HTML report              : {0}" -f $htmlFile) -ForegroundColor Yellow
+    # --- Console summary ---
+    Write-Host ""
+    Write-Host "Intune Mobile Devices Report" -ForegroundColor Cyan
+    Write-Host "--------------------------------------------"
+    Write-Host ("Tenant                   : {0} ({1})" -f $S_TenantDisplayName, $S_TenantId)
+    Write-Host ("Latest supported Android : {0}" -f $LatestSupportedAndroid)
+    Write-Host ("Latest supported iOS     : {0}" -f $LatestSupportedIOS)
+    Write-Host ("Total mobile devices     : {0}" -f $S_TotalDevices)
+    Write-Host ("  Android                : {0}  (Outdated: {1})" -f $S_TotalAndroid, $S_OutdatedAndroid) -ForegroundColor Green
+    Write-Host ("  iOS                    : {0}  (Outdated: {1})" -f $S_TotalIos, $S_OutdatedIos) -ForegroundColor Green
+    Write-Host ("  iPadOS                 : {0}  (Outdated: {1})" -f $S_TotalIpad, $S_OutdatedIpad) -ForegroundColor Green
+    Write-Host ("Total outdated           : {0}  ({1}%)" -f $S_TotalOutdated, $S_PctOutdated) -ForegroundColor Red
+    Write-Host ""
+    Write-Host ("CSV report               : {0}" -f $S_CsvFile) -ForegroundColor Yellow
+    Write-Host ("HTML report              : {0}" -f $S_HtmlFile) -ForegroundColor Yellow
 
-	$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
-	if ($S_DisconnectChoice -match '^(y|yes)$') {
-		Disconnect-MgGraph -ErrorAction SilentlyContinue
-	}
+    $S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
+    if ($S_DisconnectChoice -match '^(y|yes)$')
+    {
+        Disconnect-MgGraph -ErrorAction SilentlyContinue
+    }
 }
-catch {
-	Write-Error $_
-	exit 1
+catch
+{
+    Write-Error $_
+    exit 1
 }

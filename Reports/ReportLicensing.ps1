@@ -33,7 +33,8 @@ param(
 # ── Setup ──────────────────────────────────────────────────────────────────────
 $ErrorActionPreference = 'Stop'
 
-if (-not $OutputPath) {
+if (-not $OutputPath)
+{
     $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
     $OutputPath = Join-Path (Get-Location).Path "ReportLicensing_$S_Timestamp.csv"
 }
@@ -48,7 +49,8 @@ $S_RequiredGraphScopes = @(
 $S_GraphRequestDelayMilliseconds = 5
 
 $S_ExistingContext = Get-MgContext
-if ($S_ExistingContext) {
+if ($S_ExistingContext)
+{
     Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
     Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
     Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
@@ -56,160 +58,253 @@ if ($S_ExistingContext) {
     Write-Host ""
 
     $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-    if ($S_Choice -eq 'N') {
+    if ($S_Choice -eq 'N')
+    {
         Write-Host "Disconnecting existing session..." -ForegroundColor Cyan
         Disconnect-MgGraph | Out-Null
         Write-Host "Reconnecting with required scopes..." -ForegroundColor Cyan
         Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
         Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
     }
-    else {
+    else
+    {
         Write-Host "Using existing Graph session." -ForegroundColor Green
     }
 }
-else {
+else
+{
     Write-Host "Connecting to Microsoft Graph..." -ForegroundColor Cyan
     Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
     Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
 }
 
-try {
+try
+{
     # ── Tenant info ────────────────────────────────────────────────────────────
-    $context = Get-MgContext
-    $tenantId = if ($context.TenantId) { $context.TenantId } else { "Unknown" }
-    $tenantDisplayName = $null
-    try {
-        $org = Get-MgOrganization -ErrorAction Stop | Select-Object -First 1
-        $tenantDisplayName = $org.DisplayName
-    } catch { }
-    if (-not $tenantDisplayName) { $tenantDisplayName = $tenantId }
+    $S_Context = Get-MgContext
+    $S_TenantId = if ($S_Context.TenantId)
+    {
+        $S_Context.TenantId
+    }
+    else
+    {
+        'Unknown'
+    }
+    $S_TenantDisplayName = $null
+    try
+    {
+        $S_Org = Get-MgOrganization -ErrorAction Stop | Select-Object -First 1
+        $S_TenantDisplayName = $S_Org.DisplayName
+    }
+    catch
+    {
+    }
+    if (-not $S_TenantDisplayName)
+    {
+        $S_TenantDisplayName = $S_TenantId
+    }
 
     # ── Download Microsoft SKU reference for friendly names ────────────────────
-    $skuDisplayNameLookup = @{}
-    $msRefUrl = 'https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv'
-    try {
-        Write-Host "Downloading Microsoft SKU reference data..." -ForegroundColor Cyan
-        $refCsv = Invoke-WebRequest -Uri $msRefUrl -UseBasicParsing -ErrorAction Stop
-        $refText = [System.Text.Encoding]::UTF8.GetString($refCsv.Content)
-        $refData = $refText | ConvertFrom-Csv
-        foreach ($row in $refData) {
-            if ($row.String_Id -and -not $skuDisplayNameLookup.ContainsKey($row.String_Id)) {
-                $skuDisplayNameLookup[$row.String_Id] = $row.Product_Display_Name
+    $S_SkuDisplayNameLookup = @{}
+    $S_MsRefUrl = 'https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv'
+    try
+    {
+        Write-Host 'Downloading Microsoft SKU reference data...' -ForegroundColor Cyan
+        $S_RefCsv = Invoke-WebRequest -Uri $S_MsRefUrl -UseBasicParsing -ErrorAction Stop
+        $S_RefText = [System.Text.Encoding]::UTF8.GetString($S_RefCsv.Content)
+        $S_RefData = $S_RefText | ConvertFrom-Csv
+        foreach ($S_Row in $S_RefData)
+        {
+            if ($S_Row.String_Id -and -not $S_SkuDisplayNameLookup.ContainsKey($S_Row.String_Id))
+            {
+                $S_SkuDisplayNameLookup[$S_Row.String_Id] = $S_Row.Product_Display_Name
             }
         }
-        Write-Host "  Loaded $($skuDisplayNameLookup.Count) SKU display names" -ForegroundColor Green
-    } catch {
-        Write-Warning "Could not download SKU reference CSV. Friendly names will fall back to SkuPartNumber."
+        Write-Host "  Loaded $($S_SkuDisplayNameLookup.Count) SKU display names" -ForegroundColor Green
+    }
+    catch
+    {
+        Write-Warning 'Could not download SKU reference CSV. Friendly names will fall back to SkuPartNumber.'
     }
 
     # ── Fetch subscribed SKUs ──────────────────────────────────────────────────
-    Write-Host "Fetching subscribed license plans..." -ForegroundColor Cyan
-    $subscribedSkus = Get-MgSubscribedSku -All -ErrorAction Stop
-    Write-Host "  Found $($subscribedSkus.Count) license plans" -ForegroundColor Green
+    Write-Host 'Fetching subscribed license plans...' -ForegroundColor Cyan
+    $S_SubscribedSkus = Get-MgSubscribedSku -All -ErrorAction Stop
+    Write-Host "  Found $($S_SubscribedSkus.Count) license plans" -ForegroundColor Green
 
     # ── Build report data ──────────────────────────────────────────────────────
-    $results = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $S_Results = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-    foreach ($sku in $subscribedSkus) {
-        $enabled   = $sku.PrepaidUnits.Enabled
-        $warning   = $sku.PrepaidUnits.Warning
-        $suspended = $sku.PrepaidUnits.Suspended
-        $lockedOut = $sku.PrepaidUnits.LockedOut
-        $consumed  = $sku.ConsumedUnits
-        $available = $enabled - $consumed
+    foreach ($S_Sku in $S_SubscribedSkus)
+    {
+        $S_Enabled = $S_Sku.PrepaidUnits.Enabled
+        $S_Warning = $S_Sku.PrepaidUnits.Warning
+        $S_Suspended = $S_Sku.PrepaidUnits.Suspended
+        $S_LockedOut = $S_Sku.PrepaidUnits.LockedOut
+        $S_Consumed = $S_Sku.ConsumedUnits
+        $S_Available = $S_Enabled - $S_Consumed
 
-        $servicePlanNames = ($sku.ServicePlans | Sort-Object ServicePlanName | ForEach-Object { $_.ServicePlanName }) -join '; '
-        $servicePlanCount = ($sku.ServicePlans | Measure-Object).Count
+        $S_ServicePlanNames = ($S_Sku.ServicePlans | Sort-Object ServicePlanName | ForEach-Object { $_.ServicePlanName }) -join '; '
+        $S_ServicePlanCount = ($S_Sku.ServicePlans | Measure-Object).Count
 
         # Calculate per-SKU utilisation
-        $utilisationSkuPct = if ($enabled -gt 0) { [math]::Round(($consumed / $enabled) * 100, 1) } else { 0 }
+        $S_UtilisationSkuPct = if ($S_Enabled -gt 0)
+        {
+            [math]::Round(($S_Consumed / $S_Enabled) * 100, 1)
+        }
+        else
+        {
+            0
+        }
 
         # Resolve friendly display name
-        $displayName = $skuDisplayNameLookup[$sku.SkuPartNumber]
-        if (-not $displayName) { $displayName = $sku.SkuPartNumber }
+        $S_DisplayName = $S_SkuDisplayNameLookup[$S_Sku.SkuPartNumber]
+        if (-not $S_DisplayName)
+        {
+            $S_DisplayName = $S_Sku.SkuPartNumber
+        }
 
         # Detect free/trial SKUs from friendly name or SkuPartNumber patterns
-        $isFreeOrTrial = (
-            $displayName -match '\b(free|trial|viral)\b' -or
-            $sku.SkuPartNumber -match '(FREE|TRIAL|VIRAL)'
+        $S_IsFreeOrTrial = (
+            $S_DisplayName -match '\b(free|trial|viral)\b' -or
+            $S_Sku.SkuPartNumber -match '(FREE|TRIAL|VIRAL)'
         )
 
-        $results.Add([PSCustomObject]@{
-            DisplayName      = $displayName
-            SkuPartNumber    = $sku.SkuPartNumber
-            SkuId            = $sku.SkuId
-            IsFreeOrTrial    = $isFreeOrTrial
-            AppliesTo        = $sku.AppliesTo
-            CapabilityStatus = $sku.CapabilityStatus
-            Enabled          = $enabled
-            Consumed         = $consumed
-            Available        = $available
-            UtilisationPct   = $utilisationSkuPct
-            Warning          = $warning
-            Suspended        = $suspended
-            LockedOut        = $lockedOut
-            ServicePlanCount = $servicePlanCount
-            ServicePlans     = $servicePlanNames
+        $S_Results.Add([PSCustomObject]@{
+            DisplayName      = $S_DisplayName
+            SkuPartNumber    = $S_Sku.SkuPartNumber
+            SkuId            = $S_Sku.SkuId
+            IsFreeOrTrial    = $S_IsFreeOrTrial
+            AppliesTo        = $S_Sku.AppliesTo
+            CapabilityStatus = $S_Sku.CapabilityStatus
+            Enabled          = $S_Enabled
+            Consumed         = $S_Consumed
+            Available        = $S_Available
+            UtilisationPct   = $S_UtilisationSkuPct
+            Warning          = $S_Warning
+            Suspended        = $S_Suspended
+            LockedOut        = $S_LockedOut
+            ServicePlanCount = $S_ServicePlanCount
+            ServicePlans     = $S_ServicePlanNames
         })
     }
 
     # Filter out free/trial if requested
-    if ($ExcludeFree) {
-        $excludedCount = ($results | Where-Object { $_.IsFreeOrTrial }).Count
-        $results = [System.Collections.Generic.List[PSCustomObject]]($results | Where-Object { -not $_.IsFreeOrTrial })
-        if ($excludedCount -gt 0) {
-            Write-Host "  Excluded $excludedCount free/trial SKU(s)" -ForegroundColor Yellow
+    if ($ExcludeFree)
+    {
+        $S_ExcludedCount = ($S_Results | Where-Object { $_.IsFreeOrTrial }).Count
+        $S_Results = [System.Collections.Generic.List[PSCustomObject]]($S_Results | Where-Object { -not $_.IsFreeOrTrial })
+        if ($S_ExcludedCount -gt 0)
+        {
+            Write-Host "  Excluded $S_ExcludedCount free/trial SKU(s)" -ForegroundColor Yellow
         }
     }
 
     # Sort by DisplayName
-    $results = $results | Sort-Object DisplayName
+    $S_Results = $S_Results | Sort-Object DisplayName
 
     # ── Export CSV ─────────────────────────────────────────────────────────────
-    $results | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+    $S_Results | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
     Write-Host "`nCSV exported to: $OutputPath" -ForegroundColor Green
-    Write-Host "Total SKUs: $($results.Count)" -ForegroundColor Green
+    Write-Host "Total SKUs: $($S_Results.Count)" -ForegroundColor Green
 
     # ── Calculate Statistics ───────────────────────────────────────────────────
-    $totalSkus        = $results.Count
-    $enabledSkus      = ($results | Where-Object { $_.CapabilityStatus -eq 'Enabled' }).Count
-    $warningSkus      = ($results | Where-Object { $_.CapabilityStatus -eq 'Warning' }).Count
-    $suspendedSkus    = ($results | Where-Object { $_.CapabilityStatus -eq 'Suspended' }).Count
-    $disabledSkus     = ($results | Where-Object { $_.CapabilityStatus -notin @('Enabled', 'Warning', 'Suspended') }).Count
-    $totalEnabled     = ($results | Measure-Object -Property Enabled -Sum).Sum
-    $totalConsumed    = ($results | Measure-Object -Property Consumed -Sum).Sum
-    $totalAvailable   = ($results | Measure-Object -Property Available -Sum).Sum
-    $userSkus         = ($results | Where-Object { $_.AppliesTo -eq 'User' }).Count
-    $companySkus      = ($results | Where-Object { $_.AppliesTo -eq 'Company' }).Count
-    $overAllocated    = ($results | Where-Object { $_.Available -lt 0 }).Count
-    $fullyConsumed    = ($results | Where-Object { $_.Available -eq 0 -and $_.Enabled -gt 0 }).Count
-    $freeTrialSkus    = ($results | Where-Object { $_.IsFreeOrTrial }).Count
-    $paidSkus         = $totalSkus - $freeTrialSkus
+    $S_TotalSkus = $S_Results.Count
+    $S_EnabledSkus = ($S_Results | Where-Object { $_.CapabilityStatus -eq 'Enabled' }).Count
+    $S_WarningSkus = ($S_Results | Where-Object { $_.CapabilityStatus -eq 'Warning' }).Count
+    $S_SuspendedSkus = ($S_Results | Where-Object { $_.CapabilityStatus -eq 'Suspended' }).Count
+    $S_DisabledSkus = ($S_Results | Where-Object { $_.CapabilityStatus -notin @('Enabled', 'Warning', 'Suspended') }).Count
+    $S_TotalEnabled = ($S_Results | Measure-Object -Property Enabled -Sum).Sum
+    $S_TotalConsumed = ($S_Results | Measure-Object -Property Consumed -Sum).Sum
+    $S_TotalAvailable = ($S_Results | Measure-Object -Property Available -Sum).Sum
+    $S_UserSkus = ($S_Results | Where-Object { $_.AppliesTo -eq 'User' }).Count
+    $S_CompanySkus = ($S_Results | Where-Object { $_.AppliesTo -eq 'Company' }).Count
+    $S_OverAllocated = ($S_Results | Where-Object { $_.Available -lt 0 }).Count
+    $S_FullyConsumed = ($S_Results | Where-Object { $_.Available -eq 0 -and $_.Enabled -gt 0 }).Count
+    $S_FreeTrialSkus = ($S_Results | Where-Object { $_.IsFreeOrTrial }).Count
+    $S_PaidSkus = $S_TotalSkus - $S_FreeTrialSkus
 
     # Calculate utilisation on paid SKUs only (free/trial inflate with 10000+ enabled units)
-    $paidResults        = $results | Where-Object { -not $_.IsFreeOrTrial }
-    $paidEnabled        = ($paidResults | Measure-Object -Property Enabled -Sum).Sum
-    $paidConsumed       = ($paidResults | Measure-Object -Property Consumed -Sum).Sum
-    $paidAvailable      = ($paidResults | Measure-Object -Property Available -Sum).Sum
-    $utilisationPct     = if ($paidEnabled -gt 0) { [math]::Round(($paidConsumed / $paidEnabled) * 100, 1) } else { 0 }
+    $S_PaidResults = $S_Results | Where-Object { -not $_.IsFreeOrTrial }
+    $S_PaidEnabled = ($S_PaidResults | Measure-Object -Property Enabled -Sum).Sum
+    $S_PaidConsumed = ($S_PaidResults | Measure-Object -Property Consumed -Sum).Sum
+    $S_PaidAvailable = ($S_PaidResults | Measure-Object -Property Available -Sum).Sum
+    $S_UtilisationPct = if ($S_PaidEnabled -gt 0)
+    {
+        [math]::Round(($S_PaidConsumed / $S_PaidEnabled) * 100, 1)
+    }
+    else
+    {
+        0
+    }
+
+    $S_PaidAvailableCardClass = if ($S_PaidAvailable -lt 0)
+    {
+        'red'
+    }
+    elseif ($S_PaidAvailable -eq 0)
+    {
+        'orange'
+    }
+    else
+    {
+        'green'
+    }
+    $S_OverAllocatedCardClass = if ($S_OverAllocated -gt 0)
+    {
+        'red'
+    }
+    else
+    {
+        'green'
+    }
+    $S_EnabledSkusCardClass = if ($S_EnabledSkus -eq $S_TotalSkus)
+    {
+        'green'
+    }
+    else
+    {
+        'orange'
+    }
+    $S_EnabledSkusDetail = if ($S_WarningSkus -gt 0)
+    {
+        "$S_WarningSkus warning"
+    }
+    else
+    {
+        'All healthy'
+    }
 
     # ── Console summary ───────────────────────────────────────────────────────
-    Write-Host ""
-    Write-Host "Licensing Summary — $tenantDisplayName" -ForegroundColor Cyan
-    Write-Host "--------------------------------------------"
-    Write-Host ("  Total SKUs       : {0}" -f $totalSkus)
-    Write-Host ("  Enabled SKUs     : {0}" -f $enabledSkus) -ForegroundColor Green
-    if ($warningSkus -gt 0)  { Write-Host ("  Warning SKUs     : {0}" -f $warningSkus) -ForegroundColor Yellow }
-    if ($suspendedSkus -gt 0){ Write-Host ("  Suspended SKUs   : {0}" -f $suspendedSkus) -ForegroundColor Red }
-    Write-Host ("  Paid Licenses    : {0} enabled / {1} consumed / {2} available" -f $paidEnabled, $paidConsumed, $paidAvailable)
-    Write-Host ("  Utilisation      : {0}% (paid SKUs only)" -f $utilisationPct)
-    if ($freeTrialSkus -gt 0) { Write-Host ("  Free/Trial SKUs  : {0}" -f $freeTrialSkus) -ForegroundColor Yellow }
-    if ($overAllocated -gt 0) { Write-Host ("  Over-allocated   : {0} SKU(s)" -f $overAllocated) -ForegroundColor Red }
-    Write-Host ""
+    Write-Host ''
+    Write-Host "Licensing Summary — $S_TenantDisplayName" -ForegroundColor Cyan
+    Write-Host '--------------------------------------------'
+    Write-Host ("  Total SKUs       : {0}" -f $S_TotalSkus)
+    Write-Host ("  Enabled SKUs     : {0}" -f $S_EnabledSkus) -ForegroundColor Green
+    if ($S_WarningSkus -gt 0)
+    {
+        Write-Host ("  Warning SKUs     : {0}" -f $S_WarningSkus) -ForegroundColor Yellow
+    }
+    if ($S_SuspendedSkus -gt 0)
+    {
+        Write-Host ("  Suspended SKUs   : {0}" -f $S_SuspendedSkus) -ForegroundColor Red
+    }
+    Write-Host ("  Paid Licenses    : {0} enabled / {1} consumed / {2} available" -f $S_PaidEnabled, $S_PaidConsumed, $S_PaidAvailable)
+    Write-Host ("  Utilisation      : {0}% (paid SKUs only)" -f $S_UtilisationPct)
+    if ($S_FreeTrialSkus -gt 0)
+    {
+        Write-Host ("  Free/Trial SKUs  : {0}" -f $S_FreeTrialSkus) -ForegroundColor Yellow
+    }
+    if ($S_OverAllocated -gt 0)
+    {
+        Write-Host ("  Over-allocated   : {0} SKU(s)" -f $S_OverAllocated) -ForegroundColor Red
+    }
+    Write-Host ''
 
     # ── Build HTML table rows ──────────────────────────────────────────────────
-    $tableRows = ($results | ForEach-Object {
-        $statusBadge = switch ($_.CapabilityStatus) {
+    $S_TableRows = ($S_Results | ForEach-Object {
+        $S_StatusBadge = switch ($_.CapabilityStatus)
+        {
             'Enabled'   { '<span class="badge badge-enabled">Enabled</span>' }
             'Warning'   { '<span class="badge badge-warning">Warning</span>' }
             'Suspended' { '<span class="badge badge-suspended">Suspended</span>' }
@@ -217,26 +312,91 @@ try {
             'Deleted'   { '<span class="badge badge-suspended">Deleted</span>' }
             default     { "<span class=`"badge`">$([System.Web.HttpUtility]::HtmlEncode($_.CapabilityStatus))</span>" }
         }
-        $freeBadge = if ($_.IsFreeOrTrial) { ' <span class="badge badge-free">Free/Trial</span>' } else { '' }
-        $availableClass = if ($_.Available -lt 0) { ' class="warn"' } elseif ($_.Available -eq 0 -and $_.Enabled -gt 0) { ' class="warn-amber"' } else { '' }
-        $utilClass = if ($_.Enabled -eq 0) { '' } elseif ($_.UtilisationPct -gt 100) { 'util-red' } elseif ($_.UtilisationPct -ge 90) { 'util-green' } elseif ($_.UtilisationPct -ge 10) { 'util-mid' } else { 'util-low' }
-        $nameClass = if ($utilClass) { " class=`"$utilClass`"" } else { '' }
-        $utilTdClass = if ($utilClass) { " class=`"$utilClass`"" } else { '' }
-        $utilDisplay = if ($_.Enabled -eq 0) { '-' } else { "$($_.UtilisationPct)%" }
-        $freeAttr = if ($_.IsFreeOrTrial) { ' data-free="true"' } else { ' data-free="false"' }
-        "        <tr$freeAttr><td$nameClass>$([System.Web.HttpUtility]::HtmlEncode($_.DisplayName))$freeBadge</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.SkuPartNumber))</td><td>$statusBadge</td><td>$($_.AppliesTo)</td><td>$($_.Enabled)</td><td>$($_.Consumed)</td><td$availableClass>$($_.Available)</td><td$utilTdClass>$utilDisplay</td><td>$($_.Warning)</td><td>$($_.Suspended)</td><td>$($_.ServicePlanCount)</td></tr>"
+        $S_FreeBadge = if ($_.IsFreeOrTrial)
+        {
+            ' <span class="badge badge-free">Free/Trial</span>'
+        }
+        else
+        {
+            ''
+        }
+        $S_AvailableClass = if ($_.Available -lt 0)
+        {
+            ' class="warn"'
+        }
+        elseif ($_.Available -eq 0 -and $_.Enabled -gt 0)
+        {
+            ' class="warn-amber"'
+        }
+        else
+        {
+            ''
+        }
+        $S_UtilClass = if ($_.Enabled -eq 0)
+        {
+            ''
+        }
+        elseif ($_.UtilisationPct -gt 100)
+        {
+            'util-red'
+        }
+        elseif ($_.UtilisationPct -ge 90)
+        {
+            'util-green'
+        }
+        elseif ($_.UtilisationPct -ge 10)
+        {
+            'util-mid'
+        }
+        else
+        {
+            'util-low'
+        }
+        $S_NameClass = if ($S_UtilClass)
+        {
+            " class=`"$S_UtilClass`""
+        }
+        else
+        {
+            ''
+        }
+        $S_UtilTdClass = if ($S_UtilClass)
+        {
+            " class=`"$S_UtilClass`""
+        }
+        else
+        {
+            ''
+        }
+        $S_UtilDisplay = if ($_.Enabled -eq 0)
+        {
+            '-'
+        }
+        else
+        {
+            "$($_.UtilisationPct)%"
+        }
+        $S_FreeAttr = if ($_.IsFreeOrTrial)
+        {
+            ' data-free="true"'
+        }
+        else
+        {
+            ' data-free="false"'
+        }
+        "        <tr$S_FreeAttr><td$S_NameClass>$([System.Web.HttpUtility]::HtmlEncode($_.DisplayName))$S_FreeBadge</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.SkuPartNumber))</td><td>$S_StatusBadge</td><td>$($_.AppliesTo)</td><td>$($_.Enabled)</td><td>$($_.Consumed)</td><td$S_AvailableClass>$($_.Available)</td><td$S_UtilTdClass>$S_UtilDisplay</td><td>$($_.Warning)</td><td>$($_.Suspended)</td><td>$($_.ServicePlanCount)</td></tr>"
     }) -join "`n"
 
     # ── Generate HTML Report ───────────────────────────────────────────────────
-    $reportDate = Get-Date -Format 'dd MMM yyyy HH:mm'
+    $S_ReportDate = Get-Date -Format 'dd MMM yyyy HH:mm'
 
-    $html = @"
+    $S_Html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>M365 Licensing Report — $([System.Web.HttpUtility]::HtmlEncode($tenantDisplayName))</title>
+    <title>M365 Licensing Report — $([System.Web.HttpUtility]::HtmlEncode($S_TenantDisplayName))</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; color: #333; padding: 24px; }
@@ -290,38 +450,38 @@ try {
 <body>
     <div class="header">
         <h1>M365 Licensing Report</h1>
-        <div class="subtitle">Tenant: $([System.Web.HttpUtility]::HtmlEncode($tenantDisplayName)) ($tenantId) | Generated: $reportDate</div>
+        <div class="subtitle">Tenant: $([System.Web.HttpUtility]::HtmlEncode($S_TenantDisplayName)) ($S_TenantId) | Generated: $S_ReportDate</div>
     </div>
 
     <div class="cards">
         <div class="card blue">
             <div class="label">Total SKUs</div>
-            <div class="value">$totalSkus</div>
-            <div class="detail">$paidSkus paid / $freeTrialSkus free or trial</div>
+            <div class="value">$S_TotalSkus</div>
+            <div class="detail">$S_PaidSkus paid / $S_FreeTrialSkus free or trial</div>
         </div>
         <div class="card green">
             <div class="label">Paid Licenses</div>
-            <div class="value">$paidEnabled</div>
+            <div class="value">$S_PaidEnabled</div>
             <div class="detail">Enabled across paid plans</div>
         </div>
         <div class="card teal">
             <div class="label">Consumed (Paid)</div>
-            <div class="value">$paidConsumed</div>
-            <div class="detail">$utilisationPct% utilisation</div>
+            <div class="value">$S_PaidConsumed</div>
+            <div class="detail">$S_UtilisationPct% utilisation</div>
         </div>
-        <div class="card $(if ($paidAvailable -lt 0) { 'red' } elseif ($paidAvailable -eq 0) { 'orange' } else { 'green' })">
+        <div class="card $S_PaidAvailableCardClass">
             <div class="label">Available (Paid)</div>
-            <div class="value">$paidAvailable</div>
+            <div class="value">$S_PaidAvailable</div>
         </div>
-        <div class="card $(if ($overAllocated -gt 0) { 'red' } else { 'green' })">
+        <div class="card $S_OverAllocatedCardClass">
             <div class="label">Over-Allocated</div>
-            <div class="value">$overAllocated</div>
+            <div class="value">$S_OverAllocated</div>
             <div class="detail">SKU(s) exceeding entitlements</div>
         </div>
-        <div class="card $(if ($enabledSkus -eq $totalSkus) { 'green' } else { 'orange' })">
+        <div class="card $S_EnabledSkusCardClass">
             <div class="label">Enabled SKUs</div>
-            <div class="value">$enabledSkus</div>
-            <div class="detail">$(if ($warningSkus -gt 0) { "$warningSkus warning" } else { 'All healthy' })</div>
+            <div class="value">$S_EnabledSkus</div>
+            <div class="detail">$S_EnabledSkusDetail</div>
         </div>
     </div>
 
@@ -331,14 +491,14 @@ try {
             <div class="search-box">
                 <input type="text" id="searchInput" placeholder="Filter by name or SKU..." onkeyup="filterTable()">
             </div>
-            <label><input type="checkbox" id="hideFree" onchange="filterTable()"> Hide Free / Trial SKUs ($freeTrialSkus)</label>
+            <label><input type="checkbox" id="hideFree" onchange="filterTable()"> Hide Free / Trial SKUs ($S_FreeTrialSkus)</label>
         </div>
         <table id="skuTable">
             <thead>
                 <tr><th onclick="sortTable(0,'text')">License Plan <span class="sort-arrow">&udarr;</span></th><th onclick="sortTable(1,'text')">SKU Part Number <span class="sort-arrow">&udarr;</span></th><th onclick="sortTable(2,'text')">Status <span class="sort-arrow">&udarr;</span></th><th onclick="sortTable(3,'text')">Applies To <span class="sort-arrow">&udarr;</span></th><th onclick="sortTable(4,'num')">Enabled <span class="sort-arrow">&udarr;</span></th><th onclick="sortTable(5,'num')">Consumed <span class="sort-arrow">&udarr;</span></th><th onclick="sortTable(6,'num')">Available <span class="sort-arrow">&udarr;</span></th><th onclick="sortTable(7,'num')">Utilisation <span class="sort-arrow">&udarr;</span></th><th onclick="sortTable(8,'num')">Warning <span class="sort-arrow">&udarr;</span></th><th onclick="sortTable(9,'num')">Suspended <span class="sort-arrow">&udarr;</span></th><th onclick="sortTable(10,'num')">Service Plans <span class="sort-arrow">&udarr;</span></th></tr>
             </thead>
             <tbody>
-$tableRows
+$S_TableRows
             </tbody>
         </table>
     </div>
@@ -406,26 +566,30 @@ $tableRows
 </html>
 "@
 
-    $html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
+    $S_Html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
     Write-Host "HTML report exported to: $S_HtmlPath" -ForegroundColor Green
 
     # ── Output file paths ─────────────────────────────────────────────────────
-    Write-Host ""
-    Write-Host "Reports:" -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host 'Reports:' -ForegroundColor Cyan
     Write-Host "  CSV  : $OutputPath" -ForegroundColor Yellow
     Write-Host "  HTML : $S_HtmlPath" -ForegroundColor Yellow
 }
-catch {
+catch
+{
     Write-Error "An error occurred: $_"
 }
-finally {
+finally
+{
     $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
-    if ($S_DisconnectChoice -eq 'Y') {
-        Write-Host "Disconnecting from Microsoft Graph..." -ForegroundColor Cyan
+    if ($S_DisconnectChoice -eq 'Y')
+    {
+        Write-Host 'Disconnecting from Microsoft Graph...' -ForegroundColor Cyan
         Disconnect-MgGraph | Out-Null
-        Write-Host "Disconnected." -ForegroundColor Green
+        Write-Host 'Disconnected.' -ForegroundColor Green
     }
-    else {
-        Write-Host "Graph session kept alive." -ForegroundColor Green
+    else
+    {
+        Write-Host 'Graph session kept alive.' -ForegroundColor Green
     }
 }

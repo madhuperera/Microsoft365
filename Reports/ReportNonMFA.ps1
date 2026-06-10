@@ -51,7 +51,8 @@ param(
 # ── Setup ──────────────────────────────────────────────────────────────────────
 $ErrorActionPreference = 'Stop'
 
-if (-not $OutputPath) {
+if (-not $OutputPath)
+{
     $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
     $OutputPath = Join-Path (Get-Location).Path "ReportNonMFA_$S_Timestamp.csv"
 }
@@ -71,7 +72,8 @@ $S_RequiredGraphScopes = @(
 $S_GraphRequestDelayMilliseconds = 5
 
 $S_ExistingContext = Get-MgContext
-if ($S_ExistingContext) {
+if ($S_ExistingContext)
+{
     Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
     Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
     Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
@@ -79,26 +81,30 @@ if ($S_ExistingContext) {
     Write-Host ""
 
     $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-    if ($S_Choice -eq 'N') {
+    if ($S_Choice -eq 'N')
+    {
         Write-Host "Disconnecting existing session..." -ForegroundColor Cyan
         Disconnect-MgGraph | Out-Null
         Write-Host "Reconnecting with required scopes..." -ForegroundColor Cyan
         Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
         Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
     }
-    else {
+    else
+    {
         Write-Host "Using existing Graph session." -ForegroundColor Green
     }
 }
-else {
+else
+{
     Write-Host "Connecting to Microsoft Graph..." -ForegroundColor Cyan
     Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
     Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
 }
 
-try {
+try
+{
     # ── Retrieve Member Users ──────────────────────────────────────────────────
-    $userProperties = @(
+    $S_UserProperties = @(
         'Id'
         'DisplayName'
         'UserPrincipalName'
@@ -112,182 +118,211 @@ try {
 
     Write-Host "Retrieving member users..." -ForegroundColor Cyan
 
-    if ($Test) {
+    if ($Test)
+    {
         Write-Host "[TEST MODE] Limiting to 10 users." -ForegroundColor Yellow
-        $users = Get-MgUser -Filter "userType eq 'Member'" -Property $userProperties -Top 10
+        $S_Users = Get-MgUser -Filter "userType eq 'Member'" -Property $S_UserProperties -Top 10
     }
-    else {
-        $users = Get-MgUser -Filter "userType eq 'Member'" -Property $userProperties -All
+    else
+    {
+        $S_Users = Get-MgUser -Filter "userType eq 'Member'" -Property $S_UserProperties -All
     }
 
-    $userCount = ($users | Measure-Object).Count
-    Write-Host "Found $userCount member users. Processing..." -ForegroundColor Cyan
+    $S_UserCount = ($S_Users | Measure-Object).Count
+    Write-Host "Found $S_UserCount member users. Processing..." -ForegroundColor Cyan
 
-    $results = [System.Collections.Generic.List[PSCustomObject]]::new()
-    $currentUser = 0
+    $S_Results = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $S_CurrentUser = 0
 
-    foreach ($user in $users) {
-        $currentUser++
-        Write-Progress -Activity "Processing Users" -Status "$currentUser of $userCount - $($user.DisplayName)" -PercentComplete (($currentUser / $userCount) * 100)
+    foreach ($S_User in $S_Users)
+    {
+        $S_CurrentUser++
+        Write-Progress -Activity "Processing Users" -Status "$S_CurrentUser of $S_UserCount - $($S_User.DisplayName)" -PercentComplete (($S_CurrentUser / $S_UserCount) * 100)
 
         # ── Authentication Methods ─────────────────────────────────────────────
-        $authMethodError = $false
-        try {
-            $authMethods = Get-MgUserAuthenticationMethod -UserId $user.Id
+        $S_AuthMethodError = $false
+        try
+        {
+            $S_AuthMethods = Get-MgUserAuthenticationMethod -UserId $S_User.Id
         }
-        catch {
-            if ($_ -match 'accessDenied|403|Forbidden|Authorization failed') {
-                Write-Warning "Access denied reading auth methods for $($user.UserPrincipalName) (privileged account?)"
-                $authMethodError = $true
+        catch
+        {
+            if ($_ -match 'accessDenied|403|Forbidden|Authorization failed')
+            {
+                Write-Warning "Access denied reading auth methods for $($S_User.UserPrincipalName) (privileged account?)"
+                $S_AuthMethodError = $true
             }
-            else {
-                Write-Warning "Could not retrieve auth methods for $($user.UserPrincipalName): $_"
+            else
+            {
+                Write-Warning "Could not retrieve auth methods for $($S_User.UserPrincipalName): $_"
             }
-            $authMethods = @()
+
+            $S_AuthMethods = @()
         }
 
         # ── Group Membership (Target Group Prefix) ─────────────────────────────
-        try {
-            $memberOf = Get-MgUserMemberOf -UserId $user.Id -All
-            $allGroupNames = $memberOf | Where-Object {
+        try
+        {
+            $S_MemberOf = Get-MgUserMemberOf -UserId $S_User.Id -All
+            $S_AllGroupNames = $S_MemberOf | Where-Object {
                 $_.AdditionalProperties.'@odata.type' -eq '#microsoft.graph.group'
             } | ForEach-Object { $_.AdditionalProperties.displayName }
 
-            $matchedGroups = @($allGroupNames | Where-Object { $_ -like "$TargetGroupPrefix*" })
-            $matchCount = $matchedGroups.Count
+            $S_MatchedGroups = @($S_AllGroupNames | Where-Object { $_ -like "$TargetGroupPrefix*" })
+            $S_MatchCount = $S_MatchedGroups.Count
 
-            if ($matchCount -eq 0) {
-                $groupResult = 'No Group'
+            if ($S_MatchCount -eq 0)
+            {
+                $S_GroupResult = 'No Group'
             }
-            elseif ($matchCount -eq 1) {
-                $groupResult = $matchedGroups[0]
+            elseif ($S_MatchCount -eq 1)
+            {
+                $S_GroupResult = $S_MatchedGroups[0]
             }
-            else {
-                $groupResult = "WARNING: Multiple groups ($($matchedGroups -join '; '))"
+            else
+            {
+                $S_GroupResult = "WARNING: Multiple groups ($($S_MatchedGroups -join '; '))"
             }
         }
-        catch {
-            Write-Warning "Could not retrieve groups for $($user.UserPrincipalName): $_"
-            $groupResult = 'Error'
+        catch
+        {
+            Write-Warning "Could not retrieve groups for $($S_User.UserPrincipalName): $_"
+            $S_GroupResult = 'Error'
         }
 
         # ── Determine MFA Registration ─────────────────────────────────────────
-        $authTypes = $authMethods | ForEach-Object { $_.AdditionalProperties.'@odata.type' }
+        $S_AuthTypes = $S_AuthMethods | ForEach-Object { $_.AdditionalProperties.'@odata.type' }
 
-        $hasModernAuth = $authTypes | Where-Object {
+        $S_HasModernAuth = $S_AuthTypes | Where-Object {
             $_ -in @(
                 '#microsoft.graph.microsoftAuthenticatorAuthenticationMethod'
                 '#microsoft.graph.fido2AuthenticationMethod'
                 '#microsoft.graph.softwareOathAuthenticationMethod'
             )
         }
-        $hasLegacyAuth = $authTypes | Where-Object {
+        $S_HasLegacyAuth = $S_AuthTypes | Where-Object {
             $_ -in @(
                 '#microsoft.graph.phoneAuthenticationMethod'
             )
         }
 
-        if ($authMethodError) {
-            $mfaRegistered = 'Access Denied (Privileged Account)'
+        if ($S_AuthMethodError)
+        {
+            $S_MfaRegistered = 'Access Denied (Privileged Account)'
         }
-        elseif ($hasModernAuth) {
-            $mfaRegistered = 'Modern Auth'
+        elseif ($S_HasModernAuth)
+        {
+            $S_MfaRegistered = 'Modern Auth'
         }
-        elseif ($hasLegacyAuth) {
-            $mfaRegistered = 'Legacy Auth'
+        elseif ($S_HasLegacyAuth)
+        {
+            $S_MfaRegistered = 'Legacy Auth'
         }
-        else {
-            $mfaRegistered = 'No MFA'
+        else
+        {
+            $S_MfaRegistered = 'No MFA'
         }
 
-        # ── Determine Active Account ───────────────────────────────────────────        $lastInteractive    = $null
-        $lastNonInteractive = $null
-        if (-not $user.AccountEnabled) {
-            $activeAccount = 'Disabled'
+        # ── Determine Active Account ───────────────────────────────────────────
+        $S_LastInteractive = $null
+        $S_LastNonInteractive = $null
+
+        if (-not $S_User.AccountEnabled)
+        {
+            $S_ActiveAccount = 'Disabled'
         }
-        else {
+        else
+        {
             # Get the most recent sign-in from both interactive and non-interactive
-            $lastInteractive    = $user.SignInActivity.LastSignInDateTime
-            $lastNonInteractive = $user.SignInActivity.LastNonInteractiveSignInDateTime
+            $S_LastInteractive = $S_User.SignInActivity.LastSignInDateTime
+            $S_LastNonInteractive = $S_User.SignInActivity.LastNonInteractiveSignInDateTime
 
-            $dates = @($lastInteractive, $lastNonInteractive) | Where-Object { $_ -ne $null }
+            $S_Dates = @($S_LastInteractive, $S_LastNonInteractive) | Where-Object { $_ -ne $null }
 
-            if ($dates.Count -eq 0) {
-                $activeAccount = 'No Sign-In Recorded'
+            if ($S_Dates.Count -eq 0)
+            {
+                $S_ActiveAccount = 'No Sign-In Recorded'
             }
-            else {
-                $lastSignIn = ($dates | Sort-Object -Descending | Select-Object -First 1)
-                if ($lastSignIn -ge $S_CutoffDate) {
-                    $activeAccount = 'Yes'
+            else
+            {
+                $S_LastSignIn = ($S_Dates | Sort-Object -Descending | Select-Object -First 1)
+                if ($S_LastSignIn -ge $S_CutoffDate)
+                {
+                    $S_ActiveAccount = 'Yes'
                 }
-                else {
-                    $daysAgo = [math]::Floor(((Get-Date) - $lastSignIn).TotalDays)
-                    $activeAccount = "${daysAgo}+ Days Ago"
+                else
+                {
+                    $S_DaysAgo = [math]::Floor(((Get-Date) - $S_LastSignIn).TotalDays)
+                    $S_ActiveAccount = "${S_DaysAgo}+ Days Ago"
                 }
             }
         }
 
         # ── Licensing & Sync ───────────────────────────────────────────────────
-        $isLicensed = ($user.AssignedLicenses | Measure-Object).Count -gt 0
-        $isOnPremSynced = $user.OnPremisesSyncEnabled -eq $true
+        $S_IsLicensed = ($S_User.AssignedLicenses | Measure-Object).Count -gt 0
+        $S_IsOnPremSynced = $S_User.OnPremisesSyncEnabled -eq $true
 
         # ── Mail & Domain ──────────────────────────────────────────────────────
-        $mail = if ($user.Mail) { $user.Mail } else { 'None' }
-        $domain = if ($user.Mail) {
-            ($user.Mail -split '@')[1]
-        } else {
-            ($user.UserPrincipalName -split '@')[1]
+        if ($S_User.Mail)
+        {
+            $S_Mail = $S_User.Mail
+            $S_Domain = ($S_User.Mail -split '@')[1]
+        }
+        else
+        {
+            $S_Mail = 'None'
+            $S_Domain = ($S_User.UserPrincipalName -split '@')[1]
         }
 
         # ── Build result row ───────────────────────────────────────────────────
-        $results.Add([PSCustomObject]@{
-            DisplayName       = $user.DisplayName
-            UserPrincipalName = $user.UserPrincipalName
-            Mail              = $mail
-            Domain            = $domain
-            MFA_Registered    = $mfaRegistered
-            ActiveAccount     = $activeAccount
-            IsLicensed        = $isLicensed
-            IsOnPremSynced    = $isOnPremSynced
-            Group             = $groupResult
+        $S_Results.Add([PSCustomObject]@{
+            DisplayName       = $S_User.DisplayName
+            UserPrincipalName = $S_User.UserPrincipalName
+            Mail              = $S_Mail
+            Domain            = $S_Domain
+            MFA_Registered    = $S_MfaRegistered
+            ActiveAccount     = $S_ActiveAccount
+            IsLicensed        = $S_IsLicensed
+            IsOnPremSynced    = $S_IsOnPremSynced
+            Group             = $S_GroupResult
         })
     }
 
     Write-Progress -Activity "Processing Users" -Completed
 
     # ── Export CSV ─────────────────────────────────────────────────────────────
-    $results | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+    $S_Results | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
     Write-Host "`nCSV exported to: $OutputPath" -ForegroundColor Green
-    Write-Host "Total rows: $($results.Count)" -ForegroundColor Green
+    Write-Host "Total rows: $($S_Results.Count)" -ForegroundColor Green
 
     # ── Calculate Statistics ───────────────────────────────────────────────────
-    $totalMembers   = $results.Count
-    $disabledCount  = ($results | Where-Object { $_.ActiveAccount -eq 'Disabled' }).Count
-    $enabledCount   = $totalMembers - $disabledCount
+    $S_TotalMembers = $S_Results.Count
+    $S_DisabledCount = ($S_Results | Where-Object { $_.ActiveAccount -eq 'Disabled' }).Count
+    $S_EnabledCount = $S_TotalMembers - $S_DisabledCount
 
-    $enabledUsers       = $results | Where-Object { $_.ActiveAccount -ne 'Disabled' }
-    $enabledModernAuth  = ($enabledUsers | Where-Object { $_.MFA_Registered -eq 'Modern Auth' }).Count
-    $enabledLegacyAuth  = ($enabledUsers | Where-Object { $_.MFA_Registered -eq 'Legacy Auth' }).Count
-    $enabledNoMFA       = ($enabledUsers | Where-Object { $_.MFA_Registered -eq 'No MFA' }).Count
-    $enabledHasMFA      = $enabledModernAuth + $enabledLegacyAuth
+    $S_EnabledUsers = $S_Results | Where-Object { $_.ActiveAccount -ne 'Disabled' }
+    $S_EnabledModernAuth = ($S_EnabledUsers | Where-Object { $_.MFA_Registered -eq 'Modern Auth' }).Count
+    $S_EnabledLegacyAuth = ($S_EnabledUsers | Where-Object { $_.MFA_Registered -eq 'Legacy Auth' }).Count
+    $S_EnabledNoMFA = ($S_EnabledUsers | Where-Object { $_.MFA_Registered -eq 'No MFA' }).Count
+    $S_EnabledHasMFA = $S_EnabledModernAuth + $S_EnabledLegacyAuth
 
-    $noMfaNoGroup = ($enabledUsers | Where-Object {
+    $S_NoMfaNoGroup = ($S_EnabledUsers | Where-Object {
         $_.MFA_Registered -eq 'No MFA' -and $_.Group -eq 'No Group'
     }).Count
 
     # Build table rows for No MFA & No Group users
-    $noMfaNoGroupUsers = $enabledUsers | Where-Object {
+    $S_NoMfaNoGroupUsers = $S_EnabledUsers | Where-Object {
         $_.MFA_Registered -eq 'No MFA' -and $_.Group -eq 'No Group'
     }
-    $tableRows = ($noMfaNoGroupUsers | ForEach-Object {
+    $S_TableRows = ($S_NoMfaNoGroupUsers | ForEach-Object {
         "        <tr><td>$([System.Web.HttpUtility]::HtmlEncode($_.DisplayName))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.UserPrincipalName))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.Mail))</td><td>$([System.Web.HttpUtility]::HtmlEncode($_.Domain))</td><td>$($_.ActiveAccount)</td><td>$($_.IsLicensed)</td><td>$($_.IsOnPremSynced)</td></tr>"
     }) -join "`n"
 
     # ── Generate HTML Report ───────────────────────────────────────────────────
-    $reportDate = Get-Date -Format 'dd MMM yyyy HH:mm'
-    $tenantId   = (Get-MgContext).TenantId
+    $S_ReportDate = Get-Date -Format 'dd MMM yyyy HH:mm'
+    $S_TenantId = (Get-MgContext).TenantId
 
-    $html = @"
+    $S_Html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -330,23 +365,23 @@ try {
 <body>
     <div class="header">
         <h1>Non-MFA User Report</h1>
-        <div class="subtitle">Generated: $reportDate | Tenant: $tenantId | Inactive threshold: $InactiveDays days</div>
+        <div class="subtitle">Generated: $S_ReportDate | Tenant: $S_TenantId | Inactive threshold: $InactiveDays days</div>
     </div>
 
     <div class="cards">
         <div class="card blue">
             <div class="label">Total Member Users</div>
-            <div class="value">$totalMembers</div>
+            <div class="value">$S_TotalMembers</div>
         </div>
         <div class="card green">
             <div class="label">Enabled Accounts</div>
-            <div class="value">$enabledCount</div>
-            <div class="detail">$([math]::Round(($enabledCount / [math]::Max($totalMembers,1)) * 100, 1))% of total</div>
+            <div class="value">$S_EnabledCount</div>
+            <div class="detail">$([math]::Round(($S_EnabledCount / [math]::Max($S_TotalMembers,1)) * 100, 1))% of total</div>
         </div>
         <div class="card red">
             <div class="label">Disabled Accounts</div>
-            <div class="value">$disabledCount</div>
-            <div class="detail">$([math]::Round(($disabledCount / [math]::Max($totalMembers,1)) * 100, 1))% of total</div>
+            <div class="value">$S_DisabledCount</div>
+            <div class="detail">$([math]::Round(($S_DisabledCount / [math]::Max($S_TotalMembers,1)) * 100, 1))% of total</div>
         </div>
     </div>
 
@@ -355,23 +390,23 @@ try {
         <div class="breakdown">
             <div class="card green">
                 <div class="label">Modern Auth (MFA)</div>
-                <div class="value">$enabledModernAuth</div>
+                <div class="value">$S_EnabledModernAuth</div>
                 <div class="detail">Authenticator / Passkey / TOTP</div>
             </div>
             <div class="card orange">
                 <div class="label">Legacy Auth (MFA)</div>
-                <div class="value">$enabledLegacyAuth</div>
+                <div class="value">$S_EnabledLegacyAuth</div>
                 <div class="detail">SMS / Voice</div>
             </div>
             <div class="card purple">
                 <div class="label">Total with MFA</div>
-                <div class="value">$enabledHasMFA</div>
-                <div class="detail">$([math]::Round(($enabledHasMFA / [math]::Max($enabledCount,1)) * 100, 1))% of enabled</div>
+                <div class="value">$S_EnabledHasMFA</div>
+                <div class="detail">$([math]::Round(($S_EnabledHasMFA / [math]::Max($S_EnabledCount,1)) * 100, 1))% of enabled</div>
             </div>
             <div class="card red">
                 <div class="label">No MFA Registered</div>
-                <div class="value">$enabledNoMFA</div>
-                <div class="detail">$([math]::Round(($enabledNoMFA / [math]::Max($enabledCount,1)) * 100, 1))% of enabled</div>
+                <div class="value">$S_EnabledNoMFA</div>
+                <div class="detail">$([math]::Round(($S_EnabledNoMFA / [math]::Max($S_EnabledCount,1)) * 100, 1))% of enabled</div>
             </div>
         </div>
     </div>
@@ -379,7 +414,7 @@ try {
     <div class="cards">
         <div class="card alert">
             <div class="label">No MFA &amp; No Target Group</div>
-            <div class="value">$noMfaNoGroup</div>
+            <div class="value">$S_NoMfaNoGroup</div>
             <div class="detail">Enabled accounts with no MFA and not in any $TargetGroupPrefix group &mdash; requires attention</div>
         </div>
     </div>
@@ -391,7 +426,7 @@ try {
                 <tr><th>Display Name</th><th>UPN</th><th>Mail</th><th>Domain</th><th>Active</th><th>Licensed</th><th>On-Prem Synced</th></tr>
             </thead>
             <tbody>
-$tableRows
+$S_TableRows
             </tbody>
         </table>
     </div>
@@ -403,21 +438,25 @@ $tableRows
 </html>
 "@
 
-    $html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
+    $S_Html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
     Write-Host "HTML report exported to: $S_HtmlPath" -ForegroundColor Green
 }
-catch {
+catch
+{
     Write-Error "An error occurred: $_"
 }
-finally {
+finally
+{
     # ── Disconnect ─────────────────────────────────────────────────────────────
     $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
-    if ($S_DisconnectChoice -eq 'Y') {
+    if ($S_DisconnectChoice -eq 'Y')
+    {
         Write-Host "Disconnecting from Microsoft Graph..." -ForegroundColor Cyan
         Disconnect-MgGraph | Out-Null
         Write-Host "Disconnected." -ForegroundColor Green
     }
-    else {
+    else
+    {
         Write-Host "Graph session kept alive." -ForegroundColor Green
     }
 }

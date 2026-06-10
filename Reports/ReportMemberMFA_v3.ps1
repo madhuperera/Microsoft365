@@ -47,7 +47,8 @@ param(
 # ── Setup ──────────────────────────────────────────────────────────────────────
 $ErrorActionPreference = 'Stop'
 
-if (-not $OutputPath) {
+if (-not $OutputPath)
+{
     $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
     $OutputPath = Join-Path (Get-Location).Path "ReportMemberMFA_$S_Timestamp.csv"
 }
@@ -65,7 +66,8 @@ $S_RequiredGraphScopes = @(
 )
 
 $S_ExistingContext = Get-MgContext
-if ($S_ExistingContext) {
+if ($S_ExistingContext)
+{
     Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
     Write-Host "  Account : $($S_ExistingContext.Account)" -ForegroundColor Yellow
     Write-Host "  TenantId: $($S_ExistingContext.TenantId)" -ForegroundColor Yellow
@@ -73,42 +75,54 @@ if ($S_ExistingContext) {
     Write-Host ""
 
     $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-    if ($S_Choice -eq 'N') {
+    if ($S_Choice -eq 'N')
+    {
         Write-Host "Disconnecting existing session..." -ForegroundColor Cyan
         Disconnect-MgGraph | Out-Null
         Write-Host "Reconnecting with required scopes..." -ForegroundColor Cyan
         Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
         Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
     }
-    else {
+    else
+    {
         Write-Host "Using existing Graph session." -ForegroundColor Green
     }
 }
-else {
+else
+{
     Write-Host "Connecting to Microsoft Graph..." -ForegroundColor Cyan
     Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
     Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
 }
 
-try {
+try
+{
     # ── Check Security Defaults Status ─────────────────────────────────────────
     Write-Host "Checking Security Defaults status..." -ForegroundColor Cyan
     $Script:S_SecurityDefaultsEnabled = $null
-    try {
+    try
+    {
         $S_SecDefaultsPolicy = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/policies/identitySecurityDefaultsEnforcementPolicy'
         $Script:S_SecurityDefaultsEnabled = [bool]$S_SecDefaultsPolicy.isEnabled
-        Write-Host "Security Defaults Enabled: $Script:S_SecurityDefaultsEnabled" -ForegroundColor $(if ($Script:S_SecurityDefaultsEnabled) { 'Red' } else { 'Green' })
+        Write-Host "Security Defaults Enabled: $Script:S_SecurityDefaultsEnabled" -ForegroundColor $(if ($Script:S_SecurityDefaultsEnabled)
+            {
+                'Red' } else
+            {
+                'Green' })
     }
-    catch {
+    catch
+    {
         Write-Warning "Could not retrieve Security Defaults policy: $_"
     }
 
     # ── Conditional Access — MFA-enforcing policies (only when Security Defaults is OFF) ─────────
     $Script:S_MfaCaPolicies     = @()
     $Script:S_UserExclusionMap  = @{}   # UserId -> List[string] of Ideal-policy ReportIds excluding the user
-    if ($Script:S_SecurityDefaultsEnabled -eq $false) {
+    if ($Script:S_SecurityDefaultsEnabled -eq $false)
+    {
         Write-Host "Retrieving enabled Conditional Access policies..." -ForegroundColor Cyan
-        try {
+        try
+        {
             $S_EnabledCaPolicies = Get-MgIdentityConditionalAccessPolicy -All `
                 -Filter "State eq 'enabled'" `
                 -Property "id,displayName,state,grantControls,conditions"
@@ -120,7 +134,9 @@ try {
             $S_FilteredCaPolicies = @(
                 $S_EnabledCaPolicies | Where-Object {
                     $S_Grant = $_.GrantControls
-                    if ($null -eq $S_Grant) { return $false }
+                    if ($null -eq $S_Grant)
+                    {
+                        return $false }
                     $S_HasMfaBuiltIn = ($S_Grant.BuiltInControls -contains 'mfa')
                     $S_HasAuthStrength = (
                         $null -ne $S_Grant.AuthenticationStrength -and
@@ -135,59 +151,95 @@ try {
             $S_GroupCache = @{}
             $S_RoleCache  = @{}
 
-            function Resolve-CaUserId {
-                param([string]$Id)
-                if ([string]::IsNullOrWhiteSpace($Id)) { return $null }
-                if ($Id -in @('All', 'None', 'GuestsOrExternalUsers')) { return $Id }
-                if ($S_UserCache.ContainsKey($Id)) { return $S_UserCache[$Id] }
-                try {
-                    $u = Get-MgUser -UserId $Id -Property Id,DisplayName,UserPrincipalName -ErrorAction Stop
-                    $label = "$($u.DisplayName) <$($u.UserPrincipalName)>"
+            function Resolve-CaUserId
+            {
+                param([string]$F_Id)
+                if ([string]::IsNullOrWhiteSpace($F_Id))
+                {
+                    return $null }
+                if ($F_Id -in @('All', 'None', 'GuestsOrExternalUsers'))
+                {
+                    return $F_Id }
+                if ($S_UserCache.ContainsKey($F_Id))
+                {
+                    return $S_UserCache[$F_Id] }
+                try
+                {
+                    $F_U = Get-MgUser -UserId $F_Id -Property Id,DisplayName,UserPrincipalName -ErrorAction Stop
+                    $F_Label = "$($F_U.DisplayName) <$($F_U.UserPrincipalName)>"
                 }
-                catch { $label = "<unresolved:$Id>" }
-                $S_UserCache[$Id] = $label
-                return $label
+                catch
+                {
+                    $F_Label = "<unresolved:$F_Id>" }
+                $S_UserCache[$F_Id] = $F_Label
+                return $F_Label
             }
 
-            function Resolve-CaGroupId {
-                param([string]$Id)
-                if ([string]::IsNullOrWhiteSpace($Id)) { return $null }
-                if ($S_GroupCache.ContainsKey($Id)) { return $S_GroupCache[$Id] }
-                try {
-                    $g = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/groups/$Id`?`$select=id,displayName" -ErrorAction Stop
-                    $label = "$($g.displayName) [group]"
+            function Resolve-CaGroupId
+            {
+                param([string]$F_Id)
+                if ([string]::IsNullOrWhiteSpace($F_Id))
+                {
+                    return $null }
+                if ($S_GroupCache.ContainsKey($F_Id))
+                {
+                    return $S_GroupCache[$F_Id] }
+                try
+                {
+                    $F_G = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/groups/$F_Id`?`$select=id,displayName" -ErrorAction Stop
+                    $F_Label = "$($F_G.displayName) [group]"
                 }
-                catch { $label = "<unresolved:$Id>" }
-                $S_GroupCache[$Id] = $label
-                return $label
+                catch
+                {
+                    $F_Label = "<unresolved:$F_Id>" }
+                $S_GroupCache[$F_Id] = $F_Label
+                return $F_Label
             }
 
-            function Resolve-CaRoleId {
-                param([string]$Id)
-                if ([string]::IsNullOrWhiteSpace($Id)) { return $null }
-                if ($S_RoleCache.ContainsKey($Id)) { return $S_RoleCache[$Id] }
-                try {
-                    $r = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/directoryRoleTemplates/$Id" -ErrorAction Stop
-                    $label = "$($r.displayName) [role]"
+            function Resolve-CaRoleId
+            {
+                param([string]$F_Id)
+                if ([string]::IsNullOrWhiteSpace($F_Id))
+                {
+                    return $null }
+                if ($S_RoleCache.ContainsKey($F_Id))
+                {
+                    return $S_RoleCache[$F_Id] }
+                try
+                {
+                    $F_R = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/directoryRoleTemplates/$F_Id" -ErrorAction Stop
+                    $F_Label = "$($F_R.displayName) [role]"
                 }
-                catch { $label = "<unresolved:$Id>" }
-                $S_RoleCache[$Id] = $label
-                return $label
+                catch
+                {
+                    $F_Label = "<unresolved:$F_Id>" }
+                $S_RoleCache[$F_Id] = $F_Label
+                return $F_Label
             }
 
             $S_LocationCache = @{}
-            function Resolve-CaLocationId {
-                param([string]$Id)
-                if ([string]::IsNullOrWhiteSpace($Id)) { return $null }
-                if ($Id -in @('All', 'AllTrusted', 'MultiFactorAuthentication')) { return $Id }
-                if ($S_LocationCache.ContainsKey($Id)) { return $S_LocationCache[$Id] }
-                try {
-                    $l = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/identity/conditionalAccess/namedLocations/$Id" -ErrorAction Stop
-                    $label = "$($l.displayName) [location]"
+            function Resolve-CaLocationId
+            {
+                param([string]$F_Id)
+                if ([string]::IsNullOrWhiteSpace($F_Id))
+                {
+                    return $null }
+                if ($F_Id -in @('All', 'AllTrusted', 'MultiFactorAuthentication'))
+                {
+                    return $F_Id }
+                if ($S_LocationCache.ContainsKey($F_Id))
+                {
+                    return $S_LocationCache[$F_Id] }
+                try
+                {
+                    $F_L = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/identity/conditionalAccess/namedLocations/$F_Id" -ErrorAction Stop
+                    $F_Label = "$($F_L.displayName) [location]"
                 }
-                catch { $label = "<unresolved:$Id>" }
-                $S_LocationCache[$Id] = $label
-                return $label
+                catch
+                {
+                    $F_Label = "<unresolved:$F_Id>" }
+                $S_LocationCache[$F_Id] = $F_Label
+                return $F_Label
             }
 
             # ── Project enriched policy objects ────────────────────────────────────
@@ -197,25 +249,30 @@ try {
             # by simply flipping the filter predicate from TargetsMembers to
             # TargetsGuests — no rewrite of the resolver/enrichment code required.
             $S_EnrichedCaPolicies = @(
-                foreach ($p in $S_FilteredCaPolicies) {
-                    $apps  = $p.Conditions.Applications
-                    $usrs  = $p.Conditions.Users                    
-                    $plat  = $p.Conditions.Platforms
-                    $locs  = $p.Conditions.Locations
+                foreach ($S_P in $S_FilteredCaPolicies)
+                {
+                    $S_Apps  = $S_P.Conditions.Applications
+                    $S_Usrs  = $S_P.Conditions.Users                    
+                    $S_Plat  = $S_P.Conditions.Platforms
+                    $S_Locs  = $S_P.Conditions.Locations
                     $S_GrantTypes = @()
-                    if ($p.GrantControls.BuiltInControls -contains 'mfa') { $S_GrantTypes += 'MFA' }
+                    if ($S_P.GrantControls.BuiltInControls -contains 'mfa')
+                    {
+                        $S_GrantTypes += 'MFA' }
                     $S_HasAuthStr = (
-                        $null -ne $p.GrantControls.AuthenticationStrength -and
-                        -not [string]::IsNullOrWhiteSpace([string]$p.GrantControls.AuthenticationStrength.Id)
+                        $null -ne $S_P.GrantControls.AuthenticationStrength -and
+                        -not [string]::IsNullOrWhiteSpace([string]$S_P.GrantControls.AuthenticationStrength.Id)
                     )
-                    if ($S_HasAuthStr) { $S_GrantTypes += 'AuthStrength' }
+                    if ($S_HasAuthStr)
+                    {
+                        $S_GrantTypes += 'AuthStrength' }
 
                     # ── Grant operator & companion controls ──────────────────────
                     # Operator is 'AND' or 'OR'. With OR + other controls present,
                     # a user can satisfy the policy WITHOUT MFA (e.g. compliant
                     # device alone) — a potential MFA gap we must flag.
-                    $S_GrantOperator = $p.GrantControls.Operator   # 'AND' | 'OR' | $null
-                    $S_AllBuiltIn    = @($p.GrantControls.BuiltInControls)
+                    $S_GrantOperator = $S_P.GrantControls.Operator   # 'AND' | 'OR' | $null
+                    $S_AllBuiltIn    = @($S_P.GrantControls.BuiltInControls)
                     $S_OtherBuiltIn  = @($S_AllBuiltIn | Where-Object { $_ -ne 'mfa' })
 
                     # Companion controls = everything in the grant besides MFA / AuthStrength
@@ -238,12 +295,15 @@ try {
                     #               primary data plane in most M365 tenants)
                     #   • Partial → specific app GUIDs only, user-action-only,
                     #               or empty include scope
-                    $S_IncAppsRaw = @($apps.IncludeApplications)
-                    $S_WorkloadCoverage = if ($S_IncAppsRaw -contains 'All') {
+                    $S_IncAppsRaw = @($S_Apps.IncludeApplications)
+                    $S_WorkloadCoverage = if ($S_IncAppsRaw -contains 'All')
+                    {
                         'Full'
-                    } elseif ($S_IncAppsRaw -contains 'Office365') {
+                    } elseif ($S_IncAppsRaw -contains 'Office365')
+                    {
                         'Data'
-                    } else {
+                    } else
+                    {
                         'Partial'
                     }
 
@@ -264,27 +324,27 @@ try {
                     # NOTE: user/group/role excludes live in Assignments, not
                     # Conditions, so they are deliberately NOT considered here.
                     $S_HasRisk = (
-                        @($p.Conditions.SignInRiskLevels | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0 -or
-                        @($p.Conditions.UserRiskLevels   | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0
+                        @($S_P.Conditions.SignInRiskLevels | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0 -or
+                        @($S_P.Conditions.UserRiskLevels   | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0
                     )
-                    $S_ClientAppsRaw = @($p.Conditions.ClientAppTypes | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                    $S_ClientAppsRaw = @($S_P.Conditions.ClientAppTypes | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
                     $S_ClientAppsIsAll = (
                         $S_ClientAppsRaw.Count -eq 0 -or
                         ($S_ClientAppsRaw.Count -eq 1 -and $S_ClientAppsRaw[0] -eq 'all')
                     )
-                    $S_HasExcludedApps  = @($apps.ExcludeApplications | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0
+                    $S_HasExcludedApps  = @($S_Apps.ExcludeApplications | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0
                     # An Include* array is "Any" (not narrowing) when it is empty
                     # or contains the single sentinel 'all'/'All'. Graph returns
                     # IncludePlatforms = ['all'] for "Any device platform" and
                     # IncludeLocations = ['All'] for "Any location" — both of
                     # which are the default scopes and must NOT be flagged.
-                    # We also strip nulls/blanks because `@($plat.IncludePlatforms)`
+                    # We also strip nulls/blanks because `@($S_Plat.IncludePlatforms)`
                     # becomes `@($null)` (Count=1) when the Platforms condition
                     # block itself is absent.
-                    $S_IncPlat = @($plat.IncludePlatforms | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
-                    $S_IncLoc  = @($locs.IncludeLocations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
-                    $S_ExcPlat = @($plat.ExcludePlatforms | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
-                    $S_ExcLoc  = @($locs.ExcludeLocations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                    $S_IncPlat = @($S_Plat.IncludePlatforms | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                    $S_IncLoc  = @($S_Locs.IncludeLocations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                    $S_ExcPlat = @($S_Plat.ExcludePlatforms | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                    $S_ExcLoc  = @($S_Locs.ExcludeLocations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
                     $S_PlatIncludeIsAny = (
                         $S_IncPlat.Count -eq 0 -or
                         ($S_IncPlat.Count -eq 1 -and $S_IncPlat[0] -in @('all','All'))
@@ -307,11 +367,14 @@ try {
                         $S_HasPlatformScope -or
                         $S_HasLocationScope
                     )
-                    $S_ConditionsPosture = if ($S_HasRisk) {
+                    $S_ConditionsPosture = if ($S_HasRisk)
+                    {
                         'RiskBased'
-                    } elseif ($S_HasNarrowing) {
+                    } elseif ($S_HasNarrowing)
+                    {
                         'Constrained'
-                    } else {
+                    } else
+                    {
                         'Unrestricted'
                     }
 
@@ -334,7 +397,7 @@ try {
                     #                                 → Guests only
                     #   • Legacy 'GuestsOrExternalUsers' token in IncludeUsers
                     #                                 → Guests only
-                    $S_IncUsersRaw   = @($usrs.IncludeUsers)
+                    $S_IncUsersRaw   = @($S_Usrs.IncludeUsers)
                     $S_HasUsersAll   = ($S_IncUsersRaw -contains 'All')
                     $S_HasUsersGuestToken = ($S_IncUsersRaw -contains 'GuestsOrExternalUsers')
                     $S_HasSpecificUsers   = @(
@@ -342,24 +405,26 @@ try {
                             $_ -and $_ -notin @('All', 'None', 'GuestsOrExternalUsers')
                         }
                     ).Count -gt 0
-                    $S_HasIncGroups  = @($usrs.IncludeGroups).Count -gt 0
-                    $S_HasIncRoles   = @($usrs.IncludeRoles).Count  -gt 0
-                    $S_IncGuestObj   = $usrs.IncludeGuestsOrExternalUsers
+                    $S_HasIncGroups  = @($S_Usrs.IncludeGroups).Count -gt 0
+                    $S_HasIncRoles   = @($S_Usrs.IncludeRoles).Count  -gt 0
+                    $S_IncGuestObj   = $S_Usrs.IncludeGuestsOrExternalUsers
                     $S_IncGuestTypes = @()
-                    if ($null -ne $S_IncGuestObj -and -not [string]::IsNullOrWhiteSpace([string]$S_IncGuestObj.GuestOrExternalUserTypes)) {
+                    if ($null -ne $S_IncGuestObj -and -not [string]::IsNullOrWhiteSpace([string]$S_IncGuestObj.GuestOrExternalUserTypes))
+                    {
                         $S_IncGuestTypes = @(([string]$S_IncGuestObj.GuestOrExternalUserTypes -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
                     }
                     $S_HasIncGuestSpec = $S_IncGuestTypes.Count -gt 0
 
                     # Mirror for the EXCLUDE side — used by Persona classification
                     # to detect AllUsers policies that explicitly carve guests out.
-                    $S_ExcGuestObj   = $usrs.ExcludeGuestsOrExternalUsers
+                    $S_ExcGuestObj   = $S_Usrs.ExcludeGuestsOrExternalUsers
                     $S_ExcGuestTypes = @()
-                    if ($null -ne $S_ExcGuestObj -and -not [string]::IsNullOrWhiteSpace([string]$S_ExcGuestObj.GuestOrExternalUserTypes)) {
+                    if ($null -ne $S_ExcGuestObj -and -not [string]::IsNullOrWhiteSpace([string]$S_ExcGuestObj.GuestOrExternalUserTypes))
+                    {
                         $S_ExcGuestTypes = @(([string]$S_ExcGuestObj.GuestOrExternalUserTypes -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
                     }
                     $S_HasExcGuestSpec = $S_ExcGuestTypes.Count -gt 0
-                    $S_HasExcRoles     = @($usrs.ExcludeRoles).Count -gt 0
+                    $S_HasExcRoles     = @($S_Usrs.ExcludeRoles).Count -gt 0
 
                     # ── Persona ─────────────────────────────────────────────────
                     # Classify the AUDIENCE shape of the policy. Conditions like
@@ -373,19 +438,28 @@ try {
                     #   • Guests   — guest-only include scope
                     #   • Targeted — specific users and/or groups only
                     #   • Mixed    — combinations that don't cleanly match above
-                    $S_Persona = if ($S_HasUsersAll) {
-                        if ($S_HasExcRoles -or $S_HasExcGuestSpec) { 'Internal' } else { 'AllUsers' }
+                    $S_Persona = if ($S_HasUsersAll)
+                    {
+                        if ($S_HasExcRoles -or $S_HasExcGuestSpec)
+                        {
+                            'Internal' } else
+                        {
+                            'AllUsers' }
                     }
-                    elseif ($S_HasIncRoles -and -not $S_HasSpecificUsers -and -not $S_HasIncGroups -and -not $S_HasIncGuestSpec -and -not $S_HasUsersGuestToken) {
+                    elseif ($S_HasIncRoles -and -not $S_HasSpecificUsers -and -not $S_HasIncGroups -and -not $S_HasIncGuestSpec -and -not $S_HasUsersGuestToken)
+                    {
                         'Admins'
                     }
-                    elseif (($S_HasIncGuestSpec -or $S_HasUsersGuestToken) -and -not $S_HasSpecificUsers -and -not $S_HasIncGroups -and -not $S_HasIncRoles) {
+                    elseif (($S_HasIncGuestSpec -or $S_HasUsersGuestToken) -and -not $S_HasSpecificUsers -and -not $S_HasIncGroups -and -not $S_HasIncRoles)
+                    {
                         'Guests'
                     }
-                    elseif (($S_HasSpecificUsers -or $S_HasIncGroups) -and -not $S_HasIncRoles -and -not $S_HasIncGuestSpec -and -not $S_HasUsersGuestToken) {
+                    elseif (($S_HasSpecificUsers -or $S_HasIncGroups) -and -not $S_HasIncRoles -and -not $S_HasIncGuestSpec -and -not $S_HasUsersGuestToken)
+                    {
                         'Targeted'
                     }
-                    else {
+                    else
+                    {
                         'Mixed'
                     }
 
@@ -414,23 +488,27 @@ try {
                     #                  OR Partial coverage / RiskBased posture
                     #   • Acceptable → everything in between (Full|Data) +
                     #                  (Unrestricted|Constrained), non-Guest persona
-                    $S_EnforcementTier = if ($S_Persona -eq 'Guests') {
+                    $S_EnforcementTier = if ($S_Persona -eq 'Guests')
+                    {
                         'Ignored'
-                    } elseif ($S_WorkloadCoverage -eq 'Full' -and $S_ConditionsPosture -eq 'Unrestricted' -and $S_Persona -in @('AllUsers','Internal')) {
+                    } elseif ($S_WorkloadCoverage -eq 'Full' -and $S_ConditionsPosture -eq 'Unrestricted' -and $S_Persona -in @('AllUsers','Internal'))
+                    {
                         'Ideal'
-                    } elseif ($S_WorkloadCoverage -in @('Full','Data') -and $S_ConditionsPosture -in @('Unrestricted','Constrained')) {
+                    } elseif ($S_WorkloadCoverage -in @('Full','Data') -and $S_ConditionsPosture -in @('Unrestricted','Constrained'))
+                    {
                         'Acceptable'
-                    } else {
+                    } else
+                    {
                         'Ignored'
                     }
 
                     [PSCustomObject]@{
-                        Id                         = $p.Id
-                        DisplayName                = $p.DisplayName
-                        State                      = $p.State
+                        Id                         = $S_P.Id
+                        DisplayName                = $S_P.DisplayName
+                        State                      = $S_P.State
                         GrantType                  = ($S_GrantTypes -join ' + ')
-                        AuthenticationStrengthId   = $p.GrantControls.AuthenticationStrength.Id
-                        AuthenticationStrengthName = $p.GrantControls.AuthenticationStrength.DisplayName
+                        AuthenticationStrengthId   = $S_P.GrantControls.AuthenticationStrength.Id
+                        AuthenticationStrengthName = $S_P.GrantControls.AuthenticationStrength.DisplayName
                         GrantOperator              = $S_GrantOperator
                         AllBuiltInControls         = $S_AllBuiltIn
                         CompanionControls          = $S_CompanionControls
@@ -442,26 +520,26 @@ try {
                         Persona                    = $S_Persona
                         TargetsMembers             = $S_TargetsMembers
                         TargetsGuests              = $S_TargetsGuests
-                        IncludeApplications        = @($apps.IncludeApplications)
-                        ExcludeApplications        = @($apps.ExcludeApplications)
-                        IncludeUserActions         = @($apps.IncludeUserActions)
-                        IncludeUsers               = @($usrs.IncludeUsers  | ForEach-Object { Resolve-CaUserId  $_ })
-                        ExcludeUsers               = @($usrs.ExcludeUsers  | ForEach-Object { Resolve-CaUserId  $_ })
-                        ExcludeUserIds             = @($usrs.ExcludeUsers  | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
-                        IncludeGroups              = @($usrs.IncludeGroups | ForEach-Object { Resolve-CaGroupId $_ })
-                        ExcludeGroups              = @($usrs.ExcludeGroups | ForEach-Object { Resolve-CaGroupId $_ })
-                        ExcludeGroupIds            = @($usrs.ExcludeGroups | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
-                        IncludeRoles               = @($usrs.IncludeRoles  | ForEach-Object { Resolve-CaRoleId  $_ })
-                        ExcludeRoles               = @($usrs.ExcludeRoles  | ForEach-Object { Resolve-CaRoleId  $_ })
+                        IncludeApplications        = @($S_Apps.IncludeApplications)
+                        ExcludeApplications        = @($S_Apps.ExcludeApplications)
+                        IncludeUserActions         = @($S_Apps.IncludeUserActions)
+                        IncludeUsers               = @($S_Usrs.IncludeUsers  | ForEach-Object { Resolve-CaUserId  $_ })
+                        ExcludeUsers               = @($S_Usrs.ExcludeUsers  | ForEach-Object { Resolve-CaUserId  $_ })
+                        ExcludeUserIds             = @($S_Usrs.ExcludeUsers  | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                        IncludeGroups              = @($S_Usrs.IncludeGroups | ForEach-Object { Resolve-CaGroupId $_ })
+                        ExcludeGroups              = @($S_Usrs.ExcludeGroups | ForEach-Object { Resolve-CaGroupId $_ })
+                        ExcludeGroupIds            = @($S_Usrs.ExcludeGroups | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                        IncludeRoles               = @($S_Usrs.IncludeRoles  | ForEach-Object { Resolve-CaRoleId  $_ })
+                        ExcludeRoles               = @($S_Usrs.ExcludeRoles  | ForEach-Object { Resolve-CaRoleId  $_ })
                         IncludeGuestsOrExternalUserTypes = $S_IncGuestTypes
                         ExcludeGuestsOrExternalUserTypes = $S_ExcGuestTypes
-                        IncludePlatforms           = @($plat.IncludePlatforms | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
-                        ExcludePlatforms           = @($plat.ExcludePlatforms | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
-                        IncludeLocations           = @($locs.IncludeLocations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { Resolve-CaLocationId $_ })
-                        ExcludeLocations           = @($locs.ExcludeLocations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { Resolve-CaLocationId $_ })
-                        ClientAppTypes             = @($p.Conditions.ClientAppTypes | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
-                        SignInRiskLevels           = @($p.Conditions.SignInRiskLevels | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
-                        UserRiskLevels             = @($p.Conditions.UserRiskLevels | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                        IncludePlatforms           = @($S_Plat.IncludePlatforms | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                        ExcludePlatforms           = @($S_Plat.ExcludePlatforms | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                        IncludeLocations           = @($S_Locs.IncludeLocations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { Resolve-CaLocationId $_ })
+                        ExcludeLocations           = @($S_Locs.ExcludeLocations | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { Resolve-CaLocationId $_ })
+                        ClientAppTypes             = @($S_P.Conditions.ClientAppTypes | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                        SignInRiskLevels           = @($S_P.Conditions.SignInRiskLevels | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+                        UserRiskLevels             = @($S_P.Conditions.UserRiskLevels | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
                     }
                 }
             )
@@ -475,20 +553,37 @@ try {
             $Script:S_MfaCaPolicies = @($S_EnrichedCaPolicies | Where-Object { $_.TargetsMembers })
 
             Write-Host ("Found {0} enabled CA policy(ies) requiring MFA or Authentication Strength; {1} apply to Members, {2} are guest-only (excluded)." -f `
-                $S_EnrichedCaPolicies.Count, $Script:S_MfaCaPolicies.Count, $S_GuestOnlyPolicies.Count) -ForegroundColor Green
+                    $S_EnrichedCaPolicies.Count, $Script:S_MfaCaPolicies.Count, $S_GuestOnlyPolicies.Count) -ForegroundColor Green
 
             # ── Enforcement-tier summary (member-scoped) ────────────────────
             $S_TierCounts = $Script:S_MfaCaPolicies | Group-Object EnforcementTier -AsHashTable -AsString
-            $S_IdealN      = if ($S_TierCounts -and $S_TierCounts['Ideal'])      { @($S_TierCounts['Ideal']).Count }      else { 0 }
-            $S_AcceptableN = if ($S_TierCounts -and $S_TierCounts['Acceptable']) { @($S_TierCounts['Acceptable']).Count } else { 0 }
-            $S_IgnoredN    = if ($S_TierCounts -and $S_TierCounts['Ignored'])    { @($S_TierCounts['Ignored']).Count }    else { 0 }
+            $S_IdealN      = if ($S_TierCounts -and $S_TierCounts['Ideal'])
+            {
+                @($S_TierCounts['Ideal']).Count }      else
+            {
+                0 }
+            $S_AcceptableN = if ($S_TierCounts -and $S_TierCounts['Acceptable'])
+            {
+                @($S_TierCounts['Acceptable']).Count } else
+            {
+                0 }
+            $S_IgnoredN    = if ($S_TierCounts -and $S_TierCounts['Ignored'])
+            {
+                @($S_TierCounts['Ignored']).Count }    else
+            {
+                0 }
             Write-Host ("  Enforcement tiers — Ideal: {0}, Acceptable: {1}, Ignored: {2} (gap engine will skip Ignored)." -f `
-                $S_IdealN, $S_AcceptableN, $S_IgnoredN) -ForegroundColor Cyan
+                    $S_IdealN, $S_AcceptableN, $S_IgnoredN) -ForegroundColor Cyan
 
             # ── Persona summary (audience shape) ───────────────────────
             $S_PersonaCounts = $Script:S_MfaCaPolicies | Group-Object Persona -AsHashTable -AsString
-            $S_PersonaParts = foreach ($S_PName in 'AllUsers','Internal','Admins','Guests','Targeted','Mixed') {
-                $S_PN = if ($S_PersonaCounts -and $S_PersonaCounts[$S_PName]) { @($S_PersonaCounts[$S_PName]).Count } else { 0 }
+            $S_PersonaParts = foreach ($S_PName in 'AllUsers','Internal','Admins','Guests','Targeted','Mixed')
+            {
+                $S_PN = if ($S_PersonaCounts -and $S_PersonaCounts[$S_PName])
+                {
+                    @($S_PersonaCounts[$S_PName]).Count } else
+                {
+                    0 }
                 "{0}: {1}" -f $S_PName, $S_PN
             }
             Write-Host ("  Personas — " + ($S_PersonaParts -join ', ')) -ForegroundColor Cyan
@@ -497,7 +592,8 @@ try {
             # Stable label per policy for cross-referencing from the per-user
             # exclusion column (e.g. CaExclusionTags = "001, 003").
             $S_ReportIdx = 0
-            foreach ($S_Pol in $Script:S_MfaCaPolicies) {
+            foreach ($S_Pol in $Script:S_MfaCaPolicies)
+            {
                 $S_ReportIdx++
                 $S_Pol | Add-Member -NotePropertyName ReportId -NotePropertyValue ('{0:D3}' -f $S_ReportIdx) -Force
             }
@@ -509,50 +605,63 @@ try {
             #                     server-side by Graph's transitiveMembers)
             # Producing a map: UserId -> @(ReportId,...). Only Member users that
             # are AccountEnabled are recorded (matches the user-base filter used
-            # later when iterating $users). PIM-eligible role members and
+            # later when iterating $S_Users). PIM-eligible role members and
             # PIM-for-Groups eligible assignees are NOT included — transitiveMembers
             # only returns active members. That gap will be addressed by a future
             # ReportAdminMFA.ps1 pipeline.
             $S_IdealPolicies = @($Script:S_MfaCaPolicies | Where-Object { $_.EnforcementTier -eq 'Ideal' })
-            if ($S_IdealPolicies.Count -gt 0) {
+            if ($S_IdealPolicies.Count -gt 0)
+            {
                 Write-Host ("Resolving exclusions for {0} Ideal policy(ies)..." -f $S_IdealPolicies.Count) -ForegroundColor Cyan
                 $S_GroupMemberCache = @{}   # GroupId -> List[string] of member UserIds
-                foreach ($S_IP in $S_IdealPolicies) {
+                foreach ($S_IP in $S_IdealPolicies)
+                {
                     $S_ExclUserIds = New-Object 'System.Collections.Generic.HashSet[string]'
 
                     # Direct user exclusions
-                    foreach ($S_Uid in @($S_IP.ExcludeUserIds | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })) {
+                    foreach ($S_Uid in @($S_IP.ExcludeUserIds | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }))
+                    {
                         [void]$S_ExclUserIds.Add([string]$S_Uid)
                     }
 
                     # Group exclusions — transitively expanded
-                    foreach ($S_Gid in @($S_IP.ExcludeGroupIds | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })) {
-                        if (-not $S_GroupMemberCache.ContainsKey($S_Gid)) {
+                    foreach ($S_Gid in @($S_IP.ExcludeGroupIds | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }))
+                    {
+                        if (-not $S_GroupMemberCache.ContainsKey($S_Gid))
+                        {
                             $S_Members = New-Object 'System.Collections.Generic.List[string]'
-                            try {
+                            try
+                            {
                                 $S_Uri = "https://graph.microsoft.com/v1.0/groups/$S_Gid/transitiveMembers/microsoft.graph.user`?`$select=id,userType,accountEnabled&`$top=999"
-                                do {
+                                do
+                                {
                                     $S_Resp = Invoke-MgGraphRequest -Method GET -Uri $S_Uri -ErrorAction Stop
-                                    foreach ($S_M in @($S_Resp.value)) {
-                                        if ($S_M.userType -eq 'Member' -and $S_M.accountEnabled -eq $true) {
+                                    foreach ($S_M in @($S_Resp.value))
+                                    {
+                                        if ($S_M.userType -eq 'Member' -and $S_M.accountEnabled -eq $true)
+                                        {
                                             $S_Members.Add([string]$S_M.id)
                                         }
                                     }
                                     $S_Uri = $S_Resp.'@odata.nextLink'
                                 } while ($S_Uri)
                             }
-                            catch {
+                            catch
+                            {
                                 Write-Warning ("Could not expand group {0} for policy {1}: {2}" -f $S_Gid, $S_IP.ReportId, $_)
                             }
                             $S_GroupMemberCache[$S_Gid] = $S_Members
                         }
-                        foreach ($S_Mid in $S_GroupMemberCache[$S_Gid]) {
+                        foreach ($S_Mid in $S_GroupMemberCache[$S_Gid])
+                        {
                             [void]$S_ExclUserIds.Add($S_Mid)
                         }
                     }
 
-                    foreach ($S_Uid in $S_ExclUserIds) {
-                        if (-not $Script:S_UserExclusionMap.ContainsKey($S_Uid)) {
+                    foreach ($S_Uid in $S_ExclUserIds)
+                    {
+                        if (-not $Script:S_UserExclusionMap.ContainsKey($S_Uid))
+                        {
                             $Script:S_UserExclusionMap[$S_Uid] = New-Object 'System.Collections.Generic.List[string]'
                         }
                         $Script:S_UserExclusionMap[$S_Uid].Add($S_IP.ReportId)
@@ -561,11 +670,13 @@ try {
                 Write-Host ("  {0} user(s) tagged with Ideal-policy exclusions." -f $Script:S_UserExclusionMap.Count) -ForegroundColor Cyan
             }
         }
-        catch {
+        catch
+        {
             Write-Warning "Could not retrieve Conditional Access policies: $_"
         }
     }
-    else {
+    else
+    {
         Write-Host "Skipping Conditional Access policy query (Security Defaults is enabled or unknown)." -ForegroundColor DarkGray
     }
 
@@ -580,41 +691,47 @@ try {
             Select-Object -ExpandProperty AuthenticationStrengthId -Unique
     )
 
-    if ($S_ReferencedAuthStrengthIds.Count -gt 0) {
+    if ($S_ReferencedAuthStrengthIds.Count -gt 0)
+    {
         Write-Host ("Resolving {0} referenced Authentication Strength policy(ies)..." -f $S_ReferencedAuthStrengthIds.Count) -ForegroundColor Cyan
 
         # Single-factor combination tokens that do NOT satisfy MFA on their own.
         $S_SingleFactorTokens = @('password', 'federatedSingleFactor')
 
-        foreach ($S_AuthStrId in $S_ReferencedAuthStrengthIds) {
-            try {
-                $a = Invoke-MgGraphRequest -Method GET `
+        foreach ($S_AuthStrId in $S_ReferencedAuthStrengthIds)
+        {
+            try
+            {
+                $S_A = Invoke-MgGraphRequest -Method GET `
                     -Uri "https://graph.microsoft.com/v1.0/policies/authenticationStrengthPolicies/$S_AuthStrId"
 
-                $combos = @($a.allowedCombinations)
+                $S_Combos = @($S_A.allowedCombinations)
 
                 # MFA-capable if at least one combo has >1 factor, or its single
                 # token is not in the single-factor list.
-                $mfaCombos = @(
-                    $combos | Where-Object {
-                        $parts = ($_ -split ',') | ForEach-Object { $_.Trim() }
-                        if ($parts.Count -gt 1) { return $true }
-                        return ($parts[0] -notin $S_SingleFactorTokens)
+                $S_MfaCombos = @(
+                    $S_Combos | Where-Object {
+                        $S_Parts = ($_ -split ',') | ForEach-Object { $_.Trim() }
+                        if ($S_Parts.Count -gt 1)
+                        {
+                            return $true }
+                        return ($S_Parts[0] -notin $S_SingleFactorTokens)
                     }
                 )
 
                 $Script:S_ReferencedAuthStrengths[$S_AuthStrId] = [PSCustomObject]@{
-                    Id                    = $a.id
-                    DisplayName           = $a.displayName
-                    Description           = $a.description
-                    PolicyType            = $a.policyType        # builtIn | custom
-                    RequirementsSatisfied = $a.requirementsSatisfied
-                    AllowedCombinations   = $combos
-                    MfaCombinations       = $mfaCombos
-                    IsMfaCapable          = ($mfaCombos.Count -gt 0)
+                    Id                    = $S_A.id
+                    DisplayName           = $S_A.displayName
+                    Description           = $S_A.description
+                    PolicyType            = $S_A.policyType        # builtIn | custom
+                    RequirementsSatisfied = $S_A.requirementsSatisfied
+                    AllowedCombinations   = $S_Combos
+                    MfaCombinations       = $S_MfaCombos
+                    IsMfaCapable          = ($S_MfaCombos.Count -gt 0)
                 }
             }
-            catch {
+            catch
+            {
                 Write-Warning "Could not retrieve Authentication Strength '$S_AuthStrId': $_"
                 $Script:S_ReferencedAuthStrengths[$S_AuthStrId] = [PSCustomObject]@{
                     Id                    = $S_AuthStrId
@@ -629,21 +746,23 @@ try {
             }
         }
 
-        $mfaCapableCount    = @($Script:S_ReferencedAuthStrengths.Values | Where-Object { $_.IsMfaCapable -eq $true  }).Count
-        $notMfaCapableCount = @($Script:S_ReferencedAuthStrengths.Values | Where-Object { $_.IsMfaCapable -eq $false }).Count
+        $S_MfaCapableCount    = @($Script:S_ReferencedAuthStrengths.Values | Where-Object { $_.IsMfaCapable -eq $true  }).Count
+        $S_NotMfaCapableCount = @($Script:S_ReferencedAuthStrengths.Values | Where-Object { $_.IsMfaCapable -eq $false }).Count
         Write-Host ("Resolved {0} Authentication Strength policy(ies): {1} MFA-capable, {2} not MFA-capable." -f `
-            $Script:S_ReferencedAuthStrengths.Count, $mfaCapableCount, $notMfaCapableCount) -ForegroundColor Green
+                $Script:S_ReferencedAuthStrengths.Count, $S_MfaCapableCount, $S_NotMfaCapableCount) -ForegroundColor Green
 
-        if ($notMfaCapableCount -gt 0) {
+        if ($S_NotMfaCapableCount -gt 0)
+        {
             Write-Warning "One or more CA policies reference an Authentication Strength that is NOT MFA-capable."
         }
     }
-    else {
+    else
+    {
         Write-Host "No CA policies reference an Authentication Strength — skipping." -ForegroundColor DarkGray
     }
 
     # ── Retrieve Member Users (Guests excluded) ────────────────────────────────
-    $userProperties = @(
+    $S_UserProperties = @(
         'Id'
         'DisplayName'
         'UserPrincipalName'
@@ -657,124 +776,151 @@ try {
 
     Write-Host "Retrieving member users (Guests excluded)..." -ForegroundColor Cyan
 
-    if ($Test) {
+    if ($Test)
+    {
         Write-Host "[TEST MODE] Selecting 10 random Member users." -ForegroundColor Yellow
-        $S_AllMembers = Get-MgUser -Filter "userType eq 'Member'" -Property $userProperties -All
-        $users = @($S_AllMembers | Get-Random -Count ([Math]::Min(10, ($S_AllMembers | Measure-Object).Count)))
+        $S_AllMembers = Get-MgUser -Filter "userType eq 'Member'" -Property $S_UserProperties -All
+        $S_Users = @($S_AllMembers | Get-Random -Count ([Math]::Min(10, ($S_AllMembers | Measure-Object).Count)))
     }
-    else {
-        $users = Get-MgUser -Filter "userType eq 'Member'" -Property $userProperties -All
+    else
+    {
+        $S_Users = Get-MgUser -Filter "userType eq 'Member'" -Property $S_UserProperties -All
     }
 
-    $userCount = ($users | Measure-Object).Count
-    Write-Host "Found $userCount Member users. Processing..." -ForegroundColor Cyan
+    $S_UserCount = ($S_Users | Measure-Object).Count
+    Write-Host "Found $S_UserCount Member users. Processing..." -ForegroundColor Cyan
 
-    $results = [System.Collections.Generic.List[PSCustomObject]]::new()
-    $currentUser = 0
+    $S_Results = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $S_CurrentUser = 0
 
-    foreach ($user in $users) {
-        $currentUser++
-        Write-Progress -Activity "Processing Users" -Status "$currentUser of $userCount - $($user.DisplayName)" -PercentComplete (($currentUser / $userCount) * 100)
+    foreach ($S_User in $S_Users)
+    {
+        $S_CurrentUser++
+        Write-Progress -Activity "Processing Users" -Status "$S_CurrentUser of $S_UserCount - $($S_User.DisplayName)" -PercentComplete (($S_CurrentUser / $S_UserCount) * 100)
 
         # ── Authentication Methods ─────────────────────────────────────────────
-        $authMethodError = $false
-        try {
-            $authMethods = Get-MgUserAuthenticationMethod -UserId $user.Id -ErrorAction Stop
+        $S_AuthMethodError = $false
+        try
+        {
+            $S_AuthMethods = Get-MgUserAuthenticationMethod -UserId $S_User.Id -ErrorAction Stop
         }
-        catch {
-            Write-Warning "Could not retrieve auth methods for $($user.UserPrincipalName): $($_.Exception.Message)"
-            $authMethodError = $true
-            $authMethods = @()
+        catch
+        {
+            Write-Warning "Could not retrieve auth methods for $($S_User.UserPrincipalName): $($_.Exception.Message)"
+            $S_AuthMethodError = $true
+            $S_AuthMethods = @()
         }
 
         # ── Determine MFA Registration ─────────────────────────────────────────
-        $authTypes = $authMethods | ForEach-Object { $_.AdditionalProperties.'@odata.type' }
+        $S_AuthTypes = $S_AuthMethods | ForEach-Object { $_.AdditionalProperties.'@odata.type' }
 
-        $hasModernAuth = $authTypes | Where-Object {
+        $S_HasModernAuth = $S_AuthTypes | Where-Object {
             $_ -in @(
                 '#microsoft.graph.microsoftAuthenticatorAuthenticationMethod'
                 '#microsoft.graph.fido2AuthenticationMethod'
                 '#microsoft.graph.softwareOathAuthenticationMethod'
             )
         }
-        $hasLegacyAuth = $authTypes | Where-Object {
+        $S_HasLegacyAuth = $S_AuthTypes | Where-Object {
             $_ -in @(
                 '#microsoft.graph.phoneAuthenticationMethod'
             )
         }
 
-        if ($authMethodError) {
-            $mfaRegistered = 'Access Denied (Privileged Account)'
+        if ($S_AuthMethodError)
+        {
+            $S_MfaRegistered = 'Access Denied (Privileged Account)'
         }
-        elseif ($hasModernAuth) {
-            $mfaRegistered = 'Modern Auth'
+        elseif ($S_HasModernAuth)
+        {
+            $S_MfaRegistered = 'Modern Auth'
         }
-        elseif ($hasLegacyAuth) {
-            $mfaRegistered = 'Legacy Auth'
+        elseif ($S_HasLegacyAuth)
+        {
+            $S_MfaRegistered = 'Legacy Auth'
         }
-        else {
-            $mfaRegistered = 'No MFA'
+        else
+        {
+            $S_MfaRegistered = 'No MFA'
         }
 
         # ── Determine Active Account ───────────────────────────────────────────
-        $lastInteractive    = $null
-        $lastNonInteractive = $null
-        if (-not $user.AccountEnabled) {
-            $activeAccount = 'Disabled'
+        $S_LastInteractive    = $null
+        $S_LastNonInteractive = $null
+        if (-not $S_User.AccountEnabled)
+        {
+            $S_ActiveAccount = 'Disabled'
         }
-        else {
-            $lastInteractive    = $user.SignInActivity.LastSignInDateTime
-            $lastNonInteractive = $user.SignInActivity.LastNonInteractiveSignInDateTime
+        else
+        {
+            $S_LastInteractive    = $S_User.SignInActivity.LastSignInDateTime
+            $S_LastNonInteractive = $S_User.SignInActivity.LastNonInteractiveSignInDateTime
 
-            $dates = @($lastInteractive, $lastNonInteractive) | Where-Object { $_ -ne $null }
+            $S_Dates = @($S_LastInteractive, $S_LastNonInteractive) | Where-Object { $_ -ne $null }
 
-            if ($dates.Count -eq 0) {
-                $activeAccount = 'No Sign-In Recorded'
+            if ($S_Dates.Count -eq 0)
+            {
+                $S_ActiveAccount = 'No Sign-In Recorded'
             }
-            else {
-                $lastSignIn = ($dates | Sort-Object -Descending | Select-Object -First 1)
-                if ($lastSignIn -ge $S_CutoffDate) {
-                    $activeAccount = 'Yes'
+            else
+            {
+                $S_LastSignIn = ($S_Dates | Sort-Object -Descending | Select-Object -First 1)
+                if ($S_LastSignIn -ge $S_CutoffDate)
+                {
+                    $S_ActiveAccount = 'Yes'
                 }
-                else {
-                    $daysAgo = [math]::Floor(((Get-Date) - $lastSignIn).TotalDays)
-                    $activeAccount = "${daysAgo}+ Days Ago"
+                else
+                {
+                    $S_DaysAgo = [math]::Floor(((Get-Date) - $S_LastSignIn).TotalDays)
+                    $S_ActiveAccount = "${S_DaysAgo}+ Days Ago"
                 }
             }
         }
 
         # ── Licensing & Sync ───────────────────────────────────────────────────
-        $isLicensed = ($user.AssignedLicenses | Measure-Object).Count -gt 0
-        $isOnPremSynced = $user.OnPremisesSyncEnabled -eq $true
+        $S_IsLicensed = ($S_User.AssignedLicenses | Measure-Object).Count -gt 0
+        $S_IsOnPremSynced = $S_User.OnPremisesSyncEnabled -eq $true
 
         # ── Mail & Domain ──────────────────────────────────────────────────────
-        $mail = if ($user.Mail) { $user.Mail } else { 'None' }
-        $domain = if ($user.Mail) {
-            ($user.Mail -split '@')[1]
-        } else {
-            ($user.UserPrincipalName -split '@')[1]
+        $S_Mail = if ($S_User.Mail)
+        {
+            $S_User.Mail } else
+        {
+            'None' }
+        $S_Domain = if ($S_User.Mail)
+        {
+            ($S_User.Mail -split '@')[1]
+        } else
+        {
+            ($S_User.UserPrincipalName -split '@')[1]
         }
 
         # ── CA Exclusion Tags ──────────────────────────────────────────────────
         # Comma-joined list of Ideal-policy ReportIds (e.g. "001, 003") that
         # exclude this user via ExcludeUsers or transitively via ExcludeGroups.
         # Empty when the user is not on any Ideal exclusion list.
-        $caExclusionTags = if ($Script:S_UserExclusionMap.ContainsKey($user.Id)) {
-            (@($Script:S_UserExclusionMap[$user.Id]) | Sort-Object -Unique) -join ', '
-        } else { '' }
+        $S_CaExclusionTags = if ($Script:S_UserExclusionMap.ContainsKey($S_User.Id))
+        {
+            (@($Script:S_UserExclusionMap[$S_User.Id]) | Sort-Object -Unique) -join ', '
+        } else
+        {
+            '' }
 
         # ── CA Coverage (Ideal-policy perspective) ─────────────────────────────
         # Full    : >=1 Ideal policy exists AND user is on zero Ideal exclusion lists
         # Partial : user is excluded from at least one Ideal policy (Phase 2 will
         #           split Partial vs None once we evaluate per-policy inclusion)
         # None    : no Ideal CA policy exists in the tenant
-        $caCoverage = if (($S_IdealPolicies | Measure-Object).Count -eq 0) {
+        $S_CaCoverage = if (($S_IdealPolicies | Measure-Object).Count -eq 0)
+        {
             'None'
         }
-        elseif ([string]::IsNullOrWhiteSpace($caExclusionTags)) {
+        elseif ([string]::IsNullOrWhiteSpace($S_CaExclusionTags))
+        {
             'Full'
         }
-        else {
+        else
+        {
             'Partial'
         }
 
@@ -800,148 +946,287 @@ try {
         # MFA and merely sit in an exclusion list of an Ideal policy.
         # Disabled accounts always score 0 (not a live attack surface);
         # Posture is still computed so cleanup candidates remain visible.
-        $S_PostureKey = "$mfaRegistered|$caCoverage"
-        $mfaPosture = switch ($S_PostureKey) {
-            'Modern Auth|Full'    { 'Fully Compliant' }
-            'Modern Auth|Partial' { 'Coverage Gap' }
-            'Modern Auth|None'    { 'Unenforced' }
-            'Legacy Auth|Full'    { 'Weak Factor' }
-            'Legacy Auth|Partial' { 'Weak & Gap' }
-            'Legacy Auth|None'    { 'Weak & Unenforced' }
-            'No MFA|Full'         { 'At Risk' }
-            'No MFA|Partial'      { 'At Risk' }
-            'No MFA|None'         { 'Critical' }
-            default               { 'Unknown' }
+        $S_PostureKey = "$S_MfaRegistered|$S_CaCoverage"
+        $S_MfaPosture = switch ($S_PostureKey)
+        {
+            'Modern Auth|Full'
+            {
+                'Fully Compliant' }
+            'Modern Auth|Partial'
+            {
+                'Coverage Gap' }
+            'Modern Auth|None'
+            {
+                'Unenforced' }
+            'Legacy Auth|Full'
+            {
+                'Weak Factor' }
+            'Legacy Auth|Partial'
+            {
+                'Weak & Gap' }
+            'Legacy Auth|None'
+            {
+                'Weak & Unenforced' }
+            'No MFA|Full'
+            {
+                'At Risk' }
+            'No MFA|Partial'
+            {
+                'At Risk' }
+            'No MFA|None'
+            {
+                'Critical' }
+            default
+            {
+                'Unknown' }
         }
-        $riskScoreRaw = switch ($S_PostureKey) {
-            'Modern Auth|Full'    { 0 }
-            'Legacy Auth|Full'    { 2 }
-            'Modern Auth|Partial' { 3 }
-            'Legacy Auth|Partial' { 5 }
-            'Modern Auth|None'    { 6 }
-            'Legacy Auth|None'    { 7 }
-            'No MFA|Full'         { 8 }
-            'No MFA|Partial'      { 9 }
-            'No MFA|None'         { 10 }
-            default               { $null }
+        $S_RiskScoreRaw = switch ($S_PostureKey)
+        {
+            'Modern Auth|Full'
+            {
+                0 }
+            'Legacy Auth|Full'
+            {
+                2 }
+            'Modern Auth|Partial'
+            {
+                3 }
+            'Legacy Auth|Partial'
+            {
+                5 }
+            'Modern Auth|None'
+            {
+                6 }
+            'Legacy Auth|None'
+            {
+                7 }
+            'No MFA|Full'
+            {
+                8 }
+            'No MFA|Partial'
+            {
+                9 }
+            'No MFA|None'
+            {
+                10 }
+            default
+            {
+                $null }
         }
-        $riskScore = if ($activeAccount -eq 'Disabled') { 0 } else { $riskScoreRaw }
+        $S_RiskScore = if ($S_ActiveAccount -eq 'Disabled')
+        {
+            0 } else
+        {
+            $S_RiskScoreRaw }
 
         # ── Build result row ───────────────────────────────────────────────────
-        $results.Add([PSCustomObject]@{
-            DisplayName       = $user.DisplayName
-            UserPrincipalName = $user.UserPrincipalName
-            Mail              = $mail
-            Domain            = $domain
-            UserType          = $user.UserType
-            MFA_Registered    = $mfaRegistered
-            ActiveAccount     = $activeAccount
-            IsLicensed        = $isLicensed
-            IsOnPremSynced    = $isOnPremSynced
-            CaExclusionTags   = $caExclusionTags
-            CaCoverage        = $caCoverage
-            MfaPosture        = $mfaPosture
-            RiskScore         = $riskScore
-        })
+        $S_Results.Add([PSCustomObject]@{
+                DisplayName       = $S_User.DisplayName
+                UserPrincipalName = $S_User.UserPrincipalName
+                Mail              = $S_Mail
+                Domain            = $S_Domain
+                UserType          = $S_User.UserType
+                MFA_Registered    = $S_MfaRegistered
+                ActiveAccount     = $S_ActiveAccount
+                IsLicensed        = $S_IsLicensed
+                IsOnPremSynced    = $S_IsOnPremSynced
+                CaExclusionTags   = $S_CaExclusionTags
+                CaCoverage        = $S_CaCoverage
+                MfaPosture        = $S_MfaPosture
+                RiskScore         = $S_RiskScore
+            })
     }
 
     Write-Progress -Activity "Processing Users" -Completed
 
     # ── Export CSV ─────────────────────────────────────────────────────────────
-    $results | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+    $S_Results | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
     Write-Host "`nCSV exported to: $OutputPath" -ForegroundColor Green
-    Write-Host "Total rows: $($results.Count)" -ForegroundColor Green
+    Write-Host "Total rows: $($S_Results.Count)" -ForegroundColor Green
 
     # ── Calculate Statistics ───────────────────────────────────────────────────
-    $totalMembers   = $results.Count
-    $disabledCount  = ($results | Where-Object { $_.ActiveAccount -eq 'Disabled' }).Count
-    $enabledCount   = $totalMembers - $disabledCount
+    $S_TotalMembers   = $S_Results.Count
+    $S_DisabledCount  = ($S_Results | Where-Object { $_.ActiveAccount -eq 'Disabled' }).Count
+    $S_EnabledCount   = $S_TotalMembers - $S_DisabledCount
 
     # Active / Inactive split within enabled accounts. ActiveAccount values:
     #   'Yes'                 -> Active (signed in within InactiveDays)
     #   'Disabled'            -> Disabled
     #   'No Sign-In Recorded' -> Inactive (never observed)
     #   <date string>         -> Inactive (last sign-in older than threshold)
-    $activeCount        = ($results | Where-Object { $_.ActiveAccount -eq 'Yes' }).Count
-    $inactiveCount      = $enabledCount - $activeCount
+    $S_ActiveCount        = ($S_Results | Where-Object { $_.ActiveAccount -eq 'Yes' }).Count
+    $S_InactiveCount      = $S_EnabledCount - $S_ActiveCount
 
-    $enabledUsers       = $results | Where-Object { $_.ActiveAccount -ne 'Disabled' }
-    $enabledModernAuth  = ($enabledUsers | Where-Object { $_.MFA_Registered -eq 'Modern Auth' }).Count
-    $enabledLegacyAuth  = ($enabledUsers | Where-Object { $_.MFA_Registered -eq 'Legacy Auth' }).Count
-    $enabledNoMFA       = ($enabledUsers | Where-Object { $_.MFA_Registered -eq 'No MFA' }).Count
-    $enabledAccessDenied= ($enabledUsers | Where-Object { $_.MFA_Registered -eq 'Access Denied (Privileged Account)' }).Count
-    $enabledHasMFA      = $enabledModernAuth + $enabledLegacyAuth
+    $S_EnabledUsers       = $S_Results | Where-Object { $_.ActiveAccount -ne 'Disabled' }
+    $S_EnabledModernAuth  = ($S_EnabledUsers | Where-Object { $_.MFA_Registered -eq 'Modern Auth' }).Count
+    $S_EnabledLegacyAuth  = ($S_EnabledUsers | Where-Object { $_.MFA_Registered -eq 'Legacy Auth' }).Count
+    $S_EnabledNoMFA       = ($S_EnabledUsers | Where-Object { $_.MFA_Registered -eq 'No MFA' }).Count
+    $S_EnabledAccessDenied= ($S_EnabledUsers | Where-Object { $_.MFA_Registered -eq 'Access Denied (Privileged Account)' }).Count
+    $S_EnabledHasMFA      = $S_EnabledModernAuth + $S_EnabledLegacyAuth
 
-    $coveragePercent = if ($enabledCount -gt 0) {
-        [math]::Round(($enabledHasMFA / $enabledCount) * 100, 1)
-    } else { 0 }
+    $S_CoveragePercent = if ($S_EnabledCount -gt 0)
+    {
+        [math]::Round(($S_EnabledHasMFA / $S_EnabledCount) * 100, 1)
+    } else
+    {
+        0 }
 
     # Posture distribution across enabled accounts (matches the 9-value taxonomy
     # rendered as pills in the user table). Disabled accounts are excluded so
     # the numbers reflect the live attack surface.
     $S_PostureBuckets = @('Fully Compliant','Weak Factor','Coverage Gap','Unenforced','Weak & Gap','Weak & Unenforced','At Risk','Critical','Unknown')
     $S_PostureCounts  = @{}
-    foreach ($S_PB in $S_PostureBuckets) { $S_PostureCounts[$S_PB] = 0 }
-    foreach ($S_EU in @($enabledUsers)) {
-        $S_PKey = if ([string]::IsNullOrWhiteSpace([string]$S_EU.MfaPosture)) { 'Unknown' } else { [string]$S_EU.MfaPosture }
-        if ($S_PostureCounts.ContainsKey($S_PKey)) { $S_PostureCounts[$S_PKey]++ } else { $S_PostureCounts['Unknown']++ }
+    foreach ($S_PB in $S_PostureBuckets)
+    {
+        $S_PostureCounts[$S_PB] = 0 }
+    foreach ($S_EU in @($S_EnabledUsers))
+    {
+        $S_PKey = if ([string]::IsNullOrWhiteSpace([string]$S_EU.MfaPosture))
+        {
+            'Unknown' } else
+        {
+            [string]$S_EU.MfaPosture }
+        if ($S_PostureCounts.ContainsKey($S_PKey))
+        {
+            $S_PostureCounts[$S_PKey]++ } else
+        {
+            $S_PostureCounts['Unknown']++ }
     }
 
     # Build table rows for ALL Member users (filterable client-side)
-    $tableRows = ($results | ForEach-Object {
-        $S_TagsCell      = if ([string]::IsNullOrWhiteSpace($_.CaExclusionTags)) { '<span style="color:#999">—</span>' } else { [System.Web.HttpUtility]::HtmlEncode($_.CaExclusionTags) }
-        $S_TagsBucket    = if ([string]::IsNullOrWhiteSpace($_.CaExclusionTags)) { 'None' } else { 'Has' }
-        $S_ActiveBucket  = if ($_.ActiveAccount -eq 'Disabled') { 'Disabled' } elseif ($_.ActiveAccount -eq 'Yes') { 'Active' } elseif ($_.ActiveAccount -eq 'No Sign-In Recorded') { 'NoSignIn' } else { 'Stale' }
-        $S_CoverageClass = switch ($_.CaCoverage) {
-            'Full'    { 'background:#eaf6ec;color:#107c10;border:1px solid #107c10' }
-            'Partial' { 'background:#fff4ce;color:#8a6d00;border:1px solid #c0a000' }
-            default   { 'background:#f3f3f3;color:#666;border:1px solid #999' }
-        }
-        $S_CoverageCell  = "<span style=""$S_CoverageClass;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600"">$([System.Web.HttpUtility]::HtmlEncode([string]$_.CaCoverage))</span>"
-        $S_PostureClass  = switch ($_.MfaPosture) {
-            'Fully Compliant'    { 'background:#eaf6ec;color:#107c10;border:1px solid #107c10' }
-            'Weak Factor'        { 'background:#fff4ce;color:#8a6d00;border:1px solid #c0a000' }
-            'Coverage Gap'       { 'background:#fff4ce;color:#8a6d00;border:1px solid #c0a000' }
-            'Unenforced'         { 'background:#ffe8cc;color:#9a4f00;border:1px solid #d83b01' }
-            'Weak & Gap'         { 'background:#ffe8cc;color:#9a4f00;border:1px solid #d83b01' }
-            'Weak & Unenforced'  { 'background:#ffe8cc;color:#9a4f00;border:1px solid #d83b01' }
-            'At Risk'            { 'background:#fdecea;color:#a4262c;border:1px solid #a4262c' }
-            'Critical'           { 'background:#5c0a12;color:#fff;border:1px solid #3d0008' }
-            default              { 'background:#f3f3f3;color:#666;border:1px solid #999' }
-        }
-        $S_PostureCell   = "<span style=""$S_PostureClass;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600"">$([System.Web.HttpUtility]::HtmlEncode([string]$_.MfaPosture))</span>"
-        # Risk pill: numeric, colour-banded; '—' when Unknown
-        $S_RiskNum       = if ($null -eq $_.RiskScore) { -1 } else { [int]$_.RiskScore }
-        $S_RiskClass     = if     ($S_RiskNum -lt 0)  { 'background:#f3f3f3;color:#666;border:1px solid #999' }
-                           elseif ($S_RiskNum -le 2)  { 'background:#eaf6ec;color:#107c10;border:1px solid #107c10' }
-                           elseif ($S_RiskNum -le 4)  { 'background:#f3f9d8;color:#5a6b14;border:1px solid #7a8c1a' }
-                           elseif ($S_RiskNum -le 6)  { 'background:#fff4ce;color:#8a6d00;border:1px solid #bc8000' }
-                           elseif ($S_RiskNum -le 8)  { 'background:#ffe8cc;color:#9a4f00;border:1px solid #d83b01' }
-                           else                        { 'background:#fdecea;color:#a4262c;border:1px solid #a4262c' }
-        $S_RiskText      = if ($S_RiskNum -lt 0) { '—' } else { "$S_RiskNum" }
-        $S_RiskCell      = "<span style=""$S_RiskClass;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700"">$S_RiskText</span>"
-        # Technical identifiers (UPN, Mail, Domain) are wrapped in <code> per the
-        # HTML documentation rules — semantic + monospace + light grey background.
-        $S_UpnEnc    = [System.Web.HttpUtility]::HtmlEncode([string]$_.UserPrincipalName)
-        $S_MailEnc   = [System.Web.HttpUtility]::HtmlEncode([string]$_.Mail)
-        $S_DomainEnc = [System.Web.HttpUtility]::HtmlEncode([string]$_.Domain)
-        $S_UpnCell    = if ([string]::IsNullOrWhiteSpace([string]$_.UserPrincipalName)) { '<span style="color:#999">—</span>' } else { "<code>$S_UpnEnc</code>" }
-        $S_MailCell   = if ([string]::IsNullOrWhiteSpace([string]$_.Mail))              { '<span style="color:#999">—</span>' } else { "<code>$S_MailEnc</code>" }
-        $S_DomainCell = if ([string]::IsNullOrWhiteSpace([string]$_.Domain))            { '<span style="color:#999">—</span>' } else { "<code>$S_DomainEnc</code>" }
-        "        <tr data-auth=""$($_.MFA_Registered)"" data-active=""$S_ActiveBucket"" data-licensed=""$($_.IsLicensed)"" data-onprem=""$($_.IsOnPremSynced)"" data-exclusions=""$S_TagsBucket"" data-cacoverage=""$($_.CaCoverage)"" data-posture=""$($_.MfaPosture)"" data-risk=""$S_RiskNum""><td>$([System.Web.HttpUtility]::HtmlEncode($_.DisplayName))</td><td>$S_UpnCell</td><td>$S_MailCell</td><td>$S_DomainCell</td><td>$([System.Web.HttpUtility]::HtmlEncode([string]$_.MFA_Registered))</td><td>$S_CoverageCell</td><td>$S_PostureCell</td><td style=""text-align:center"">$S_RiskCell</td><td>$([System.Web.HttpUtility]::HtmlEncode([string]$_.ActiveAccount))</td><td>$($_.IsLicensed)</td><td>$($_.IsOnPremSynced)</td><td>$S_TagsCell</td></tr>"
-    }) -join "`n"
+    $S_TableRows = ($S_Results | ForEach-Object {
+            $S_TagsCell      = if ([string]::IsNullOrWhiteSpace($_.CaExclusionTags))
+            {
+                '<span style="color:#999">—</span>' } else
+            {
+                [System.Web.HttpUtility]::HtmlEncode($_.CaExclusionTags) }
+            $S_TagsBucket    = if ([string]::IsNullOrWhiteSpace($_.CaExclusionTags))
+            {
+                'None' } else
+            {
+                'Has' }
+            $S_ActiveBucket  = if ($_.ActiveAccount -eq 'Disabled')
+            {
+                'Disabled' } elseif ($_.ActiveAccount -eq 'Yes')
+            {
+                'Active' } elseif ($_.ActiveAccount -eq 'No Sign-In Recorded')
+            {
+                'NoSignIn' } else
+            {
+                'Stale' }
+            $S_CoverageClass = switch ($_.CaCoverage)
+            {
+                'Full'
+                {
+                    'background:#eaf6ec;color:#107c10;border:1px solid #107c10' }
+                'Partial'
+                {
+                    'background:#fff4ce;color:#8a6d00;border:1px solid #c0a000' }
+                default
+                {
+                    'background:#f3f3f3;color:#666;border:1px solid #999' }
+            }
+            $S_CoverageCell  = "<span style=""$S_CoverageClass;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600"">$([System.Web.HttpUtility]::HtmlEncode([string]$_.CaCoverage))</span>"
+            $S_PostureClass  = switch ($_.MfaPosture)
+            {
+                'Fully Compliant'
+                {
+                    'background:#eaf6ec;color:#107c10;border:1px solid #107c10' }
+                'Weak Factor'
+                {
+                    'background:#fff4ce;color:#8a6d00;border:1px solid #c0a000' }
+                'Coverage Gap'
+                {
+                    'background:#fff4ce;color:#8a6d00;border:1px solid #c0a000' }
+                'Unenforced'
+                {
+                    'background:#ffe8cc;color:#9a4f00;border:1px solid #d83b01' }
+                'Weak & Gap'
+                {
+                    'background:#ffe8cc;color:#9a4f00;border:1px solid #d83b01' }
+                'Weak & Unenforced'
+                {
+                    'background:#ffe8cc;color:#9a4f00;border:1px solid #d83b01' }
+                'At Risk'
+                {
+                    'background:#fdecea;color:#a4262c;border:1px solid #a4262c' }
+                'Critical'
+                {
+                    'background:#5c0a12;color:#fff;border:1px solid #3d0008' }
+                default
+                {
+                    'background:#f3f3f3;color:#666;border:1px solid #999' }
+            }
+            $S_PostureCell   = "<span style=""$S_PostureClass;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600"">$([System.Web.HttpUtility]::HtmlEncode([string]$_.MfaPosture))</span>"
+            # Risk pill: numeric, colour-banded; '—' when Unknown
+            $S_RiskNum       = if ($null -eq $_.RiskScore)
+            {
+                -1 } else
+            {
+                [int]$_.RiskScore }
+            $S_RiskClass     = if     ($S_RiskNum -lt 0)
+            {
+                'background:#f3f3f3;color:#666;border:1px solid #999' }
+            elseif ($S_RiskNum -le 2)
+            {
+                'background:#eaf6ec;color:#107c10;border:1px solid #107c10' }
+            elseif ($S_RiskNum -le 4)
+            {
+                'background:#f3f9d8;color:#5a6b14;border:1px solid #7a8c1a' }
+            elseif ($S_RiskNum -le 6)
+            {
+                'background:#fff4ce;color:#8a6d00;border:1px solid #bc8000' }
+            elseif ($S_RiskNum -le 8)
+            {
+                'background:#ffe8cc;color:#9a4f00;border:1px solid #d83b01' }
+            else
+            {
+                'background:#fdecea;color:#a4262c;border:1px solid #a4262c' }
+            $S_RiskText      = if ($S_RiskNum -lt 0)
+            {
+                '—' } else
+            {
+                "$S_RiskNum" }
+            $S_RiskCell      = "<span style=""$S_RiskClass;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700"">$S_RiskText</span>"
+            # Technical identifiers (UPN, Mail, Domain) are wrapped in <code> per the
+            # HTML documentation rules — semantic + monospace + light grey background.
+            $S_UpnEnc    = [System.Web.HttpUtility]::HtmlEncode([string]$_.UserPrincipalName)
+            $S_MailEnc   = [System.Web.HttpUtility]::HtmlEncode([string]$_.Mail)
+            $S_DomainEnc = [System.Web.HttpUtility]::HtmlEncode([string]$_.Domain)
+            $S_UpnCell    = if ([string]::IsNullOrWhiteSpace([string]$_.UserPrincipalName))
+            {
+                '<span style="color:#999">—</span>' } else
+            {
+                "<code>$S_UpnEnc</code>" }
+            $S_MailCell   = if ([string]::IsNullOrWhiteSpace([string]$_.Mail))
+            {
+                '<span style="color:#999">—</span>' } else
+            {
+                "<code>$S_MailEnc</code>" }
+            $S_DomainCell = if ([string]::IsNullOrWhiteSpace([string]$_.Domain))
+            {
+                '<span style="color:#999">—</span>' } else
+            {
+                "<code>$S_DomainEnc</code>" }
+            "        <tr data-auth=""$($_.MFA_Registered)"" data-active=""$S_ActiveBucket"" data-licensed=""$($_.IsLicensed)"" data-onprem=""$($_.IsOnPremSynced)"" data-exclusions=""$S_TagsBucket"" data-cacoverage=""$($_.CaCoverage)"" data-posture=""$($_.MfaPosture)"" data-risk=""$S_RiskNum""><td>$([System.Web.HttpUtility]::HtmlEncode($_.DisplayName))</td><td>$S_UpnCell</td><td>$S_MailCell</td><td>$S_DomainCell</td><td>$([System.Web.HttpUtility]::HtmlEncode([string]$_.MFA_Registered))</td><td>$S_CoverageCell</td><td>$S_PostureCell</td><td style=""text-align:center"">$S_RiskCell</td><td>$([System.Web.HttpUtility]::HtmlEncode([string]$_.ActiveAccount))</td><td>$($_.IsLicensed)</td><td>$($_.IsOnPremSynced)</td><td>$S_TagsCell</td></tr>"
+        }) -join "`n"
 
     # ── Build CA Policy table rows ──────────────────────────────────────
-    function Format-CaList {
-        param([object[]]$Items)
-        if ($null -eq $Items -or $Items.Count -eq 0) { return '<span style="color:#999">—</span>' }
-        ($Items | ForEach-Object { [System.Web.HttpUtility]::HtmlEncode([string]$_) }) -join '<br>'
+    function Format-CaList
+    {
+        param([object[]]$F_Items)
+        if ($null -eq $F_Items -or $F_Items.Count -eq 0)
+        {
+            return '<span style="color:#999">—</span>' }
+        ($F_Items | ForEach-Object { [System.Web.HttpUtility]::HtmlEncode([string]$_) }) -join '<br>'
     }
 
-    $S_CaPolicyRows = if ($Script:S_MfaCaPolicies.Count -eq 0) {
+    $S_CaPolicyRows = if ($Script:S_MfaCaPolicies.Count -eq 0)
+    {
         '        <tr><td colspan="9" style="text-align:center;color:#999">No MFA-enforcing Conditional Access policies were found.</td></tr>'
     }
-    else {
+    else
+    {
         ($Script:S_MfaCaPolicies | ForEach-Object {
             $S_Included = @()
             $S_Included += $_.IncludeUsers
@@ -954,56 +1239,105 @@ try {
 
             $S_Workloads = @()
             $S_Workloads += $_.IncludeApplications
-            if ($_.IncludeUserActions.Count -gt 0) {
+            if ($_.IncludeUserActions.Count -gt 0)
+            {
                 $S_Workloads += ($_.IncludeUserActions | ForEach-Object { "action: $_" })
             }
-            if ($_.ExcludeApplications.Count -gt 0) {
+            if ($_.ExcludeApplications.Count -gt 0)
+            {
                 $S_Workloads += ($_.ExcludeApplications | ForEach-Object { "exclude: $_" })
             }
             # Coverage-tier badge prepended to the Workloads cell
-            $S_CoverageColor = switch ($_.WorkloadCoverage) {
-                'Full'    { '#107c10' }   # green
-                'Data'    { '#0078d4' }   # blue
-                default   { '#ff8c00' }   # orange (Partial)
+            $S_CoverageColor = switch ($_.WorkloadCoverage)
+            {
+                'Full'
+                {
+                    '#107c10' }   # green
+                'Data'
+                {
+                    '#0078d4' }   # blue
+                default
+                {
+                    '#ff8c00' }   # orange (Partial)
             }
             $S_CoverageBadge = "<span style=""display:inline-block;padding:2px 8px;border-radius:10px;background:$S_CoverageColor;color:#fff;font-size:11px;font-weight:600;margin-bottom:4px"">$($_.WorkloadCoverage) coverage</span>"
             $S_WorkloadsHtml = $S_CoverageBadge + '<br>' + (Format-CaList $S_Workloads)
 
             $S_GrantParts = @()
-            if ($_.AllBuiltInControls.Count -gt 0) { $S_GrantParts += ($_.AllBuiltInControls -join " $($_.GrantOperator) ") }
-            if ($_.HasAuthenticationStrength) {
-                $S_AsName = if ($_.AuthenticationStrengthName) { $_.AuthenticationStrengthName } else { '<unknown>' }
+            if ($_.AllBuiltInControls.Count -gt 0)
+            {
+                $S_GrantParts += ($_.AllBuiltInControls -join " $($_.GrantOperator) ") }
+            if ($_.HasAuthenticationStrength)
+            {
+                $S_AsName = if ($_.AuthenticationStrengthName)
+                {
+                    $_.AuthenticationStrengthName } else
+                {
+                    '<unknown>' }
                 $S_GrantParts += "AuthStrength: $S_AsName"
             }
             $S_GrantText = ($S_GrantParts -join '<br>')
-            if ($_.MfaIsBypassable) {
+            if ($_.MfaIsBypassable)
+            {
                 $S_GrantText += '<br><span style="color:#d13438;font-weight:600">⚠ MFA bypassable (OR with companion controls)</span>'
             }
 
             $S_OtherTargeting = @()
-            if ($_.IncludePlatforms.Count -gt 0) { $S_OtherTargeting += "Platforms incl: $($_.IncludePlatforms -join ', ')" }
-            if ($_.ExcludePlatforms.Count -gt 0) { $S_OtherTargeting += "Platforms excl: $($_.ExcludePlatforms -join ', ')" }
-            if ($_.IncludeLocations.Count -gt 0) { $S_OtherTargeting += "Locations incl: $($_.IncludeLocations -join ', ')" }
-            if ($_.ExcludeLocations.Count -gt 0) { $S_OtherTargeting += "Locations excl: $($_.ExcludeLocations -join ', ')" }
-            if ($_.ClientAppTypes.Count   -gt 0) { $S_OtherTargeting += "Client apps: $($_.ClientAppTypes -join ', ')" }
-            if ($_.SignInRiskLevels.Count -gt 0) { $S_OtherTargeting += "Sign-in risk: $($_.SignInRiskLevels -join ', ')" }
-            if ($_.UserRiskLevels.Count   -gt 0) { $S_OtherTargeting += "User risk: $($_.UserRiskLevels -join ', ')" }
+            if ($_.IncludePlatforms.Count -gt 0)
+            {
+                $S_OtherTargeting += "Platforms incl: $($_.IncludePlatforms -join ', ')" }
+            if ($_.ExcludePlatforms.Count -gt 0)
+            {
+                $S_OtherTargeting += "Platforms excl: $($_.ExcludePlatforms -join ', ')" }
+            if ($_.IncludeLocations.Count -gt 0)
+            {
+                $S_OtherTargeting += "Locations incl: $($_.IncludeLocations -join ', ')" }
+            if ($_.ExcludeLocations.Count -gt 0)
+            {
+                $S_OtherTargeting += "Locations excl: $($_.ExcludeLocations -join ', ')" }
+            if ($_.ClientAppTypes.Count   -gt 0)
+            {
+                $S_OtherTargeting += "Client apps: $($_.ClientAppTypes -join ', ')" }
+            if ($_.SignInRiskLevels.Count -gt 0)
+            {
+                $S_OtherTargeting += "Sign-in risk: $($_.SignInRiskLevels -join ', ')" }
+            if ($_.UserRiskLevels.Count   -gt 0)
+            {
+                $S_OtherTargeting += "User risk: $($_.UserRiskLevels -join ', ')" }
             # Conditions-posture badge prepended to the Other Conditions cell.
             # RiskBased = neutral gray (de-emphasised — gap engine ignores these).
-            $S_PostureColor = switch ($_.ConditionsPosture) {
-                'Unrestricted' { '#107c10' }   # green
-                'Constrained'  { '#ff8c00' }   # amber
-                default        { '#6b6b6b' }   # neutral gray (RiskBased)
+            $S_PostureColor = switch ($_.ConditionsPosture)
+            {
+                'Unrestricted'
+                {
+                    '#107c10' }   # green
+                'Constrained'
+                {
+                    '#ff8c00' }   # amber
+                default
+                {
+                    '#6b6b6b' }   # neutral gray (RiskBased)
             }
             $S_PostureBadge = "<span style=""display:inline-block;padding:2px 8px;border-radius:10px;background:$S_PostureColor;color:#fff;font-size:11px;font-weight:600;margin-bottom:4px"">$($_.ConditionsPosture)</span>"
-            $S_OtherInner   = if ($S_OtherTargeting.Count -gt 0) { Format-CaList $S_OtherTargeting } else { '<span style="color:#999">—</span>' }
+            $S_OtherInner   = if ($S_OtherTargeting.Count -gt 0)
+            {
+                Format-CaList $S_OtherTargeting } else
+            {
+                '<span style="color:#999">—</span>' }
             $S_OtherText    = $S_PostureBadge + '<br>' + $S_OtherInner
 
             # Enforcement-tier badge under the policy name. Gray = Ignored by gap engine.
-            $S_TierColor = switch ($_.EnforcementTier) {
-                'Ideal'      { '#107c10' }   # green
-                'Acceptable' { '#ff8c00' }   # amber
-                default      { '#6b6b6b' }   # neutral gray (Ignored)
+            $S_TierColor = switch ($_.EnforcementTier)
+            {
+                'Ideal'
+                {
+                    '#107c10' }   # green
+                'Acceptable'
+                {
+                    '#ff8c00' }   # amber
+                default
+                {
+                    '#6b6b6b' }   # neutral gray (Ignored)
             }
             # Place the tier badge ABOVE the name for consistency with Workloads and Conditions columns.
             $S_TierBadge = "<span style=""display:inline-block;padding:2px 8px;border-radius:10px;background:$S_TierColor;color:#fff;font-size:11px;font-weight:600;margin-bottom:4px"">$($_.EnforcementTier)</span>"
@@ -1012,13 +1346,26 @@ try {
 
             # Persona badge — audience shape (used by the gap engine to skip
             # Admin-only policies; Guests already filtered upstream).
-            $S_PersonaColor = switch ($_.Persona) {
-                'AllUsers' { '#0078d4' }   # blue
-                'Internal' { '#107c10' }   # green
-                'Admins'   { '#8764b8' }   # purple
-                'Guests'   { '#ff8c00' }   # orange
-                'Targeted' { '#6b6b6b' }   # gray
-                default    { '#d13438' }   # red (Mixed — sanity flag)
+            $S_PersonaColor = switch ($_.Persona)
+            {
+                'AllUsers'
+                {
+                    '#0078d4' }   # blue
+                'Internal'
+                {
+                    '#107c10' }   # green
+                'Admins'
+                {
+                    '#8764b8' }   # purple
+                'Guests'
+                {
+                    '#ff8c00' }   # orange
+                'Targeted'
+                {
+                    '#6b6b6b' }   # gray
+                default
+                {
+                    '#d13438' }   # red (Mixed — sanity flag)
             }
             $S_PersonaBadge = "<span style=""display:inline-block;padding:2px 8px;border-radius:10px;background:$S_PersonaColor;color:#fff;font-size:11px;font-weight:600"">$($_.Persona)</span>"
 
@@ -1039,15 +1386,24 @@ try {
     }
 
     # ── Build Authentication Strength table rows ──────────────────────────────────
-    $S_AuthStrengthRows = if ($null -eq $Script:S_ReferencedAuthStrengths -or $Script:S_ReferencedAuthStrengths.Count -eq 0) {
+    $S_AuthStrengthRows = if ($null -eq $Script:S_ReferencedAuthStrengths -or $Script:S_ReferencedAuthStrengths.Count -eq 0)
+    {
         '        <tr><td colspan="6" style="text-align:center;color:#999">No Authentication Strengths referenced by the kept CA policies.</td></tr>'
     }
-    else {
+    else
+    {
         ($Script:S_ReferencedAuthStrengths.Values | ForEach-Object {
-            $S_MfaText = switch ($_.IsMfaCapable) {
-                $true   { '<span style="color:#107c10;font-weight:600">Yes</span>' }
-                $false  { '<span style="color:#d13438;font-weight:600">No</span>' }
-                default { '<span style="color:#999">Unknown</span>' }
+            $S_MfaText = switch ($_.IsMfaCapable)
+            {
+                $true
+                {
+                    '<span style="color:#107c10;font-weight:600">Yes</span>' }
+                $false
+                {
+                    '<span style="color:#d13438;font-weight:600">No</span>' }
+                default
+                {
+                    '<span style="color:#999">Unknown</span>' }
             }
             "        <tr><td>$([System.Web.HttpUtility]::HtmlEncode($_.DisplayName))</td>" +
             "<td>$($_.PolicyType)</td>" +
@@ -1059,42 +1415,54 @@ try {
     }
 
     # ── Generate HTML Report ───────────────────────────────────────────────────
-    $reportDate = Get-Date -Format 'dd MMM yyyy HH:mm'
+    $S_ReportDate = Get-Date -Format 'dd MMM yyyy HH:mm'
     $S_TenantId = (Get-MgContext).TenantId
     # Tenant display name + primary (initial *.onmicrosoft.com) domain via the
     # Organization endpoint. Fail-soft so a transient Graph hiccup doesn't kill
     # the report.
     $S_TenantName        = $null
     $S_TenantPrimaryDom  = $null
-    try {
+    try
+    {
         $S_OrgResp = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization?$select=displayName,verifiedDomains'
         $S_Org     = @($S_OrgResp.value)[0]
-        if ($S_Org) {
+        if ($S_Org)
+        {
             $S_TenantName       = [string]$S_Org.displayName
             $S_TenantPrimaryDom = ($S_Org.verifiedDomains | Where-Object { $_.isInitial }) | Select-Object -First 1 -ExpandProperty name
         }
     }
-    catch {
+    catch
+    {
         Write-Warning "Could not retrieve tenant display name: $_"
     }
-    $S_TenantLabel = if ($S_TenantName -and $S_TenantPrimaryDom) { "$S_TenantName ($S_TenantPrimaryDom &middot; $S_TenantId)" }
-                     elseif ($S_TenantName)                       { "$S_TenantName ($S_TenantId)" }
-                     else                                         { "$S_TenantId" }
+    $S_TenantLabel = if ($S_TenantName -and $S_TenantPrimaryDom)
+    {
+        "$S_TenantName ($S_TenantPrimaryDom &middot; $S_TenantId)" }
+    elseif ($S_TenantName)
+    {
+        "$S_TenantName ($S_TenantId)" }
+    else
+    {
+        "$S_TenantId" }
 
-    if ($null -eq $Script:S_SecurityDefaultsEnabled) {
+    if ($null -eq $Script:S_SecurityDefaultsEnabled)
+    {
         $S_SecDefaultsText  = 'Security Defaults: Unknown'
         $S_SecDefaultsClass = 'unknown'
     }
-    elseif ($Script:S_SecurityDefaultsEnabled) {
+    elseif ($Script:S_SecurityDefaultsEnabled)
+    {
         $S_SecDefaultsText  = 'Security Defaults: ENABLED'
         $S_SecDefaultsClass = 'enabled'
     }
-    else {
+    else
+    {
         $S_SecDefaultsText  = 'Security Defaults: DISABLED'
         $S_SecDefaultsClass = 'disabled'
     }
 
-    $html = @"
+    $S_Html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1320,7 +1688,7 @@ try {
     </div>
     <div class="header">
         <h1>Member MFA Coverage Report</h1>
-        <div class="subtitle">Generated: $reportDate | Tenant: $S_TenantLabel | Inactive threshold: $InactiveDays days | Guests excluded</div>
+        <div class="subtitle">Generated: $S_ReportDate | Tenant: $S_TenantLabel | Inactive threshold: $InactiveDays days | Guests excluded</div>
         <div class="disclaimer">
             <strong>MFA Reporting Note</strong><br><br>
             Reporting on Multi-Factor Authentication (MFA) should be treated as an indicative assessment rather than definitive audit evidence. MFA coverage can be affected by several configuration areas, including registered authentication methods, legacy per-user MFA settings, Conditional Access policy scope, authentication strengths, exclusions, break-glass accounts, guest access, and other exception paths.
@@ -1346,23 +1714,23 @@ try {
         <div class="breakdown">
             <div class="card blue">
                 <div class="label">Total Members</div>
-                <div class="value">$totalMembers</div>
+                <div class="value">$S_TotalMembers</div>
                 <div class="detail">Guests excluded</div>
             </div>
             <div class="card green">
                 <div class="label">Active</div>
-                <div class="value">$activeCount</div>
-                <div class="detail">$([math]::Round(($activeCount / [math]::Max($totalMembers,1)) * 100, 1))% of total &middot; signed in &lt;${InactiveDays}d</div>
+                <div class="value">$S_ActiveCount</div>
+                <div class="detail">$([math]::Round(($S_ActiveCount / [math]::Max($S_TotalMembers,1)) * 100, 1))% of total &middot; signed in &lt;${InactiveDays}d</div>
             </div>
             <div class="card orange">
                 <div class="label">Inactive</div>
-                <div class="value">$inactiveCount</div>
-                <div class="detail">$([math]::Round(($inactiveCount / [math]::Max($totalMembers,1)) * 100, 1))% of total &middot; stale or no sign-in</div>
+                <div class="value">$S_InactiveCount</div>
+                <div class="detail">$([math]::Round(($S_InactiveCount / [math]::Max($S_TotalMembers,1)) * 100, 1))% of total &middot; stale or no sign-in</div>
             </div>
             <div class="card red">
                 <div class="label">Disabled</div>
-                <div class="value">$disabledCount</div>
-                <div class="detail">$([math]::Round(($disabledCount / [math]::Max($totalMembers,1)) * 100, 1))% of total</div>
+                <div class="value">$S_DisabledCount</div>
+                <div class="detail">$([math]::Round(($S_DisabledCount / [math]::Max($S_TotalMembers,1)) * 100, 1))% of total</div>
             </div>
         </div>
     </div>
@@ -1372,22 +1740,22 @@ try {
         <div class="breakdown">
             <div class="card green">
                 <div class="label">Modern Auth</div>
-                <div class="value">$enabledModernAuth</div>
-                <div class="detail">$([math]::Round(($enabledModernAuth / [math]::Max($enabledCount,1)) * 100, 1))% of enabled &middot; Authenticator / Passkey / TOTP</div>
+                <div class="value">$S_EnabledModernAuth</div>
+                <div class="detail">$([math]::Round(($S_EnabledModernAuth / [math]::Max($S_EnabledCount,1)) * 100, 1))% of enabled &middot; Authenticator / Passkey / TOTP</div>
             </div>
             <div class="card orange">
                 <div class="label">Legacy Auth</div>
-                <div class="value">$enabledLegacyAuth</div>
-                <div class="detail">$([math]::Round(($enabledLegacyAuth / [math]::Max($enabledCount,1)) * 100, 1))% of enabled &middot; SMS / Voice</div>
+                <div class="value">$S_EnabledLegacyAuth</div>
+                <div class="detail">$([math]::Round(($S_EnabledLegacyAuth / [math]::Max($S_EnabledCount,1)) * 100, 1))% of enabled &middot; SMS / Voice</div>
             </div>
             <div class="card red">
                 <div class="label">No MFA</div>
-                <div class="value">$enabledNoMFA</div>
-                <div class="detail">$([math]::Round(($enabledNoMFA / [math]::Max($enabledCount,1)) * 100, 1))% of enabled &middot; no method registered</div>
+                <div class="value">$S_EnabledNoMFA</div>
+                <div class="detail">$([math]::Round(($S_EnabledNoMFA / [math]::Max($S_EnabledCount,1)) * 100, 1))% of enabled &middot; no method registered</div>
             </div>
             <div class="card purple">
                 <div class="label">Access Denied</div>
-                <div class="value">$enabledAccessDenied</div>
+                <div class="value">$S_EnabledAccessDenied</div>
                 <div class="detail">Privileged accounts &middot; methods not readable</div>
             </div>
         </div>
@@ -1570,7 +1938,7 @@ try {
                 <tr><th>Display Name</th><th>UPN</th><th>Mail</th><th>Domain</th><th>Auth Method</th><th>CA Coverage</th><th>MFA Posture</th><th style="cursor:pointer" onclick="userSortByRisk()" title="Click to sort">Risk &#x21C5;</th><th>Active</th><th>Licensed</th><th>On-Prem Synced</th><th>CA Exclusions</th></tr>
             </thead>
             <tbody>
-$tableRows
+$S_TableRows
             </tbody>
         </table>
     </div>
@@ -1643,7 +2011,7 @@ $S_AuthStrengthRows
 </html>
 "@
 
-    $html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
+    $S_Html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
     Write-Host "HTML report exported to: $S_HtmlPath" -ForegroundColor Green
 
     # ── Summary HTML (header + disclaimer + 3 card sections only; no tables) ──
@@ -1654,7 +2022,7 @@ $S_AuthStrengthRows
         [System.IO.Path]::GetDirectoryName($S_HtmlPath),
         [System.IO.Path]::GetFileNameWithoutExtension($S_HtmlPath) + '-Summary.html'
     )
-    $summaryHtml = @"
+    $S_SummaryHtml = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1719,7 +2087,7 @@ $S_AuthStrengthRows
 <body>
     <div class="header">
         <h1>Member MFA Coverage Report &mdash; Summary</h1>
-        <div class="subtitle">Generated: $reportDate | Tenant: $S_TenantLabel | Inactive threshold: $InactiveDays days | Guests excluded</div>
+        <div class="subtitle">Generated: $S_ReportDate | Tenant: $S_TenantLabel | Inactive threshold: $InactiveDays days | Guests excluded</div>
         <div class="disclaimer">
             <strong>MFA Reporting Note</strong><br><br>
             Reporting on Multi-Factor Authentication (MFA) should be treated as an indicative assessment rather than definitive audit evidence. MFA coverage can be affected by several configuration areas, including registered authentication methods, legacy per-user MFA settings, Conditional Access policy scope, authentication strengths, exclusions, break-glass accounts, guest access, and other exception paths.
@@ -1735,23 +2103,23 @@ $S_AuthStrengthRows
         <div class="breakdown">
             <div class="card blue">
                 <div class="label">Total Members</div>
-                <div class="value">$totalMembers</div>
+                <div class="value">$S_TotalMembers</div>
                 <div class="detail">Guests excluded</div>
             </div>
             <div class="card green">
                 <div class="label">Active</div>
-                <div class="value">$activeCount</div>
-                <div class="detail">$([math]::Round(($activeCount / [math]::Max($totalMembers,1)) * 100, 1))% of total &middot; signed in &lt;${InactiveDays}d</div>
+                <div class="value">$S_ActiveCount</div>
+                <div class="detail">$([math]::Round(($S_ActiveCount / [math]::Max($S_TotalMembers,1)) * 100, 1))% of total &middot; signed in &lt;${InactiveDays}d</div>
             </div>
             <div class="card orange">
                 <div class="label">Inactive</div>
-                <div class="value">$inactiveCount</div>
-                <div class="detail">$([math]::Round(($inactiveCount / [math]::Max($totalMembers,1)) * 100, 1))% of total &middot; stale or no sign-in</div>
+                <div class="value">$S_InactiveCount</div>
+                <div class="detail">$([math]::Round(($S_InactiveCount / [math]::Max($S_TotalMembers,1)) * 100, 1))% of total &middot; stale or no sign-in</div>
             </div>
             <div class="card red">
                 <div class="label">Disabled</div>
-                <div class="value">$disabledCount</div>
-                <div class="detail">$([math]::Round(($disabledCount / [math]::Max($totalMembers,1)) * 100, 1))% of total</div>
+                <div class="value">$S_DisabledCount</div>
+                <div class="detail">$([math]::Round(($S_DisabledCount / [math]::Max($S_TotalMembers,1)) * 100, 1))% of total</div>
             </div>
         </div>
     </div>
@@ -1761,22 +2129,22 @@ $S_AuthStrengthRows
         <div class="breakdown">
             <div class="card green">
                 <div class="label">Modern Auth</div>
-                <div class="value">$enabledModernAuth</div>
-                <div class="detail">$([math]::Round(($enabledModernAuth / [math]::Max($enabledCount,1)) * 100, 1))% of enabled &middot; Authenticator / Passkey / TOTP</div>
+                <div class="value">$S_EnabledModernAuth</div>
+                <div class="detail">$([math]::Round(($S_EnabledModernAuth / [math]::Max($S_EnabledCount,1)) * 100, 1))% of enabled &middot; Authenticator / Passkey / TOTP</div>
             </div>
             <div class="card orange">
                 <div class="label">Legacy Auth</div>
-                <div class="value">$enabledLegacyAuth</div>
-                <div class="detail">$([math]::Round(($enabledLegacyAuth / [math]::Max($enabledCount,1)) * 100, 1))% of enabled &middot; SMS / Voice</div>
+                <div class="value">$S_EnabledLegacyAuth</div>
+                <div class="detail">$([math]::Round(($S_EnabledLegacyAuth / [math]::Max($S_EnabledCount,1)) * 100, 1))% of enabled &middot; SMS / Voice</div>
             </div>
             <div class="card red">
                 <div class="label">No MFA</div>
-                <div class="value">$enabledNoMFA</div>
-                <div class="detail">$([math]::Round(($enabledNoMFA / [math]::Max($enabledCount,1)) * 100, 1))% of enabled &middot; no method registered</div>
+                <div class="value">$S_EnabledNoMFA</div>
+                <div class="detail">$([math]::Round(($S_EnabledNoMFA / [math]::Max($S_EnabledCount,1)) * 100, 1))% of enabled &middot; no method registered</div>
             </div>
             <div class="card purple">
                 <div class="label">Access Denied</div>
-                <div class="value">$enabledAccessDenied</div>
+                <div class="value">$S_EnabledAccessDenied</div>
                 <div class="detail">Privileged accounts &middot; methods not readable</div>
             </div>
         </div>
@@ -1840,21 +2208,25 @@ $S_AuthStrengthRows
 </html>
 "@
 
-    $summaryHtml | Out-File -FilePath $S_SummaryPath -Encoding UTF8
+    $S_SummaryHtml | Out-File -FilePath $S_SummaryPath -Encoding UTF8
     Write-Host "Summary HTML exported to: $S_SummaryPath" -ForegroundColor Green
 }
-catch {
+catch
+{
     Write-Error "An error occurred: $_ at $($_.InvocationInfo.ScriptName):$($_.InvocationInfo.ScriptLineNumber)  -> $($_.InvocationInfo.Line.Trim())"
 }
-finally {
+finally
+{
     # ── Disconnect ─────────────────────────────────────────────────────────────
     $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
-    if ($S_DisconnectChoice -eq 'Y') {
+    if ($S_DisconnectChoice -eq 'Y')
+    {
         Write-Host "Disconnecting from Microsoft Graph..." -ForegroundColor Cyan
         Disconnect-MgGraph | Out-Null
         Write-Host "Disconnected." -ForegroundColor Green
     }
-    else {
+    else
+    {
         Write-Host "Graph session kept alive." -ForegroundColor Green
     }
 }

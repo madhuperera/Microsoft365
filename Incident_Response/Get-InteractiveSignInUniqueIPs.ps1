@@ -54,14 +54,16 @@ $S_RequiredGraphScopes = @(
 # Connection
 # ---------------------------------------------------------------------------
 
-if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Users)) {
+if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Users))
+{
     throw "Microsoft.Graph.Users module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
 }
 
 Import-Module Microsoft.Graph.Users -ErrorAction Stop
 
 $S_Context = Get-MgContext -ErrorAction SilentlyContinue
-if ($S_Context) {
+if ($S_Context)
+{
     Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
     Write-Host "  Account : $($S_Context.Account)" -ForegroundColor Yellow
     Write-Host "  TenantId: $($S_Context.TenantId)" -ForegroundColor Yellow
@@ -69,36 +71,53 @@ if ($S_Context) {
     Write-Host ""
 
     $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-    if ($S_Choice -eq 'N') {
+    if ($S_Choice -eq 'N')
+    {
         Write-Host "Disconnecting existing session..." -ForegroundColor Cyan
         Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Reconnecting with required scope..." -ForegroundColor Cyan
         Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
         Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
     }
-    else {
+    else
+    {
         Write-Host "Using existing Graph session." -ForegroundColor Green
     }
 }
-else {
+else
+{
     Write-Host "Connecting to Microsoft Graph..." -ForegroundColor Cyan
     Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
     Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
 }
 
 $S_Context = Get-MgContext -ErrorAction SilentlyContinue
-$S_TenantId = if ($S_Context) { $S_Context.TenantId } else { 'Unknown' }
+if ($S_Context)
+{
+    $S_TenantId = $S_Context.TenantId
+}
+else
+{
+    $S_TenantId = 'Unknown'
+}
+
 $S_TenantName = 'Unknown'
-try {
-    $orgInfo = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization?$select=displayName,verifiedDomains' -OutputType PSObject -ErrorAction Stop
-    if ($orgInfo.value -and $orgInfo.value.Count -gt 0) {
-        $org = $orgInfo.value[0]
-        $S_TenantName = [string]$org.displayName
-        $defaultDomain = ($org.verifiedDomains | Where-Object { $_.isDefault -eq $true } | Select-Object -First 1).name
-        if ($defaultDomain) { $S_TenantName = "$S_TenantName ($defaultDomain)" }
+try
+{
+    $S_OrgInfo = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/organization?$select=displayName,verifiedDomains' -OutputType PSObject -ErrorAction Stop
+    if ($S_OrgInfo.value -and $S_OrgInfo.value.Count -gt 0)
+    {
+        $S_Org = $S_OrgInfo.value[0]
+        $S_TenantName = [string]$S_Org.displayName
+        $S_DefaultDomain = ($S_Org.verifiedDomains | Where-Object { $_.isDefault -eq $true } | Select-Object -First 1).name
+        if ($S_DefaultDomain)
+        {
+            $S_TenantName = "$S_TenantName ($S_DefaultDomain)"
+        }
     }
 }
-catch {
+catch
+{
     Write-Warning "Could not retrieve tenant display name: $($_.Exception.Message)"
 }
 
@@ -115,11 +134,13 @@ function Get-GraphNextLink {
         [object]$Response
     )
 
-    if (-not $Response) {
+    if (-not $Response)
+    {
         return $null
     }
 
-    if ($Response.PSObject.Properties.Name -contains '@odata.nextLink') {
+    if ($Response.PSObject.Properties.Name -contains '@odata.nextLink')
+    {
         return [string]$Response.'@odata.nextLink'
     }
 
@@ -132,38 +153,42 @@ function Get-GraphPageValues {
         [object]$Response
     )
 
-    if (-not $Response) {
+    if (-not $Response)
+    {
         return @()
     }
 
-    if ($Response.PSObject.Properties.Name -contains 'value') {
+    if ($Response.PSObject.Properties.Name -contains 'value')
+    {
         return @($Response.value)
     }
 
     return @()
 }
 
-try {
+try
+{
     # ---------------------------------------------------------------------------
     # Inputs and date range
     # ---------------------------------------------------------------------------
 
-    $toUtc = (Get-Date).ToUniversalTime()
-    $fromUtc = $toUtc.AddDays(-$Days)
+    $S_ThrottleMs = $ThrottleMs
+    $S_ToUtc = (Get-Date).ToUniversalTime()
+    $S_FromUtc = $S_ToUtc.AddDays(-$Days)
 
-    $fromIso = $fromUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
-    $toIso = $toUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    $S_FromIso = $S_FromUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    $S_ToIso = $S_ToUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
 
     Write-Host "`nSearching interactive sign-ins for unique IP inventory..." -ForegroundColor Cyan
-    Write-Host "  Date range : $fromIso  ->  $toIso"
+    Write-Host "  Date range : $S_FromIso  ->  $S_ToIso"
     Write-Host "  Days       : $Days"
-    Write-Host "  ThrottleMs : $ThrottleMs"
+    Write-Host "  ThrottleMs : $S_ThrottleMs"
 
     # ---------------------------------------------------------------------------
     # Query sign-ins with pagination
     # ---------------------------------------------------------------------------
 
-    $selectFields = @(
+    $S_SelectFields = @(
         'id',
         'createdDateTime',
         'userPrincipalName',
@@ -175,56 +200,65 @@ try {
     ) -join ','
 
     # Server-side filter by date and interactive sign-ins.
-    $filter = "createdDateTime ge $fromIso and createdDateTime le $toIso and isInteractive eq true"
-    $encodedFilter = [uri]::EscapeDataString($filter)
-    $encodedSelect = [uri]::EscapeDataString($selectFields)
+    $S_Filter = "createdDateTime ge $S_FromIso and createdDateTime le $S_ToIso and isInteractive eq true"
+    $S_EncodedFilter = [uri]::EscapeDataString($S_Filter)
+    $S_EncodedSelect = [uri]::EscapeDataString($S_SelectFields)
 
-    $nextLink = "https://graph.microsoft.com/v1.0/auditLogs/signIns?`$top=1000&`$filter=$encodedFilter&`$select=$encodedSelect"
-    $allSignIns = [System.Collections.Generic.List[object]]::new()
-    $fallbackUsed = $false
+    $S_NextLink = "https://graph.microsoft.com/v1.0/auditLogs/signIns?`$top=1000&`$filter=$S_EncodedFilter&`$select=$S_EncodedSelect"
+    $S_AllSignIns = [System.Collections.Generic.List[object]]::new()
+    $S_FallbackUsed = $false
 
-    try {
-        while ($nextLink) {
-            $response = Invoke-MgGraphRequest -Method GET -Uri $nextLink -OutputType PSObject
-            $pageValues = Get-GraphPageValues -Response $response
+    try
+    {
+        while ($S_NextLink)
+        {
+            $S_Response = Invoke-MgGraphRequest -Method GET -Uri $S_NextLink -OutputType PSObject
+            $S_PageValues = Get-GraphPageValues -Response $S_Response
 
-            if ($pageValues.Count -gt 0) {
-                $allSignIns.AddRange([object[]]$pageValues)
-                Write-Host "  Retrieved $($allSignIns.Count) interactive sign-in record(s) so far..." -ForegroundColor Gray
+            if ($S_PageValues.Count -gt 0)
+            {
+                $S_AllSignIns.AddRange([object[]]$S_PageValues)
+                Write-Host "  Retrieved $($S_AllSignIns.Count) interactive sign-in record(s) so far..." -ForegroundColor Gray
             }
 
-            $nextLink = Get-GraphNextLink -Response $response
-            if ($nextLink -and $ThrottleMs -gt 0) {
-                [System.Threading.Thread]::Sleep($ThrottleMs)
+            $S_NextLink = Get-GraphNextLink -Response $S_Response
+            if ($S_NextLink -and $S_ThrottleMs -gt 0)
+            {
+                [System.Threading.Thread]::Sleep($S_ThrottleMs)
             }
         }
     }
-    catch {
+    catch
+    {
         Write-Warning "Interactive server-side filter failed. Retrying with date-only filter and local interactive filtering."
-        $fallbackUsed = $true
-        $allSignIns.Clear()
+        $S_FallbackUsed = $true
+        $S_AllSignIns.Clear()
 
-        $fallbackFilter = "createdDateTime ge $fromIso and createdDateTime le $toIso"
-        $encodedFallbackFilter = [uri]::EscapeDataString($fallbackFilter)
-        $nextLink = "https://graph.microsoft.com/v1.0/auditLogs/signIns?`$top=1000&`$filter=$encodedFallbackFilter&`$select=$encodedSelect"
+        $S_FallbackFilter = "createdDateTime ge $S_FromIso and createdDateTime le $S_ToIso"
+        $S_EncodedFallbackFilter = [uri]::EscapeDataString($S_FallbackFilter)
+        $S_NextLink = "https://graph.microsoft.com/v1.0/auditLogs/signIns?`$top=1000&`$filter=$S_EncodedFallbackFilter&`$select=$S_EncodedSelect"
 
-        while ($nextLink) {
-            $response = Invoke-MgGraphRequest -Method GET -Uri $nextLink -OutputType PSObject
-            $pageValues = Get-GraphPageValues -Response $response
+        while ($S_NextLink)
+        {
+            $S_Response = Invoke-MgGraphRequest -Method GET -Uri $S_NextLink -OutputType PSObject
+            $S_PageValues = Get-GraphPageValues -Response $S_Response
 
-            if ($pageValues.Count -gt 0) {
-                $allSignIns.AddRange([object[]]$pageValues)
-                Write-Host "  Retrieved $($allSignIns.Count) total sign-in record(s) so far..." -ForegroundColor Gray
+            if ($S_PageValues.Count -gt 0)
+            {
+                $S_AllSignIns.AddRange([object[]]$S_PageValues)
+                Write-Host "  Retrieved $($S_AllSignIns.Count) total sign-in record(s) so far..." -ForegroundColor Gray
             }
 
-            $nextLink = Get-GraphNextLink -Response $response
-            if ($nextLink -and $ThrottleMs -gt 0) {
-                [System.Threading.Thread]::Sleep($ThrottleMs)
+            $S_NextLink = Get-GraphNextLink -Response $S_Response
+            if ($S_NextLink -and $S_ThrottleMs -gt 0)
+            {
+                [System.Threading.Thread]::Sleep($S_ThrottleMs)
             }
         }
     }
 
-    if ($allSignIns.Count -eq 0) {
+    if ($S_AllSignIns.Count -eq 0)
+    {
         Write-Host "`nNo sign-ins found in the selected time window." -ForegroundColor Yellow
         return
     }
@@ -233,27 +267,30 @@ try {
     # Build unique IP inventory with country/location details
     # ---------------------------------------------------------------------------
 
-    $interactiveSignIns = if ($fallbackUsed) {
-        @($allSignIns | Where-Object { $_.isInteractive -eq $true })
+    if ($S_FallbackUsed)
+    {
+        $S_InteractiveSignIns = @($S_AllSignIns | Where-Object { $_.isInteractive -eq $true })
     }
-    else {
-        @($allSignIns)
+    else
+    {
+        $S_InteractiveSignIns = @($S_AllSignIns)
     }
 
-    $signInsWithIp = @(
-        $interactiveSignIns | Where-Object {
+    $S_SignInsWithIp = @(
+        $S_InteractiveSignIns | Where-Object {
             $_.PSObject.Properties.Name -contains 'ipAddress' -and
             -not [string]::IsNullOrWhiteSpace([string]$_.ipAddress)
         }
     )
 
-    if ($signInsWithIp.Count -eq 0) {
+    if ($S_SignInsWithIp.Count -eq 0)
+    {
         Write-Host "`nNo interactive sign-ins with IP addresses were found." -ForegroundColor Yellow
         return
     }
 
     # --- ISO 3166-1 alpha-2 country code to full name lookup ---
-    $countryCodeMap = @{
+    $S_CountryCodeMap = @{
         'NZ' = 'New Zealand'; 'IN' = 'India'; 'CN' = 'China'; 'KR' = 'South Korea'; 'US' = 'United States'
         'RU' = 'Russia'; 'BR' = 'Brazil'; 'MY' = 'Malaysia'; 'LU' = 'Luxembourg'; 'FI' = 'Finland'
         'DE' = 'Germany'; 'TW' = 'Taiwan'; 'AU' = 'Australia'; 'ET' = 'Ethiopia'; 'GB' = 'United Kingdom'
@@ -289,13 +326,15 @@ try {
         'BN' = 'Brunei'; 'TL' = 'Timor-Leste'; 'PS' = 'Palestine'
     }
 
-    $uniqueIpReport = foreach ($group in ($signInsWithIp | Group-Object -Property ipAddress)) {
-        $records = @($group.Group)
+    $S_UniqueIpReport = foreach ($S_Group in ($S_SignInsWithIp | Group-Object -Property ipAddress))
+    {
+        $S_Records = @($S_Group.Group)
 
-        $countries = @(
-            $records |
+        $S_Countries = @(
+            $S_Records |
                 ForEach-Object {
-                    if ($_.PSObject.Properties.Name -contains 'location' -and $_.location) {
+                    if ($_.PSObject.Properties.Name -contains 'location' -and $_.location)
+                    {
                         $_.location.countryOrRegion
                     }
                 } |
@@ -303,10 +342,11 @@ try {
                 Sort-Object -Unique
         )
 
-        $states = @(
-            $records |
+        $S_States = @(
+            $S_Records |
                 ForEach-Object {
-                    if ($_.PSObject.Properties.Name -contains 'location' -and $_.location) {
+                    if ($_.PSObject.Properties.Name -contains 'location' -and $_.location)
+                    {
                         $_.location.state
                     }
                 } |
@@ -314,10 +354,11 @@ try {
                 Sort-Object -Unique
         )
 
-        $cities = @(
-            $records |
+        $S_Cities = @(
+            $S_Records |
                 ForEach-Object {
-                    if ($_.PSObject.Properties.Name -contains 'location' -and $_.location) {
+                    if ($_.PSObject.Properties.Name -contains 'location' -and $_.location)
+                    {
                         $_.location.city
                     }
                 } |
@@ -325,186 +366,293 @@ try {
                 Sort-Object -Unique
         )
 
-        $users = @(
-            $records |
+        $S_Users = @(
+            $S_Records |
                 ForEach-Object { $_.userPrincipalName } |
                 Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
                 Sort-Object -Unique
         )
 
-        $timestamps = @(
-            $records |
+        $S_Timestamps = @(
+            $S_Records |
                 ForEach-Object {
-                    if ($_.createdDateTime) {
+                    if ($_.createdDateTime)
+                    {
                         [datetime]$_.createdDateTime
                     }
                 } |
                 Sort-Object
         )
 
-        $firstSeen = $null
-        $lastSeen = $null
-        if ($timestamps.Count -gt 0) {
-            $firstSeen = $timestamps[0]
-            $lastSeen = $timestamps[$timestamps.Count - 1]
+        $S_FirstSeen = $null
+        $S_LastSeen = $null
+        if ($S_Timestamps.Count -gt 0)
+        {
+            $S_FirstSeen = $S_Timestamps[0]
+            $S_LastSeen = $S_Timestamps[$S_Timestamps.Count - 1]
         }
 
         # Count successful vs failed attempts (errorCode 0 = success)
         # Use simple dot notation - works for both Hashtable and PSObject
-        $successCount = 0
-        $caSuccessCount = 0
-        $caFailureCount = 0
-        $caNotAppliedCount = 0
-        foreach ($record in $records) {
+        $S_SuccessCount = 0
+        $S_CaSuccessCount = 0
+        $S_CaFailureCount = 0
+        $S_CaNotAppliedCount = 0
+        foreach ($S_Record in $S_Records)
+        {
             # Sign-in status (errorCode 0 = success)
-            $errorCode = $null
-            try { $errorCode = $record.status.errorCode } catch {}
-            if ($null -eq $errorCode) {
-                try { $errorCode = $record['status']['errorCode'] } catch {}
+            $S_ErrorCode = $null
+            try
+            {
+                $S_ErrorCode = $S_Record.status.errorCode
             }
-            if ($null -ne $errorCode -and [int]$errorCode -eq 0) {
-                $successCount++
+            catch
+            {
+            }
+
+            if ($null -eq $S_ErrorCode)
+            {
+                try
+                {
+                    $S_ErrorCode = $S_Record['status']['errorCode']
+                }
+                catch
+                {
+                }
+            }
+
+            if ($null -ne $S_ErrorCode -and [int]$S_ErrorCode -eq 0)
+            {
+                $S_SuccessCount++
             }
 
             # Conditional Access status
-            $caStatus = $null
-            try { $caStatus = [string]$record.conditionalAccessStatus } catch {}
-            if ([string]::IsNullOrWhiteSpace($caStatus)) {
-                try { $caStatus = [string]$record['conditionalAccessStatus'] } catch {}
+            $S_CaStatus = $null
+            try
+            {
+                $S_CaStatus = [string]$S_Record.conditionalAccessStatus
             }
-            switch -Regex ($caStatus) {
-                '^success$'    { $caSuccessCount++ }
-                '^failure$'    { $caFailureCount++ }
-                '^notApplied$' { $caNotAppliedCount++ }
+            catch
+            {
+            }
+
+            if ([string]::IsNullOrWhiteSpace($S_CaStatus))
+            {
+                try
+                {
+                    $S_CaStatus = [string]$S_Record['conditionalAccessStatus']
+                }
+                catch
+                {
+                }
+            }
+
+            switch -Regex ($S_CaStatus)
+            {
+                '^success$'    { $S_CaSuccessCount++ }
+                '^failure$'    { $S_CaFailureCount++ }
+                '^notApplied$' { $S_CaNotAppliedCount++ }
             }
         }
-        $failedCount = $group.Count - $successCount
 
-        $statusSummary = if ($successCount -gt 0 -and $failedCount -eq 0) {
-            'Success'
-        } elseif ($failedCount -gt 0 -and $successCount -eq 0) {
-            'Failed'
-        } else {
-            'Mixed'
+        $S_FailedCount = $S_Group.Count - $S_SuccessCount
+
+        if ($S_SuccessCount -gt 0 -and $S_FailedCount -eq 0)
+        {
+            $S_StatusSummary = 'Success'
+        }
+        elseif ($S_FailedCount -gt 0 -and $S_SuccessCount -eq 0)
+        {
+            $S_StatusSummary = 'Failed'
+        }
+        else
+        {
+            $S_StatusSummary = 'Mixed'
         }
 
-        $caSummary = if ($caSuccessCount -gt 0 -and $caFailureCount -eq 0) {
-            'Success'
-        } elseif ($caFailureCount -gt 0 -and $caSuccessCount -eq 0) {
-            'Failure'
-        } elseif ($caSuccessCount -eq 0 -and $caFailureCount -eq 0 -and $caNotAppliedCount -gt 0) {
-            'Not Applied'
-        } elseif ($caSuccessCount -gt 0 -or $caFailureCount -gt 0) {
-            'Mixed'
-        } else {
-            'N/A'
+        if ($S_CaSuccessCount -gt 0 -and $S_CaFailureCount -eq 0)
+        {
+            $S_CaSummary = 'Success'
+        }
+        elseif ($S_CaFailureCount -gt 0 -and $S_CaSuccessCount -eq 0)
+        {
+            $S_CaSummary = 'Failure'
+        }
+        elseif ($S_CaSuccessCount -eq 0 -and $S_CaFailureCount -eq 0 -and $S_CaNotAppliedCount -gt 0)
+        {
+            $S_CaSummary = 'Not Applied'
+        }
+        elseif ($S_CaSuccessCount -gt 0 -or $S_CaFailureCount -gt 0)
+        {
+            $S_CaSummary = 'Mixed'
+        }
+        else
+        {
+            $S_CaSummary = 'N/A'
         }
 
         # Resolve country code to full name
-        $countryCode = if ($countries.Count -gt 0) { $countries[0] } else { 'Unknown' }
-        $countryFullName = if ($countryCodeMap.ContainsKey($countryCode)) { $countryCodeMap[$countryCode] } else { $countryCode }
-        $countryDisplay = if ($countryCode -eq 'Unknown') { 'Unknown' } else { "$countryFullName ($countryCode)" }
+        if ($S_Countries.Count -gt 0)
+        {
+            $S_CountryCode = $S_Countries[0]
+        }
+        else
+        {
+            $S_CountryCode = 'Unknown'
+        }
+
+        if ($S_CountryCodeMap.ContainsKey($S_CountryCode))
+        {
+            $S_CountryFullName = $S_CountryCodeMap[$S_CountryCode]
+        }
+        else
+        {
+            $S_CountryFullName = $S_CountryCode
+        }
+
+        if ($S_CountryCode -eq 'Unknown')
+        {
+            $S_CountryDisplay = 'Unknown'
+        }
+        else
+        {
+            $S_CountryDisplay = "$S_CountryFullName ($S_CountryCode)"
+        }
+
+        if ($S_States.Count -gt 0)
+        {
+            $S_StateValue = $S_States -join ' | '
+        }
+        else
+        {
+            $S_StateValue = $null
+        }
+
+        if ($S_Cities.Count -gt 0)
+        {
+            $S_CityValue = $S_Cities -join ' | '
+        }
+        else
+        {
+            $S_CityValue = $null
+        }
 
         [PSCustomObject]@{
-            IPAddress        = [string]$group.Name
-            SignInCount      = $group.Count
-            SuccessCount     = $successCount
-            FailedCount      = $failedCount
-            Status           = $statusSummary
-            CASuccessCount   = $caSuccessCount
-            CAFailureCount   = $caFailureCount
-            CANotAppliedCount= $caNotAppliedCount
-            CAStatus         = $caSummary
-            CountryCode      = $countryCode
-            CountryFullName  = $countryFullName
-            CountryOrRegion  = $countryDisplay
-            State            = if ($states.Count -gt 0) { $states -join ' | ' } else { $null }
-            City             = if ($cities.Count -gt 0) { $cities -join ' | ' } else { $null }
-            UniqueUsers      = $users.Count
-            SampleUsers      = ($users | Select-Object -First 5) -join '; '
-            FirstSeenUtc     = $firstSeen
-            LastSeenUtc      = $lastSeen
+            IPAddress         = [string]$S_Group.Name
+            SignInCount       = $S_Group.Count
+            SuccessCount      = $S_SuccessCount
+            FailedCount       = $S_FailedCount
+            Status            = $S_StatusSummary
+            CASuccessCount    = $S_CaSuccessCount
+            CAFailureCount    = $S_CaFailureCount
+            CANotAppliedCount = $S_CaNotAppliedCount
+            CAStatus          = $S_CaSummary
+            CountryCode       = $S_CountryCode
+            CountryFullName   = $S_CountryFullName
+            CountryOrRegion   = $S_CountryDisplay
+            State             = $S_StateValue
+            City              = $S_CityValue
+            UniqueUsers       = $S_Users.Count
+            SampleUsers       = ($S_Users | Select-Object -First 5) -join '; '
+            FirstSeenUtc      = $S_FirstSeen
+            LastSeenUtc       = $S_LastSeen
         }
     }
 
-    $uniqueIpReport = @($uniqueIpReport) | Sort-Object -Property SignInCount -Descending
+    $S_UniqueIpReport = @($S_UniqueIpReport) | Sort-Object -Property SignInCount -Descending
 
     # ---------------------------------------------------------------------------
     # Export
     # ---------------------------------------------------------------------------
 
-    if (-not (Test-Path -LiteralPath $OutputPath)) {
+    if (-not (Test-Path -LiteralPath $OutputPath))
+    {
         New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
     }
 
-    $reportTime = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
-    $reportDate = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $csvName = "InteractiveUniqueIPs_${Days}d_${reportTime}.csv"
-    $csvPath = Join-Path -Path $OutputPath -ChildPath $csvName
+    $S_ReportTime = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
+    $S_ReportDate = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $S_CsvName = "InteractiveUniqueIPs_${Days}d_${S_ReportTime}.csv"
+    $S_CsvPath = Join-Path -Path $OutputPath -ChildPath $S_CsvName
 
-    $uniqueIpReport | Export-Csv -LiteralPath $csvPath -NoTypeInformation -Encoding UTF8
+    $S_UniqueIpReport | Export-Csv -LiteralPath $S_CsvPath -NoTypeInformation -Encoding UTF8
 
     # --- Build HTML report ---
-    $totalSignIns = ($uniqueIpReport | Measure-Object -Property SignInCount -Sum).Sum
-    $uniqueCountries = @(
-        $uniqueIpReport |
+    $S_TotalSignIns = ($S_UniqueIpReport | Measure-Object -Property SignInCount -Sum).Sum
+    $S_UniqueCountries = @(
+        $S_UniqueIpReport |
             ForEach-Object { $_.CountryOrRegion } |
             Where-Object { $_ -ne 'Unknown' } |
             Sort-Object -Unique
     ).Count
 
-    $tableRows = ($uniqueIpReport | ForEach-Object {
-        $riskClass = switch ($_.SignInCount) {
-            { $_ -gt 500 } { 'risk-high' }
-            { $_ -gt 100 } { 'risk-medium' }
-            default { 'risk-low' }
+    $S_TableRows = ($S_UniqueIpReport | ForEach-Object {
+        switch ($_.SignInCount)
+        {
+            { $_ -gt 500 } { $S_RiskClass = 'risk-high' }
+            { $_ -gt 100 } { $S_RiskClass = 'risk-medium' }
+            default { $S_RiskClass = 'risk-low' }
         }
-        $statusClass = switch ($_.Status) {
-            'Success' { 'status-success' }
-            'Failed'  { 'status-failed' }
-            default   { 'status-mixed' }
+
+        switch ($_.Status)
+        {
+            'Success' { $S_StatusClass = 'status-success' }
+            'Failed'  { $S_StatusClass = 'status-failed' }
+            default   { $S_StatusClass = 'status-mixed' }
         }
-        $caStatusClass = switch ($_.CAStatus) {
-            'Success'     { 'status-success' }
-            'Failure'     { 'status-failed' }
-            'Not Applied' { 'status-na' }
-            'Mixed'       { 'status-mixed' }
-            default       { 'status-na' }
+
+        switch ($_.CAStatus)
+        {
+            'Success'     { $S_CaStatusClass = 'status-success' }
+            'Failure'     { $S_CaStatusClass = 'status-failed' }
+            'Not Applied' { $S_CaStatusClass = 'status-na' }
+            'Mixed'       { $S_CaStatusClass = 'status-mixed' }
+            default       { $S_CaStatusClass = 'status-na' }
         }
-        $statusText = if ($_.Status -eq 'Mixed') { "Mixed ($($_.SuccessCount)/$($_.FailedCount))" } else { $_.Status }
-        "<tr class=`"$riskClass`"><td><code>$([System.Net.WebUtility]::HtmlEncode($_.IPAddress))</code></td><td>$([System.Net.WebUtility]::HtmlEncode($_.CountryOrRegion))</td><td>$([System.Net.WebUtility]::HtmlEncode($_.State -as [string]))</td><td>$([System.Net.WebUtility]::HtmlEncode($_.City -as [string]))</td><td>$($_.SignInCount)</td><td><span class=`"badge $statusClass`">$statusText</span></td><td><span class=`"badge $caStatusClass`">$($_.CAStatus)</span></td><td class=`"col-success`">$($_.SuccessCount)</td><td class=`"col-failed`">$($_.FailedCount)</td><td>$($_.UniqueUsers)</td><td>$($_.FirstSeenUtc.ToString('yyyy-MM-dd HH:mm:ss'))</td><td>$($_.LastSeenUtc.ToString('yyyy-MM-dd HH:mm:ss'))</td></tr>"
+
+        if ($_.Status -eq 'Mixed')
+        {
+            $S_StatusText = "Mixed ($($_.SuccessCount)/$($_.FailedCount))"
+        }
+        else
+        {
+            $S_StatusText = $_.Status
+        }
+
+        "<tr class=`"$S_RiskClass`"><td><code>$([System.Net.WebUtility]::HtmlEncode($_.IPAddress))</code></td><td>$([System.Net.WebUtility]::HtmlEncode($_.CountryOrRegion))</td><td>$([System.Net.WebUtility]::HtmlEncode($_.State -as [string]))</td><td>$([System.Net.WebUtility]::HtmlEncode($_.City -as [string]))</td><td>$($_.SignInCount)</td><td><span class=`"badge $S_StatusClass`">$S_StatusText</span></td><td><span class=`"badge $S_CaStatusClass`">$($_.CAStatus)</span></td><td class=`"col-success`">$($_.SuccessCount)</td><td class=`"col-failed`">$($_.FailedCount)</td><td>$($_.UniqueUsers)</td><td>$($_.FirstSeenUtc.ToString('yyyy-MM-dd HH:mm:ss'))</td><td>$($_.LastSeenUtc.ToString('yyyy-MM-dd HH:mm:ss'))</td></tr>"
     }) -join "`n"
 
     # --- Build country statistics ---
-    $countryStats = foreach ($country in ($uniqueIpReport | Select-Object -ExpandProperty CountryFullName -Unique | Where-Object { $_ -ne 'Unknown' })) {
-        $countryIps = @($uniqueIpReport | Where-Object { $_.CountryFullName -eq $country })
-        $countryCode = ($countryIps | Select-Object -First 1).CountryCode
-        $countrySignIns = ($countryIps | Measure-Object -Property SignInCount -Sum).Sum
-        $countrySuccess = ($countryIps | Measure-Object -Property SuccessCount -Sum).Sum
-        $countryFailed = ($countryIps | Measure-Object -Property FailedCount -Sum).Sum
+    $S_CountryStats = foreach ($S_Country in ($S_UniqueIpReport | Select-Object -ExpandProperty CountryFullName -Unique | Where-Object { $_ -ne 'Unknown' }))
+    {
+        $S_CountryIps = @($S_UniqueIpReport | Where-Object { $_.CountryFullName -eq $S_Country })
+        $S_CountryCode = ($S_CountryIps | Select-Object -First 1).CountryCode
+        $S_CountrySignIns = ($S_CountryIps | Measure-Object -Property SignInCount -Sum).Sum
+        $S_CountrySuccess = ($S_CountryIps | Measure-Object -Property SuccessCount -Sum).Sum
+        $S_CountryFailed = ($S_CountryIps | Measure-Object -Property FailedCount -Sum).Sum
 
         [PSCustomObject]@{
-            Country      = $country
-            CountryCode  = $countryCode
-            IPs          = $countryIps.Count
-            SignIns      = $countrySignIns
-            Success      = $countrySuccess
-            Failed       = $countryFailed
-            Users        = ($countryIps | Measure-Object -Property UniqueUsers -Sum).Sum
+            Country     = $S_Country
+            CountryCode = $S_CountryCode
+            IPs         = $S_CountryIps.Count
+            SignIns     = $S_CountrySignIns
+            Success     = $S_CountrySuccess
+            Failed      = $S_CountryFailed
+            Users       = ($S_CountryIps | Measure-Object -Property UniqueUsers -Sum).Sum
         }
     }
 
-    $countryStats = @($countryStats) | Sort-Object -Property SignIns -Descending
+    $S_CountryStats = @($S_CountryStats) | Sort-Object -Property SignIns -Descending
 
-    $countryTableRows = ($countryStats | ForEach-Object {
+    $S_CountryTableRows = ($S_CountryStats | ForEach-Object {
         "<tr><td>$([System.Net.WebUtility]::HtmlEncode($_.Country)) <span class=`"country-code`">($([System.Net.WebUtility]::HtmlEncode($_.CountryCode)))</span></td><td>$($_.IPs)</td><td>$($_.SignIns)</td><td class=`"col-success`">$($_.Success)</td><td class=`"col-failed`">$($_.Failed)</td><td>$($_.Users)</td></tr>"
     }) -join "`n"
 
-    $countryFilterOptions = ($uniqueIpReport | Select-Object -ExpandProperty CountryFullName -Unique | Sort-Object | ForEach-Object {
+    $S_CountryFilterOptions = ($S_UniqueIpReport | Select-Object -ExpandProperty CountryFullName -Unique | Sort-Object | ForEach-Object {
         "<option value=`"$([System.Net.WebUtility]::HtmlEncode($_))`">$([System.Net.WebUtility]::HtmlEncode($_))</option>"
     }) -join "`n"
 
-    $html = @"
+    $S_Html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -592,25 +740,25 @@ try {
 <body>
     <div class="header">
         <h1>Interactive Sign-In Unique IPs Report</h1>
-        <div class="subtitle">Generated: $reportDate | Tenant: $S_TenantName | Tenant ID: $S_TenantId | Period: $Days days | Total IPs: $($uniqueIpReport.Count)</div>
+        <div class="subtitle">Generated: $S_ReportDate | Tenant: $S_TenantName | Tenant ID: $S_TenantId | Period: $Days days | Total IPs: $($S_UniqueIpReport.Count)</div>
     </div>
 
     <div class="summary-cards">
         <div class="card blue">
             <div class="label">Unique IP Addresses</div>
-            <div class="value">$($uniqueIpReport.Count)</div>
+            <div class="value">$($S_UniqueIpReport.Count)</div>
         </div>
         <div class="card green">
             <div class="label">Total Sign-Ins</div>
-            <div class="value">$totalSignIns</div>
+            <div class="value">$S_TotalSignIns</div>
         </div>
         <div class="card orange">
             <div class="label">Unique Countries</div>
-            <div class="value">$uniqueCountries</div>
+            <div class="value">$S_UniqueCountries</div>
         </div>
         <div class="card red">
             <div class="label">Avg per IP</div>
-            <div class="value">$([math]::Round($totalSignIns / [math]::Max($uniqueIpReport.Count, 1), 1))</div>
+            <div class="value">$([math]::Round($S_TotalSignIns / [math]::Max($S_UniqueIpReport.Count, 1), 1))</div>
             <div class="detail">sign-ins per IP</div>
         </div>
     </div>
@@ -629,7 +777,7 @@ try {
                 </tr>
             </thead>
             <tbody>
-$countryTableRows
+$S_CountryTableRows
             </tbody>
         </table>
     </div>
@@ -642,7 +790,7 @@ $countryTableRows
             <label for="countryFilter">Filter by Country:</label>
             <select id="countryFilter">
                 <option value="">-- All Countries --</option>
-$countryFilterOptions
+$S_CountryFilterOptions
             </select>
             <span id="resultCount" style="margin-left: auto; font-size: 13px; color: #666;"></span>
         </div>
@@ -664,39 +812,42 @@ $countryFilterOptions
                 </tr>
             </thead>
             <tbody>
-$tableRows
+$S_TableRows
             </tbody>
         </table>
     </div>
 
     <div class="footer">
-        CSV data: $(Split-Path $csvPath -Leaf) | Report generated by Get-InteractiveSignInUniqueIPs.ps1
+        CSV data: $(Split-Path $S_CsvPath -Leaf) | Report generated by Get-InteractiveSignInUniqueIPs.ps1
     </div>
 </body>
 </html>
 "@
 
-    $htmlName = "InteractiveUniqueIPs_${Days}d_${reportTime}.html"
-    $S_HtmlPath = Join-Path -Path $OutputPath -ChildPath $htmlName
-    $html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
+    $S_HtmlName = "InteractiveUniqueIPs_${Days}d_${S_ReportTime}.html"
+    $S_HtmlPath = Join-Path -Path $OutputPath -ChildPath $S_HtmlName
+    $S_Html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
 
     Write-Host "`nHTML report saved to: $S_HtmlPath" -ForegroundColor Green
-    Write-Host "`nUnique IP addresses: $($uniqueIpReport.Count)" -ForegroundColor Green
-    Write-Host "Total sign-ins: $totalSignIns" -ForegroundColor Green
+    Write-Host "`nUnique IP addresses: $($S_UniqueIpReport.Count)" -ForegroundColor Green
+    Write-Host "Total sign-ins: $S_TotalSignIns" -ForegroundColor Green
 
     Write-Host "`nTop IPs by sign-in count:" -ForegroundColor Cyan
-    $uniqueIpReport |
+    $S_UniqueIpReport |
         Select-Object -First 20 -Property IPAddress, CountryOrRegion, SignInCount, LastSeenUtc |
         Format-Table -AutoSize
 }
-finally {
+finally
+{
     $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
-    if ($S_DisconnectChoice -eq 'Y') {
+    if ($S_DisconnectChoice -eq 'Y')
+    {
         Write-Host "Disconnecting from Microsoft Graph..." -ForegroundColor Cyan
         Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Disconnected." -ForegroundColor Green
     }
-    else {
+    else
+    {
         Write-Host "Graph session kept alive." -ForegroundColor Green
     }
 }

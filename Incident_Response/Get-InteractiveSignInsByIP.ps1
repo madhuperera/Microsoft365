@@ -57,14 +57,16 @@ $S_GraphRequestDelayMilliseconds = 5
 # Connection
 # ---------------------------------------------------------------------------
 
-if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Users)) {
+if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Users))
+{
     throw "Microsoft.Graph.Users module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
 }
 
 Import-Module Microsoft.Graph.Users -ErrorAction Stop
 
 $S_Context = Get-MgContext -ErrorAction SilentlyContinue
-if ($S_Context) {
+if ($S_Context)
+{
     Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
     Write-Host "  Account : $($S_Context.Account)" -ForegroundColor Yellow
     Write-Host "  TenantId: $($S_Context.TenantId)" -ForegroundColor Yellow
@@ -72,18 +74,21 @@ if ($S_Context) {
     Write-Host ""
 
     $S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
-    if ($S_Choice -eq 'N') {
+    if ($S_Choice -eq 'N')
+    {
         Write-Host "Disconnecting existing session..." -ForegroundColor Cyan
         Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Reconnecting with required scope..." -ForegroundColor Cyan
         Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
         Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
     }
-    else {
+    else
+    {
         Write-Host "Using existing Graph session." -ForegroundColor Green
     }
 }
-else {
+else
+{
     Write-Host "Connecting to Microsoft Graph..." -ForegroundColor Cyan
     Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome -ErrorAction Stop | Out-Null
     Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
@@ -93,236 +98,260 @@ else {
 # Inputs and date range
 # ---------------------------------------------------------------------------
 
-try {
+try
+{
+    $S_NormalizedIPs = $IPAddresses |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ } |
+        Select-Object -Unique
 
-$normalizedIPs = $IPAddresses |
-    ForEach-Object { $_.Trim() } |
-    Where-Object { $_ } |
-    Select-Object -Unique
+    if (-not $S_NormalizedIPs -or $S_NormalizedIPs.Count -eq 0)
+    {
+        throw 'No valid IP addresses were provided after normalization.'
+    }
 
-if (-not $normalizedIPs -or $normalizedIPs.Count -eq 0) {
-    throw 'No valid IP addresses were provided after normalization.'
-}
+    $S_IpHashSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($S_Ip in $S_NormalizedIPs)
+    {
+        [void]$S_IpHashSet.Add($S_Ip)
+    }
 
-$ipHashSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-foreach ($ip in $normalizedIPs) {
-    [void]$ipHashSet.Add($ip)
-}
+    $S_ToUtc = (Get-Date).ToUniversalTime()
+    $S_FromUtc = $S_ToUtc.AddDays(-$Days)
 
-$toUtc = (Get-Date).ToUniversalTime()
-$fromUtc = $toUtc.AddDays(-$Days)
+    $S_FromIso = $S_FromUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    $S_ToIso = $S_ToUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
 
-$fromIso = $fromUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
-$toIso = $toUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    Write-Host "`nSearching interactive sign-ins..." -ForegroundColor Cyan
+    Write-Host "  IP(s)      : $($S_NormalizedIPs -join ', ')"
+    Write-Host "  Date range : $S_FromIso  ->  $S_ToIso"
+    Write-Host "  Days       : $Days"
 
-Write-Host "`nSearching interactive sign-ins..." -ForegroundColor Cyan
-Write-Host "  IP(s)      : $($normalizedIPs -join ', ')"
-Write-Host "  Date range : $fromIso  ->  $toIso"
-Write-Host "  Days       : $Days"
+    function Get-GraphNextLink {
+        param(
+            [Parameter(Mandatory = $false)]
+            [object]$Response
+        )
 
-function Get-GraphNextLink {
-    param(
-        [Parameter(Mandatory = $false)]
-        [object]$Response
-    )
+        if (-not $Response)
+        {
+            return $null
+        }
 
-    if (-not $Response) {
+        if ($Response.PSObject.Properties.Name -contains '@odata.nextLink')
+        {
+            return [string]$Response.'@odata.nextLink'
+        }
+
         return $null
     }
 
-    if ($Response.PSObject.Properties.Name -contains '@odata.nextLink') {
-        return [string]$Response.'@odata.nextLink'
-    }
+    function Get-GraphPageValues {
+        param(
+            [Parameter(Mandatory = $false)]
+            [object]$Response
+        )
 
-    return $null
-}
+        if (-not $Response)
+        {
+            return @()
+        }
 
-function Get-GraphPageValues {
-    param(
-        [Parameter(Mandatory = $false)]
-        [object]$Response
-    )
+        if ($Response.PSObject.Properties.Name -contains 'value')
+        {
+            return @($Response.value)
+        }
 
-    if (-not $Response) {
         return @()
     }
 
-    if ($Response.PSObject.Properties.Name -contains 'value') {
-        return @($Response.value)
-    }
+    # ---------------------------------------------------------------------------
+    # Query sign-ins with pagination
+    # ---------------------------------------------------------------------------
 
-    return @()
-}
+    $S_SelectFields = @(
+        'id',
+        'createdDateTime',
+        'userDisplayName',
+        'userPrincipalName',
+        'userId',
+        'ipAddress',
+        'appDisplayName',
+        'clientAppUsed',
+        'resourceDisplayName',
+        'status',
+        'isInteractive',
+        'location',
+        'conditionalAccessStatus'
+    ) -join ','
 
-# ---------------------------------------------------------------------------
-# Query sign-ins with pagination
-# ---------------------------------------------------------------------------
+    # Server-side filter by date and interactive sign-ins.
+    $S_Filter = "createdDateTime ge $S_FromIso and createdDateTime le $S_ToIso and isInteractive eq true"
+    $S_EncodedFilter = [uri]::EscapeDataString($S_Filter)
+    $S_EncodedSelect = [uri]::EscapeDataString($S_SelectFields)
 
-$selectFields = @(
-    'id',
-    'createdDateTime',
-    'userDisplayName',
-    'userPrincipalName',
-    'userId',
-    'ipAddress',
-    'appDisplayName',
-    'clientAppUsed',
-    'resourceDisplayName',
-    'status',
-    'isInteractive',
-    'location',
-    'conditionalAccessStatus'
-) -join ','
+    $S_NextLink = "https://graph.microsoft.com/v1.0/auditLogs/signIns?`$top=1000&`$filter=$S_EncodedFilter&`$select=$S_EncodedSelect"
+    $S_AllSignIns = [System.Collections.Generic.List[object]]::new()
+    $S_FallbackUsed = $false
 
-# Server-side filter by date and interactive sign-ins.
-$filter = "createdDateTime ge $fromIso and createdDateTime le $toIso and isInteractive eq true"
-$encodedFilter = [uri]::EscapeDataString($filter)
-$encodedSelect = [uri]::EscapeDataString($selectFields)
+    try
+    {
+        while ($S_NextLink)
+        {
+            $S_Response = Invoke-MgGraphRequest -Method GET -Uri $S_NextLink -OutputType PSObject
+            $S_PageValues = Get-GraphPageValues -Response $S_Response
 
-$nextLink = "https://graph.microsoft.com/v1.0/auditLogs/signIns?`$top=1000&`$filter=$encodedFilter&`$select=$encodedSelect"
-$allSignIns = [System.Collections.Generic.List[object]]::new()
-$fallbackUsed = $false
+            if ($S_PageValues.Count -gt 0)
+            {
+                $S_AllSignIns.AddRange([object[]]$S_PageValues)
+                Write-Host "  Retrieved $($S_AllSignIns.Count) interactive sign-in record(s) so far..." -ForegroundColor Gray
+            }
 
-try {
-    while ($nextLink) {
-        $response = Invoke-MgGraphRequest -Method GET -Uri $nextLink -OutputType PSObject
-        $pageValues = Get-GraphPageValues -Response $response
-
-        if ($pageValues.Count -gt 0) {
-            $allSignIns.AddRange([object[]]$pageValues)
-            Write-Host "  Retrieved $($allSignIns.Count) interactive sign-in record(s) so far..." -ForegroundColor Gray
-        }
-
-        $nextLink = Get-GraphNextLink -Response $response
-        if ($nextLink) {
-            [System.Threading.Thread]::Sleep($S_GraphRequestDelayMilliseconds)
+            $S_NextLink = Get-GraphNextLink -Response $S_Response
+            if ($S_NextLink)
+            {
+                [System.Threading.Thread]::Sleep($S_GraphRequestDelayMilliseconds)
+            }
         }
     }
-}
-catch {
-    Write-Warning "Interactive server-side filter failed. Retrying with date-only filter and local interactive filtering."
-    $fallbackUsed = $true
-    $allSignIns.Clear()
+    catch
+    {
+        Write-Warning "Interactive server-side filter failed. Retrying with date-only filter and local interactive filtering."
+        $S_FallbackUsed = $true
+        $S_AllSignIns.Clear()
 
-    $fallbackFilter = "createdDateTime ge $fromIso and createdDateTime le $toIso"
-    $encodedFallbackFilter = [uri]::EscapeDataString($fallbackFilter)
-    $nextLink = "https://graph.microsoft.com/v1.0/auditLogs/signIns?`$top=1000&`$filter=$encodedFallbackFilter&`$select=$encodedSelect"
+        $S_FallbackFilter = "createdDateTime ge $S_FromIso and createdDateTime le $S_ToIso"
+        $S_EncodedFallbackFilter = [uri]::EscapeDataString($S_FallbackFilter)
+        $S_NextLink = "https://graph.microsoft.com/v1.0/auditLogs/signIns?`$top=1000&`$filter=$S_EncodedFallbackFilter&`$select=$S_EncodedSelect"
 
-    while ($nextLink) {
-        $response = Invoke-MgGraphRequest -Method GET -Uri $nextLink -OutputType PSObject
-        $pageValues = Get-GraphPageValues -Response $response
+        while ($S_NextLink)
+        {
+            $S_Response = Invoke-MgGraphRequest -Method GET -Uri $S_NextLink -OutputType PSObject
+            $S_PageValues = Get-GraphPageValues -Response $S_Response
 
-        if ($pageValues.Count -gt 0) {
-            $allSignIns.AddRange([object[]]$pageValues)
-            Write-Host "  Retrieved $($allSignIns.Count) total sign-in record(s) so far..." -ForegroundColor Gray
+            if ($S_PageValues.Count -gt 0)
+            {
+                $S_AllSignIns.AddRange([object[]]$S_PageValues)
+                Write-Host "  Retrieved $($S_AllSignIns.Count) total sign-in record(s) so far..." -ForegroundColor Gray
+            }
+
+            $S_NextLink = Get-GraphNextLink -Response $S_Response
+            if ($S_NextLink)
+            {
+                [System.Threading.Thread]::Sleep($S_GraphRequestDelayMilliseconds)
+            }
+        }
+    }
+
+    if ($S_AllSignIns.Count -eq 0)
+    {
+        Write-Host "`nNo sign-ins found in the selected time window." -ForegroundColor Yellow
+        return
+    }
+
+    # ---------------------------------------------------------------------------
+    # Filter by interactive + IP list and shape output
+    # ---------------------------------------------------------------------------
+
+    $S_Matched = foreach ($S_Entry in $S_AllSignIns)
+    {
+        $S_IsInteractive = $true
+        if ($S_FallbackUsed)
+        {
+            $S_IsInteractive = $S_Entry.isInteractive -eq $true
         }
 
-        $nextLink = Get-GraphNextLink -Response $response
-        if ($nextLink) {
-            [System.Threading.Thread]::Sleep($S_GraphRequestDelayMilliseconds)
+        $S_EntryIp = $S_Entry.ipAddress
+        if (-not $S_IsInteractive -or -not $S_EntryIp -or -not $S_IpHashSet.Contains([string]$S_EntryIp))
+        {
+            continue
+        }
+
+        $S_StatusErrorCode = $null
+        $S_StatusFailureReason = $null
+        if ($S_Entry.status)
+        {
+            $S_StatusErrorCode = $S_Entry.status.errorCode
+            $S_StatusFailureReason = $S_Entry.status.failureReason
+        }
+
+        $S_City = $null
+        $S_State = $null
+        $S_Country = $null
+        if ($S_Entry.location)
+        {
+            $S_City = $S_Entry.location.city
+            $S_State = $S_Entry.location.state
+            $S_Country = $S_Entry.location.countryOrRegion
+        }
+
+        [PSCustomObject]@{
+            CreatedDateTime         = $S_Entry.createdDateTime
+            UserDisplayName         = $S_Entry.userDisplayName
+            UserPrincipalName       = $S_Entry.userPrincipalName
+            UserId                  = $S_Entry.userId
+            IPAddress               = $S_EntryIp
+            AppDisplayName          = $S_Entry.appDisplayName
+            ClientAppUsed           = $S_Entry.clientAppUsed
+            ResourceDisplayName     = $S_Entry.resourceDisplayName
+            IsInteractive           = $S_Entry.isInteractive
+            ConditionalAccessStatus = $S_Entry.conditionalAccessStatus
+            StatusErrorCode         = $S_StatusErrorCode
+            StatusFailureReason     = $S_StatusFailureReason
+            City                    = $S_City
+            State                   = $S_State
+            CountryOrRegion         = $S_Country
+            SignInId                = $S_Entry.id
         }
     }
-}
 
-if ($allSignIns.Count -eq 0) {
-    Write-Host "`nNo sign-ins found in the selected time window." -ForegroundColor Yellow
-    return
-}
-
-# ---------------------------------------------------------------------------
-# Filter by interactive + IP list and shape output
-# ---------------------------------------------------------------------------
-
-$matched = foreach ($entry in $allSignIns) {
-    $isInteractive = $true
-    if ($fallbackUsed) {
-        $isInteractive = $entry.isInteractive -eq $true
+    if (-not $S_Matched)
+    {
+        Write-Host "`nNo interactive sign-ins matched the supplied IP list." -ForegroundColor Yellow
+        return
     }
 
-    $entryIp = $entry.ipAddress
-    if (-not $isInteractive -or -not $entryIp -or -not $ipHashSet.Contains([string]$entryIp)) {
-        continue
+    $S_Matched = $S_Matched | Sort-Object CreatedDateTime
+
+    # ---------------------------------------------------------------------------
+    # Export
+    # ---------------------------------------------------------------------------
+
+    if (-not (Test-Path -LiteralPath $OutputPath))
+    {
+        New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
     }
 
-    $statusErrorCode = $null
-    $statusFailureReason = $null
-    if ($entry.status) {
-        $statusErrorCode = $entry.status.errorCode
-        $statusFailureReason = $entry.status.failureReason
-    }
+    $S_ReportTime = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
+    $S_IpTag = ($S_NormalizedIPs -join '_') -replace '[^\w\-]', '-'
+    $S_CsvName = "InteractiveSignInsByIP_${S_IpTag}_${S_ReportTime}.csv"
+    $S_CsvPath = Join-Path -Path $OutputPath -ChildPath $S_CsvName
 
-    $city = $null
-    $state = $null
-    $country = $null
-    if ($entry.location) {
-        $city = $entry.location.city
-        $state = $entry.location.state
-        $country = $entry.location.countryOrRegion
-    }
+    $S_Matched | Export-Csv -LiteralPath $S_CsvPath -NoTypeInformation -Encoding UTF8
 
-    [PSCustomObject]@{
-        CreatedDateTime         = $entry.createdDateTime
-        UserDisplayName         = $entry.userDisplayName
-        UserPrincipalName       = $entry.userPrincipalName
-        UserId                  = $entry.userId
-        IPAddress               = $entryIp
-        AppDisplayName          = $entry.appDisplayName
-        ClientAppUsed           = $entry.clientAppUsed
-        ResourceDisplayName     = $entry.resourceDisplayName
-        IsInteractive           = $entry.isInteractive
-        ConditionalAccessStatus = $entry.conditionalAccessStatus
-        StatusErrorCode         = $statusErrorCode
-        StatusFailureReason     = $statusFailureReason
-        City                    = $city
-        State                   = $state
-        CountryOrRegion         = $country
-        SignInId                = $entry.id
-    }
+    Write-Host "`nMatched records: $($S_Matched.Count)" -ForegroundColor Green
+    Write-Host "Report saved to: $S_CsvPath" -ForegroundColor Green
+
+    # Quick on-screen summary per IP.
+    $S_Summary = $S_Matched |
+        Group-Object -Property IPAddress |
+        Sort-Object -Property Name |
+        Select-Object @{ Name = 'IPAddress'; Expression = { $_.Name } }, @{ Name = 'Count'; Expression = { $_.Count } }
+
+    Write-Host "`nSummary by IP:" -ForegroundColor Cyan
+    $S_Summary | Format-Table -AutoSize
 }
-
-if (-not $matched) {
-    Write-Host "`nNo interactive sign-ins matched the supplied IP list." -ForegroundColor Yellow
-    return
-}
-
-$matched = $matched | Sort-Object CreatedDateTime
-
-# ---------------------------------------------------------------------------
-# Export
-# ---------------------------------------------------------------------------
-
-if (-not (Test-Path -LiteralPath $OutputPath)) {
-    New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
-}
-
-$reportTime = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
-$ipTag = ($normalizedIPs -join '_') -replace '[^\w\-]', '-'
-$csvName = "InteractiveSignInsByIP_${ipTag}_${reportTime}.csv"
-$csvPath = Join-Path -Path $OutputPath -ChildPath $csvName
-
-$matched | Export-Csv -LiteralPath $csvPath -NoTypeInformation -Encoding UTF8
-
-Write-Host "`nMatched records: $($matched.Count)" -ForegroundColor Green
-Write-Host "Report saved to: $csvPath" -ForegroundColor Green
-
-# Quick on-screen summary per IP.
-$summary = $matched |
-    Group-Object -Property IPAddress |
-    Sort-Object -Property Name |
-    Select-Object @{ Name = 'IPAddress'; Expression = { $_.Name } }, @{ Name = 'Count'; Expression = { $_.Count } }
-
-Write-Host "`nSummary by IP:" -ForegroundColor Cyan
-$summary | Format-Table -AutoSize
-
-}
-finally {
+finally
+{
     $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
-    if ($S_DisconnectChoice -eq 'Y') {
+    if ($S_DisconnectChoice -eq 'Y')
+    {
         Write-Host "Disconnecting from Microsoft Graph..." -ForegroundColor Cyan
         Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
         Write-Host "Disconnected." -ForegroundColor Green
     }
-    else {
+    else
+    {
         Write-Host "Graph session kept alive." -ForegroundColor Green
     }
 }

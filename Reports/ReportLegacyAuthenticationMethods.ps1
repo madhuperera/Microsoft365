@@ -30,10 +30,11 @@ param (
 
 $ErrorActionPreference = 'Stop'
 
-if (-not $OutputPath)
+$S_OutputPath = $OutputPath
+if (-not $S_OutputPath)
 {
     $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-    $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportLegacyAuthenticationMethods_$S_Timestamp.csv"
+    $S_OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportLegacyAuthenticationMethods_$S_Timestamp.csv"
 }
 
 $S_RequiredGraphScopes = @(
@@ -83,138 +84,180 @@ else
 {
     $S_ContextConfirmation = $S_ContextConfirmation.ToUpperInvariant()
 }
+
 if ($S_ContextConfirmation -ne 'Y')
 {
     throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
 }
 
 Write-Host "Finding Azure AD accounts"
-[array]$S_Users = Get-MgUser -Filter "userType eq 'Member'" -ConsistencyLevel eventual -CountVariable Records -All -Property Id, DisplayName, UserPrincipalName, AccountEnabled, AssignedLicenses, OnPremisesSyncEnabled
-If (!($S_Users)) { Write-Host "No users found in Azure AD... exiting!"; break }
+[array]$S_Users = Get-MgUser -Filter "userType eq 'Member'" -ConsistencyLevel eventual -CountVariable S_Records -All -Property Id, DisplayName, UserPrincipalName, AccountEnabled, AssignedLicenses, OnPremisesSyncEnabled
+if (!($S_Users))
+{
+    Write-Host "No users found in Azure AD... exiting!"
+    break
+}
 
-$i = 0
+$S_Counter = 0
 $S_Report = [System.Collections.Generic.List[Object]]::new()
-ForEach ($User in $S_Users)
+foreach ($S_User in $S_Users)
 {
- $i++
- Write-Host ("Processing user {0} {1}/{2}." -f $User.DisplayName, $i, $S_Users.Count)
-$AuthMethods = Get-MgUserAuthenticationMethod -UserId $User.Id
+    $S_Counter++
+    Write-Host ("Processing user {0} {1}/{2}." -f $S_User.DisplayName, $S_Counter, $S_Users.Count)
+    $S_AuthMethods = Get-MgUserAuthenticationMethod -UserId $S_User.Id
+    Start-Sleep -Milliseconds $S_GraphRequestDelayMilliseconds
 
-$ModernTypes = @()
-$LegacyTypes = @()
-$NonMfaTypes = @()
-$ModernOdataTypes = @(
-  "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod",
-  "#microsoft.graph.fido2AuthenticationMethod",
-  "#microsoft.graph.passwordlessMicrosoftAuthenticatorAuthenticationMethod"
-)
+    $S_ModernTypes = @()
+    $S_LegacyTypes = @()
+    $S_NonMfaTypes = @()
+    $S_ModernOdataTypes = @(
+        "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod",
+        "#microsoft.graph.fido2AuthenticationMethod",
+        "#microsoft.graph.passwordlessMicrosoftAuthenticatorAuthenticationMethod"
+    )
 
-foreach ($Method in $AuthMethods) {
-  $Type = $Method.AdditionalProperties['@odata.type']
-  switch ($Type) {
-    "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod" { $ModernTypes += "Microsoft Authenticator" }
-    "#microsoft.graph.fido2AuthenticationMethod" { $ModernTypes += "Passkey" }
-    "#microsoft.graph.passwordlessMicrosoftAuthenticatorAuthenticationMethod" { $ModernTypes += "Passwordless" }
-    "#microsoft.graph.phoneAuthenticationMethod" { $LegacyTypes += "Phone/SMS" }
-    "#microsoft.graph.passwordAuthenticationMethod" { $NonMfaTypes += "Password" }
-    "#microsoft.graph.emailAuthenticationMethod" { $NonMfaTypes += "Email" }
-    "#microsoft.graph.windowsHelloForBusinessAuthenticationMethod" { $NonMfaTypes += "Windows Hello" }
-    default { $LegacyTypes += $Type }
-  }
+    foreach ($S_Method in $S_AuthMethods)
+    {
+        $S_Type = $S_Method.AdditionalProperties['@odata.type']
+        switch ($S_Type)
+        {
+            "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod" { $S_ModernTypes += "Microsoft Authenticator" }
+            "#microsoft.graph.fido2AuthenticationMethod" { $S_ModernTypes += "Passkey" }
+            "#microsoft.graph.passwordlessMicrosoftAuthenticatorAuthenticationMethod" { $S_ModernTypes += "Passwordless" }
+            "#microsoft.graph.phoneAuthenticationMethod" { $S_LegacyTypes += "Phone/SMS" }
+            "#microsoft.graph.passwordAuthenticationMethod" { $S_NonMfaTypes += "Password" }
+            "#microsoft.graph.emailAuthenticationMethod" { $S_NonMfaTypes += "Email" }
+            "#microsoft.graph.windowsHelloForBusinessAuthenticationMethod" { $S_NonMfaTypes += "Windows Hello" }
+            default { $S_LegacyTypes += $S_Type }
+        }
+    }
+
+    if ($S_ModernTypes.Count -gt 0)
+    {
+        $S_DisplayMethod = "Modern Authentication"
+        $S_P1 = ($S_ModernTypes + $S_LegacyTypes + $S_NonMfaTypes) -join ", "
+    }
+    elseif ($S_LegacyTypes.Count -gt 0)
+    {
+        $S_DisplayMethod = "Legacy Authentication"
+        $S_P1 = ($S_LegacyTypes + $S_NonMfaTypes) -join ", "
+    }
+    else
+    {
+        if ($S_NonMfaTypes.Count -gt 0)
+        {
+            $S_DisplayMethod = "No MFA"
+            $S_P1 = $S_NonMfaTypes -join ", "
+        }
+        else
+        {
+            $S_DisplayMethod = "No Methods"
+            $S_P1 = ""
+        }
+    }
+
+    # Determine license status
+    $S_IsLicensed = if ($S_User.AssignedLicenses.Count -gt 0)
+    {
+        "Yes"
+    }
+    else
+    {
+        "No"
+    }
+
+    # Determine on-premises sync status
+    $S_IsSynced = if ($S_User.OnPremisesSyncEnabled -eq $true)
+    {
+        "Yes"
+    }
+    elseif ($S_User.OnPremisesSyncEnabled -eq $false)
+    {
+        "No"
+    }
+    else
+    {
+        "Cloud-Only"
+    }
+
+    # Determine account enabled status
+    $S_IsEnabled = if ($S_User.AccountEnabled -eq $true)
+    {
+        "Yes"
+    }
+    else
+    {
+        "No"
+    }
+
+    $S_ReportLine = [PSCustomObject]@{
+        User             = $S_User.DisplayName
+        UPN              = $S_User.UserPrincipalName
+        Type             = $S_DisplayMethod
+        Methods          = $S_P1
+        Licensed         = $S_IsLicensed
+        OnPremisesSynced = $S_IsSynced
+        AccountEnabled   = $S_IsEnabled
+        Id               = $S_User.Id
+    }
+    $S_Report.Add($S_ReportLine)
 }
 
-if ($ModernTypes.Count -gt 0) 
-{
-  $DisplayMethod = "Modern Authentication"
-  $P1 = ($ModernTypes + $LegacyTypes + $NonMfaTypes) -join ", "
-} 
-elseif ($LegacyTypes.Count -gt 0) 
-{
-  $DisplayMethod = "Legacy Authentication"
-  $P1 = ($LegacyTypes + $NonMfaTypes) -join ", "
-} 
-else 
-{
-  if ($NonMfaTypes.Count -gt 0) {
-    $DisplayMethod = "No MFA"
-    $P1 = $NonMfaTypes -join ", "
-  } else {
-    $DisplayMethod = "No Methods"
-    $P1 = ""
-  }
-}
-
-# Determine license status
-$IsLicensed = if ($User.AssignedLicenses.Count -gt 0) { "Yes" } else { "No" }
-
-# Determine on-premises sync status
-$IsSynced = if ($User.OnPremisesSyncEnabled -eq $true) { "Yes" } elseif ($User.OnPremisesSyncEnabled -eq $false) { "No" } else { "Cloud-Only" }
-
-# Determine account enabled status
-$IsEnabled = if ($User.AccountEnabled -eq $true) { "Yes" } else { "No" }
-
-$ReportLine = [PSCustomObject]@{
-  User   = $User.DisplayName
-  UPN    = $User.UserPrincipalName
-  Type   = $DisplayMethod
-  Methods= $P1
-  Licensed = $IsLicensed
-  OnPremisesSynced = $IsSynced
-  AccountEnabled = $IsEnabled
-  Id     = $User.Id
-}
-$S_Report.Add($ReportLine)
-
-} #End ForEach User
- 
-   
 $S_Report = $S_Report | Sort-Object User 
 
 # --- CSV Export ---
-$S_Report | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+$S_Report | Export-Csv -Path $S_OutputPath -NoTypeInformation -Encoding UTF8
 
 # --- HTML Report: Enabled Users MFA Status ---
-$totalMembers     = $S_Report.Count
-$totalEnabled     = ($S_Report | Where-Object { $_.AccountEnabled -eq "Yes" }).Count
-$totalDisabled    = $totalMembers - $totalEnabled
-$enabledUsers     = $S_Report | Where-Object { $_.AccountEnabled -eq "Yes" }
-$enabledLicensed  = ($enabledUsers | Where-Object { $_.Licensed -eq "Yes" }).Count
+$S_TotalMembers = $S_Report.Count
+$S_TotalEnabled = ($S_Report | Where-Object { $_.AccountEnabled -eq "Yes" }).Count
+$S_TotalDisabled = $S_TotalMembers - $S_TotalEnabled
+$S_EnabledUsers = $S_Report | Where-Object { $_.AccountEnabled -eq "Yes" }
+$S_EnabledLicensed = ($S_EnabledUsers | Where-Object { $_.Licensed -eq "Yes" }).Count
 
-$mfaModern   = ($enabledUsers | Where-Object { $_.Type -eq "Modern Authentication" }).Count
-$mfaLegacy   = ($enabledUsers | Where-Object { $_.Type -eq "Legacy Authentication" }).Count
-$mfaNone     = ($enabledUsers | Where-Object { $_.Type -eq "No MFA" }).Count
-$mfaNoMethod = ($enabledUsers | Where-Object { $_.Type -eq "No Methods" }).Count
+$S_MfaModern = ($S_EnabledUsers | Where-Object { $_.Type -eq "Modern Authentication" }).Count
+$S_MfaLegacy = ($S_EnabledUsers | Where-Object { $_.Type -eq "Legacy Authentication" }).Count
+$S_MfaNone = ($S_EnabledUsers | Where-Object { $_.Type -eq "No MFA" }).Count
+$S_MfaNoMethod = ($S_EnabledUsers | Where-Object { $_.Type -eq "No Methods" }).Count
 
 # Licensed enabled users with No MFA
-$licensedNoMfa = ($enabledUsers | Where-Object { $_.Licensed -eq "Yes" -and $_.Type -eq "No MFA" }).Count
+$S_LicensedNoMfa = ($S_EnabledUsers | Where-Object { $_.Licensed -eq "Yes" -and $_.Type -eq "No MFA" }).Count
 # On-prem synced enabled users with No MFA
-$onPremNoMfa   = ($enabledUsers | Where-Object { $_.OnPremisesSynced -eq "Yes" -and $_.Type -eq "No MFA" }).Count
+$S_OnPremNoMfa = ($S_EnabledUsers | Where-Object { $_.OnPremisesSynced -eq "Yes" -and $_.Type -eq "No MFA" }).Count
 
-$pieLabels = "'Modern Auth', 'Legacy Auth', 'No MFA', 'No Methods'"
-$pieData   = "{0}, {1}, {2}, {3}" -f $mfaModern, $mfaLegacy, $mfaNone, $mfaNoMethod
-$pieColors = "'#27ae60', '#f39c12', '#e74c3c', '#95a5a6'"
+$S_PieLabels = "'Modern Auth', 'Legacy Auth', 'No MFA', 'No Methods'"
+$S_PieData = "{0}, {1}, {2}, {3}" -f $S_MfaModern, $S_MfaLegacy, $S_MfaNone, $S_MfaNoMethod
+$S_PieColors = "'#27ae60', '#f39c12', '#e74c3c', '#95a5a6'"
 
-$tableRows = ($enabledUsers | Sort-Object User | ForEach-Object {
-	$typeClass = switch ($_.Type) {
-		"Modern Authentication" { "modern" }
-		"Legacy Authentication" { "legacy" }
-		"No MFA"               { "nomfa" }
-		default                { "nomethod" }
-	}
-	"<tr><td>{0}</td><td>{1}</td><td><span class='badge {2}'>{3}</span></td><td>{4}</td><td>{5}</td><td>{6}</td></tr>" -f
-		[System.Net.WebUtility]::HtmlEncode($_.User),
-		[System.Net.WebUtility]::HtmlEncode($_.UPN),
-		$typeClass,
-		[System.Net.WebUtility]::HtmlEncode($_.Type),
-		[System.Net.WebUtility]::HtmlEncode($_.Methods),
-		[System.Net.WebUtility]::HtmlEncode($_.Licensed),
-		[System.Net.WebUtility]::HtmlEncode($_.OnPremisesSynced)
+$S_TableRows = ($S_EnabledUsers | Sort-Object User | ForEach-Object {
+    $S_TypeClass = switch ($_.Type)
+    {
+        "Modern Authentication" { "modern" }
+        "Legacy Authentication" { "legacy" }
+        "No MFA" { "nomfa" }
+        default { "nomethod" }
+    }
+    "<tr><td>{0}</td><td>{1}</td><td><span class='badge {2}'>{3}</span></td><td>{4}</td><td>{5}</td><td>{6}</td></tr>" -f
+        [System.Net.WebUtility]::HtmlEncode($_.User),
+        [System.Net.WebUtility]::HtmlEncode($_.UPN),
+        $S_TypeClass,
+        [System.Net.WebUtility]::HtmlEncode($_.Type),
+        [System.Net.WebUtility]::HtmlEncode($_.Methods),
+        [System.Net.WebUtility]::HtmlEncode($_.Licensed),
+        [System.Net.WebUtility]::HtmlEncode($_.OnPremisesSynced)
 }) -join "`n"
 
-$S_TenantName = if ($S_ActiveContext.TenantId) { $S_ActiveContext.TenantId } else { "Unknown" }
+$S_TenantName = if ($S_ActiveContext.TenantId)
+{
+    $S_ActiveContext.TenantId
+}
+else
+{
+    "Unknown"
+}
 $S_ReportDate = Get-Date -Format "dd MMM yyyy HH:mm"
 
-$html = @"
+$S_Html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -267,22 +310,22 @@ $html = @"
 </div>
 
 <div class="summary-cards">
-  <div class="card"><div class="label">Total Members</div><div class="value" style="color:#2c3e50;">$totalMembers</div></div>
-  <div class="card"><div class="label">Enabled</div><div class="value" style="color:#3498db;">$totalEnabled</div></div>
-  <div class="card"><div class="label">Disabled</div><div class="value" style="color:#95a5a6;">$totalDisabled</div></div>
-  <div class="card"><div class="label">Enabled &amp; Licensed</div><div class="value" style="color:#27ae60;">$enabledLicensed</div></div>
+  <div class="card"><div class="label">Total Members</div><div class="value" style="color:#2c3e50;">$S_TotalMembers</div></div>
+  <div class="card"><div class="label">Enabled</div><div class="value" style="color:#3498db;">$S_TotalEnabled</div></div>
+  <div class="card"><div class="label">Disabled</div><div class="value" style="color:#95a5a6;">$S_TotalDisabled</div></div>
+  <div class="card"><div class="label">Enabled &amp; Licensed</div><div class="value" style="color:#27ae60;">$S_EnabledLicensed</div></div>
 </div>
 
 <div class="info-cards">
-  <div class="info-card green"><div class="info-label">Modern Auth (Authenticator / Passkey)</div><div class="info-value">$mfaModern</div></div>
-  <div class="info-card amber"><div class="info-label">Legacy Auth (Phone / SMS)</div><div class="info-value">$mfaLegacy</div></div>
-  <div class="info-card red"><div class="info-label">No MFA (Password Only)</div><div class="info-value">$mfaNone</div></div>
-  <div class="info-card grey"><div class="info-label">No Methods Registered</div><div class="info-value">$mfaNoMethod</div></div>
+  <div class="info-card green"><div class="info-label">Modern Auth (Authenticator / Passkey)</div><div class="info-value">$S_MfaModern</div></div>
+  <div class="info-card amber"><div class="info-label">Legacy Auth (Phone / SMS)</div><div class="info-value">$S_MfaLegacy</div></div>
+  <div class="info-card red"><div class="info-label">No MFA (Password Only)</div><div class="info-value">$S_MfaNone</div></div>
+  <div class="info-card grey"><div class="info-label">No Methods Registered</div><div class="info-value">$S_MfaNoMethod</div></div>
 </div>
 
 <div class="info-cards">
-  <div class="info-card purple"><div class="info-label">Licensed &amp; No MFA</div><div class="info-value">$licensedNoMfa</div></div>
-  <div class="info-card indigo"><div class="info-label">On-Prem Synced &amp; No MFA</div><div class="info-value">$onPremNoMfa</div></div>
+  <div class="info-card purple"><div class="info-label">Licensed &amp; No MFA</div><div class="info-value">$S_LicensedNoMfa</div></div>
+  <div class="info-card indigo"><div class="info-label">On-Prem Synced &amp; No MFA</div><div class="info-value">$S_OnPremNoMfa</div></div>
 </div>
 
 <div class="chart-section">
@@ -291,11 +334,11 @@ $html = @"
 </div>
 
 <div class="table-section">
-  <h2>Enabled User Details ($totalEnabled users)</h2>
+  <h2>Enabled User Details ($S_TotalEnabled users)</h2>
   <table>
     <thead><tr><th>Display Name</th><th>UPN</th><th>MFA Status</th><th>Methods</th><th>Licensed</th><th>On-Prem Synced</th></tr></thead>
     <tbody>
-$tableRows
+$S_TableRows
     </tbody>
   </table>
 </div>
@@ -305,10 +348,10 @@ $tableRows
 new Chart(document.getElementById('pieChart'), {
   type: 'pie',
   data: {
-    labels: [$pieLabels],
+    labels: [$S_PieLabels],
     datasets: [{
-      data: [$pieData],
-      backgroundColor: [$pieColors],
+      data: [$S_PieData],
+      backgroundColor: [$S_PieColors],
       borderWidth: 2, borderColor: '#fff'
     }]
   },
@@ -333,21 +376,21 @@ new Chart(document.getElementById('pieChart'), {
 </html>
 "@
 
-$S_HtmlPath = [System.IO.Path]::ChangeExtension($OutputPath, '.html')
-$html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
+$S_HtmlPath = [System.IO.Path]::ChangeExtension($S_OutputPath, '.html')
+$S_Html | Out-File -FilePath $S_HtmlPath -Encoding UTF8
 
 # --- Console Summary ---
 Write-Host ""
 Write-Host "Authentication Methods Report" -ForegroundColor Cyan
 Write-Host "--------------------------------------------"
-Write-Host ("Total member users        : {0}" -f $totalMembers)
-Write-Host ("Enabled users             : {0}" -f $totalEnabled)
-Write-Host ("Disabled users            : {0}" -f $totalDisabled)
-Write-Host ("Modern Auth               : {0}" -f $mfaModern)
-Write-Host ("Legacy Auth               : {0}" -f $mfaLegacy)
-Write-Host ("No MFA (Password Only)    : {0}" -f $mfaNone)
-Write-Host ("No Methods                : {0}" -f $mfaNoMethod)
-Write-Host ("CSV exported to           : {0}" -f $OutputPath)
+Write-Host ("Total member users        : {0}" -f $S_TotalMembers)
+Write-Host ("Enabled users             : {0}" -f $S_TotalEnabled)
+Write-Host ("Disabled users            : {0}" -f $S_TotalDisabled)
+Write-Host ("Modern Auth               : {0}" -f $S_MfaModern)
+Write-Host ("Legacy Auth               : {0}" -f $S_MfaLegacy)
+Write-Host ("No MFA (Password Only)    : {0}" -f $S_MfaNone)
+Write-Host ("No Methods                : {0}" -f $S_MfaNoMethod)
+Write-Host ("CSV exported to           : {0}" -f $S_OutputPath)
 Write-Host ("HTML exported to          : {0}" -f $S_HtmlPath)
 
 $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"

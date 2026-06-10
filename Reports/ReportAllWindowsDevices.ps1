@@ -45,8 +45,10 @@ $S_RequiredGraphScopes = @(
 
 $S_GraphRequestDelayMilliseconds = 5
 
-try {
-	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Identity.DirectoryManagement)) {
+try
+{
+	if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Identity.DirectoryManagement))
+     {
 		throw "Microsoft.Graph.Identity.DirectoryManagement module is not installed. Install it using Install-Module Microsoft.Graph -Scope CurrentUser."
 	}
 
@@ -75,125 +77,248 @@ try {
 	$S_ExistingContext = Get-MgContext
 
 	# --- Resolve tenant display name ---
-	$tenantDisplayName = $null
-	try {
-		$org = Get-MgOrganization -ErrorAction Stop | Select-Object -First 1
-		$tenantDisplayName = $org.DisplayName
-	} catch { }
-	if (-not $tenantDisplayName) { $tenantDisplayName = $S_ExistingContext.TenantId }
-	$tenantId = if ($S_ExistingContext.TenantId) { $S_ExistingContext.TenantId } else { "Unknown" }
+	$S_TenantDisplayName = $null
+	try
+                             {
+		$S_Org = Get-MgOrganization -ErrorAction Stop | Select-Object -First 1
+		$S_TenantDisplayName = $S_Org.DisplayName
+	} catch
+                                           {
+ }
+	if (-not $S_TenantDisplayName)
+            {
+ $S_TenantDisplayName = $S_ExistingContext.TenantId }
+	$S_TenantId = if ($S_ExistingContext.TenantId)
+                                                     {
+ $S_ExistingContext.TenantId } else
+                                                 {
+ "Unknown" }
 
 	# --- Fetch all Windows devices ---
-	$devices = Get-MgDevice -All `
+	$S_Devices = Get-MgDevice -All `
 		-Filter "operatingSystem eq 'Windows'" `
 		-Property "id,displayName,operatingSystem,operatingSystemVersion,trustType,accountEnabled,approximateLastSignInDateTime,managementType,registrationDateTime,isCompliant" `
 		-ErrorAction Stop
 
 	# --- Build report data ---
-	$now = Get-Date
-	$S_CutoffDate = $now.AddDays(-$InactiveDays)
-	$report = foreach ($device in $devices) {
-		$regDt = if ($device.RegistrationDateTime) { [datetime]$device.RegistrationDateTime } else { $null }
-		$lastActivityDt = if ($device.ApproximateLastSignInDateTime) { [datetime]$device.ApproximateLastSignInDateTime } else { $null }
+	$S_Now = Get-Date
+	$S_CutoffDate = $S_Now.AddDays(-$InactiveDays)
+	$S_Report = foreach ($S_Device in $S_Devices)
+                                               {
+		$S_RegDt = if ($S_Device.RegistrationDateTime)
+                                                {
+ [datetime]$S_Device.RegistrationDateTime } else
+                                                {
+ $null }
+		$S_LastActivityDt = if ($S_Device.ApproximateLastSignInDateTime)
+        {
+ [datetime]$S_Device.ApproximateLastSignInDateTime } else
+        {
+ $null }
 
-		$daysSinceEnrollment = if ($regDt -and $lastActivityDt) { [int]($lastActivityDt - $regDt).TotalDays } else { $null }
-		$daysSinceLastActivity = if ($lastActivityDt) { [int]($now - $lastActivityDt).TotalDays } else { $null }
+		$S_DaysSinceEnrollment = if ($S_RegDt -and $S_LastActivityDt)
+{
+ [int]($S_LastActivityDt - $S_RegDt).TotalDays } else
+                                                               {
+ $null }
+		$S_DaysSinceLastActivity = if ($S_LastActivityDt)
+        {
+ [int]($S_Now - $S_LastActivityDt).TotalDays } else
+                                                                                                                                {
+ $null }
 
 		# Status: Disabled > Inactive > Active
-		if (-not $device.AccountEnabled) {
-			$status = "Disabled"
-		} elseif (-not $lastActivityDt -or $lastActivityDt -lt $S_CutoffDate) {
-			$status = "Inactive"
-		} else {
-			$status = "Active"
+		if (-not $S_Device.AccountEnabled)
+                                        {
+			$S_Status = "Disabled"
+		} elseif (-not $S_LastActivityDt -or $S_LastActivityDt -lt $S_CutoffDate)
+                         {
+			$S_Status = "Inactive"
+		} else
+                         {
+			$S_Status = "Active"
 		}
 
 		[pscustomobject]@{
-			DisplayName                      = $device.DisplayName
-			AccountEnabled                   = $device.AccountEnabled
-			OperatingSystem                  = $device.OperatingSystem
-			OperatingSystemVersion           = $device.OperatingSystemVersion
-			TrustType                        = $device.TrustType
-			ManagementType                   = $device.ManagementType
-			IsCompliant                      = $device.IsCompliant
-			RegistrationDateTime             = $device.RegistrationDateTime
-			ApproximateLastSignInDateTime    = $device.ApproximateLastSignInDateTime
-			DaysEnrollmentToLastActivity     = $daysSinceEnrollment
-			DaysSinceLastActivity            = $daysSinceLastActivity
-			Status                           = $status
+			DisplayName                      = $S_Device.DisplayName
+			AccountEnabled                   = $S_Device.AccountEnabled
+			OperatingSystem                  = $S_Device.OperatingSystem
+			OperatingSystemVersion           = $S_Device.OperatingSystemVersion
+			TrustType                        = $S_Device.TrustType
+			ManagementType                   = $S_Device.ManagementType
+			IsCompliant                      = $S_Device.IsCompliant
+			RegistrationDateTime             = $S_Device.RegistrationDateTime
+			ApproximateLastSignInDateTime    = $S_Device.ApproximateLastSignInDateTime
+			DaysEnrollmentToLastActivity     = $S_DaysSinceEnrollment
+			DaysSinceLastActivity            = $S_DaysSinceLastActivity
+			Status                           = $S_Status
 		}
 	}
 
 	# --- Stats ---
-	$totalDevices    = $report.Count
-	$totalEnabled    = ($report | Where-Object { $_.AccountEnabled }).Count
-	$totalDisabled   = $totalDevices - $totalEnabled
-	$totalCompliant  = ($report | Where-Object { $_.IsCompliant -eq $true }).Count
-	$totalActive     = ($report | Where-Object { $_.Status -eq "Active" }).Count
-	$totalInactive   = ($report | Where-Object { $_.Status -eq "Inactive" }).Count
-	$percentActive   = if ($totalEnabled -gt 0) { [math]::Round(($totalActive / $totalEnabled) * 100, 1) } else { 0 }
-	$percentInactive = if ($totalEnabled -gt 0) { [math]::Round(($totalInactive / $totalEnabled) * 100, 1) } else { 0 }
+	$S_TotalDevices    = $S_Report.Count
+	$S_TotalEnabled    = ($S_Report | Where-Object { $_.AccountEnabled }).Count
+	$S_TotalDisabled   = $S_TotalDevices - $S_TotalEnabled
+	$S_TotalCompliant  = ($S_Report | Where-Object { $_.IsCompliant -eq $true }).Count
+	$S_TotalActive     = ($S_Report | Where-Object { $_.Status -eq "Active" }).Count
+	$S_TotalInactive   = ($S_Report | Where-Object { $_.Status -eq "Inactive" }).Count
+	$S_PercentActive   = if ($S_TotalEnabled -gt 0)
+                                                                                   {
+ [math]::Round(($S_TotalActive / $S_TotalEnabled) * 100, 1) } else
+                                                                                    {
+ 0 }
+	$S_PercentInactive = if ($S_TotalEnabled -gt 0)
+    {
+ [math]::Round(($S_TotalInactive / $S_TotalEnabled) * 100, 1) } else
+                                                                                                                          {
+ 0 }
 
-	$trustSummary = $report | Group-Object TrustType | Sort-Object Count -Descending | ForEach-Object {
+	$S_TrustSummary = $S_Report | Group-Object TrustType | Sort-Object Count -Descending | ForEach-Object {
 		[pscustomobject]@{ TrustType = $_.Name; Count = $_.Count }
 	}
 
-	$mgmtSummary = $report | Group-Object ManagementType | Sort-Object Count -Descending | ForEach-Object {
+	$S_MgmtSummary = $S_Report | Group-Object ManagementType | Sort-Object Count -Descending | ForEach-Object {
 		[pscustomobject]@{ ManagementType = $_.Name; Count = $_.Count }
 	}
 
 	# --- File paths ---
-	if (-not $ReportPath) {
+	if (-not $ReportPath)
+                     {
 		$ReportPath = (Get-Location).Path
 	}
 
-	$reportFolder = if (Test-Path $ReportPath -PathType Container) { $ReportPath } else { Split-Path -Parent $ReportPath }
-	if ($reportFolder -and -not (Test-Path $reportFolder)) {
-		New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null
+	$S_ReportFolder = if (Test-Path $ReportPath -PathType Container)
+{
+ $ReportPath } else
+                                                                 {
+ Split-Path -Parent $ReportPath }
+	if ($S_ReportFolder -and -not (Test-Path $S_ReportFolder))
+                                                                                                                         {
+		New-Item -ItemType Directory -Path $S_ReportFolder -Force | Out-Null
 	}
 
 	$S_Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-	$csvFile = if (Test-Path $ReportPath -PathType Container) {
+	$S_CsvFile = if (Test-Path $ReportPath -PathType Container)
+                                                  {
 		Join-Path $ReportPath ("ReportAllWindowsDevices_{0}.csv" -f $S_Timestamp)
-	} else {
+	} else
+                                                                           {
 		$ReportPath
 	}
 
 	# --- CSV export ---
-	$report | Sort-Object DisplayName | Export-Csv -Path $csvFile -NoTypeInformation -Encoding UTF8
+	$S_Report | Sort-Object DisplayName | Export-Csv -Path $S_CsvFile -NoTypeInformation -Encoding UTF8
 
 	# --- HTML report ---
-	$reportDate = Get-Date -Format "dd MMM yyyy HH:mm"
+	$S_ReportDate = Get-Date -Format "dd MMM yyyy HH:mm"
 
 	# Build per-device JSON for client-side threshold recalculation
-	$devicesJson = ($report | Sort-Object DisplayName | ForEach-Object {
-		$daysVal = if ($null -ne $_.DaysSinceLastActivity) { $_.DaysSinceLastActivity } else { -1 }
-		$ena = if ($_.AccountEnabled) { "true" } else { "false" }
-		$comp = if ($_.IsCompliant -eq $true) { "true" } elseif ($_.IsCompliant -eq $false) { "false" } else { "null" }
-		$tt = if ($_.TrustType) { $_.TrustType } else { "None" }
-		$mt = if ($_.ManagementType) { $_.ManagementType } else { "None" }
-		'{{"days":{0},"ena":{1},"comp":{2},"tt":"{3}","mt":"{4}"}}' -f $daysVal, $ena, $comp, $tt, $mt
+	$S_DevicesJson = ($S_Report | Sort-Object DisplayName | ForEach-Object {
+		$S_DaysVal = if ($null -ne $_.DaysSinceLastActivity)
+                                                                         {
+ $_.DaysSinceLastActivity } else
+                                                                         {
+ -1 }
+		$S_Ena = if ($_.AccountEnabled)
+                                                                               {
+ "true" } else
+                                 {
+ "false" }
+		$S_Comp = if ($_.IsCompliant -eq $true)
+          {
+ "true" } elseif ($_.IsCompliant -eq $false)
+                                                             {
+ "false" } else
+                                            {
+ "null" }
+		$S_Tt = if ($_.TrustType)
+                                                                                                                   {
+ $_.TrustType } else
+                           {
+ "None" }
+		$S_Mt = if ($_.ManagementType)
+                                                                                                                                                   {
+ $_.ManagementType } else
+                                                                                                                                                    {
+ "None" }
+		'{{"days":{0},"ena":{1},"comp":{2},"tt":"{3}","mt":"{4}"}}' -f $S_DaysVal, $S_Ena, $S_Comp, $S_Tt, $S_Mt
 	}) -join ","
 
 	# Build table rows with data attributes
-	$tableRows = ($report | Sort-Object DisplayName | ForEach-Object {
-		$daysVal = if ($null -ne $_.DaysSinceLastActivity) { $_.DaysSinceLastActivity } else { -1 }
-		$enabled = if ($_.AccountEnabled) { "Yes" } else { "No" }
-		$compliant = if ($_.IsCompliant -eq $true) { "Yes" } elseif ($_.IsCompliant -eq $false) { "No" } else { "-" }
-		$trust = if ($_.TrustType) { [System.Net.WebUtility]::HtmlEncode($_.TrustType) } else { "-" }
-		$mgmt = if ($_.ManagementType) { [System.Net.WebUtility]::HtmlEncode($_.ManagementType) } else { "-" }
-		$regDate = if ($_.RegistrationDateTime) { ([datetime]$_.RegistrationDateTime).ToString("dd MMM yyyy") } else { "-" }
-		$lastActivity = if ($_.ApproximateLastSignInDateTime) { ([datetime]$_.ApproximateLastSignInDateTime).ToString("dd MMM yyyy") } else { "-" }
-		$enrollToActivity = if ($null -ne $_.DaysEnrollmentToLastActivity) { "$($_.DaysEnrollmentToLastActivity) days" } else { "-" }
-		$sinceActivity = if ($null -ne $_.DaysSinceLastActivity) { "$($_.DaysSinceLastActivity) days" } else { "Never" }
-		$enabledClass = if ($_.AccountEnabled) { "active" } else { "disabled" }
-		$compliantClass = if ($_.IsCompliant -eq $true) { "active" } elseif ($_.IsCompliant -eq $false) { "inactive" } else { "" }
-		$statusClass = switch ($_.Status) { "Active" { "active" } "Inactive" { "inactive" } "Disabled" { "disabled" } }
+	$S_TableRows = ($S_Report | Sort-Object DisplayName | ForEach-Object {
+		$S_DaysVal = if ($null -ne $_.DaysSinceLastActivity)
+                                                                       {
+ $_.DaysSinceLastActivity } else
+                                                                       {
+ -1 }
+		$S_Enabled = if ($_.AccountEnabled)
+                                                                             {
+ "Yes" } else
+                                       {
+ "No" }
+		$S_Compliant = if ($_.IsCompliant -eq $true)
+                                               {
+ "Yes" } elseif ($_.IsCompliant -eq $false)
+                                                             {
+ "No" } else
+                                                                                           {
+ "-" }
+		$S_Trust = if ($_.TrustType)
+                                                                                  {
+ [System.Net.WebUtility]::HtmlEncode($_.TrustType) } else
+                                                                                                                 {
+ "-" }
+		$S_Mgmt = if ($_.ManagementType)
+                                                                                                                        {
+ [System.Net.WebUtility]::HtmlEncode($_.ManagementType) } else
+                                    {
+ "-" }
+		$S_RegDate = if ($_.RegistrationDateTime)
+                                                                      {
+ ([datetime]$_.RegistrationDateTime).ToString("dd MMM yyyy") } else
+                                                                                                          {
+ "-" }
+		$S_LastActivity = if ($_.ApproximateLastSignInDateTime)
+                                                                                                                 {
+ ([datetime]$_.ApproximateLastSignInDateTime).ToString("dd MMM yyyy") } else
+                                                                                                                  {
+ "-" }
+		$S_EnrollToActivity = if ($null -ne $_.DaysEnrollmentToLastActivity)
+                                                                                                                                               {
+ "$($_.DaysEnrollmentToLastActivity) days" } else
+                                                                                                                                                {
+ "-" }
+		$S_SinceActivity = if ($null -ne $_.DaysSinceLastActivity)
+                                                                                                                                                                                                         {
+ "$($_.DaysSinceLastActivity) days" } else
+                                                                                                                                                                                                          {
+ "Never" }
+		$S_EnabledClass = if ($_.AccountEnabled)
+          {
+ "active" } else
+                                            {
+ "disabled" }
+		$S_CompliantClass = if ($_.IsCompliant -eq $true)
+             {
+ "active" } elseif ($_.IsCompliant -eq $false)
+              {
+ "inactive" } else
+               {
+ "" }
+		$S_StatusClass = switch ($_.Status)
+                                                                                                                              {
+ "Active"
+                                     {
+ "active" } "Inactive"
+                                     {
+ "inactive" } "Disabled"
+                                                                                                                                                                {
+ "disabled" } }
 
-		"<tr data-days=`"$daysVal`" data-ena=`"$(if ($_.AccountEnabled) { '1' } else { '0' })`"><td>$([System.Net.WebUtility]::HtmlEncode($_.DisplayName))</td><td><span class=`"badge badge-$enabledClass`">$enabled</span></td><td>$([System.Net.WebUtility]::HtmlEncode($_.OperatingSystem))</td><td>$([System.Net.WebUtility]::HtmlEncode($_.OperatingSystemVersion))</td><td>$trust</td><td>$mgmt</td><td><span class=`"badge badge-$compliantClass`">$compliant</span></td><td>$regDate</td><td>$lastActivity</td><td>$enrollToActivity</td><td>$sinceActivity</td><td><span class=`"badge badge-$statusClass`">$($_.Status)</span></td></tr>"
+		"<tr data-days=`"$S_DaysVal`" data-ena=`"$(if ($_.AccountEnabled) { '1' } else { '0' })`"><td>$([System.Net.WebUtility]::HtmlEncode($_.DisplayName))</td><td><span class=`"badge badge-$S_EnabledClass`">$S_Enabled</span></td><td>$([System.Net.WebUtility]::HtmlEncode($_.OperatingSystem))</td><td>$([System.Net.WebUtility]::HtmlEncode($_.OperatingSystemVersion))</td><td>$S_Trust</td><td>$S_Mgmt</td><td><span class=`"badge badge-$S_CompliantClass`">$S_Compliant</span></td><td>$S_RegDate</td><td>$S_LastActivity</td><td>$S_EnrollToActivity</td><td>$S_SinceActivity</td><td><span class=`"badge badge-$S_StatusClass`">$($_.Status)</span></td></tr>"
 	}) -join "`n"
 
-	$html = @"
+	$S_Html = @"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -263,7 +388,7 @@ try {
 <div class="header">
   <div class="header-left">
     <h1>All Windows Devices Report</h1>
-    <p>Tenant: $([System.Net.WebUtility]::HtmlEncode($tenantDisplayName)) ($tenantId) &nbsp;|&nbsp; Generated: $reportDate</p>
+    <p>Tenant: $([System.Net.WebUtility]::HtmlEncode($S_TenantDisplayName)) ($S_TenantId) &nbsp;|&nbsp; Generated: $S_ReportDate</p>
   </div>
   <div class="header-right">
     <label for="thresholdSelect">Inactive Threshold:</label>
@@ -280,7 +405,7 @@ try {
 <!-- OVERVIEW -->
 <div class="section-title">Overview</div>
 <div class="summary-cards">
-  <div class="card"><div class="label">Total Windows Devices</div><div class="value" style="color:#1a1a2e;" id="cardTotal">$totalDevices</div></div>
+  <div class="card"><div class="label">Total Windows Devices</div><div class="value" style="color:#1a1a2e;" id="cardTotal">$S_TotalDevices</div></div>
   <div class="card"><div class="label">Active</div><div class="value" style="color:#27ae60;" id="cardActive">-</div><div class="sub" id="cardActivePct"></div></div>
   <div class="card"><div class="label">Inactive</div><div class="value" style="color:#e74c3c;" id="cardInactive">-</div><div class="sub" id="cardInactivePct"></div></div>
   <div class="card"><div class="label">Disabled</div><div class="value" style="color:#6c757d;" id="cardDisabled">-</div><div class="sub" id="cardDisabledPct"></div></div>
@@ -339,7 +464,7 @@ try {
       <th onclick="sortTable(11)">Status</th>
     </tr></thead>
     <tbody>
-$tableRows
+$S_TableRows
     </tbody>
   </table>
 </div>
@@ -347,7 +472,7 @@ $tableRows
 <div class="footer">Report generated by ReportAllWindowsDevices.ps1</div>
 
 <script>
-var deviceData = [$devicesJson];
+var deviceData = [$S_DevicesJson];
 var chartColors = ['#3498db','#27ae60','#e74c3c','#f39c12','#9b59b6','#1abc9c','#e67e22','#2c3e50','#95a5a6','#d35400'];
 
 var chartOpts = function(pos) {
@@ -503,41 +628,46 @@ applyThreshold();
 </html>
 "@
 
-	$htmlReportFile = Join-Path $reportFolder ("ReportAllWindowsDevices_{0}.html" -f $S_Timestamp)
-	$html | Out-File -FilePath $htmlReportFile -Encoding UTF8
+	$S_HtmlReportFile = Join-Path $S_ReportFolder ("ReportAllWindowsDevices_{0}.html" -f $S_Timestamp)
+	$S_Html | Out-File -FilePath $S_HtmlReportFile -Encoding UTF8
 
 	# --- Console summary ---
 	Write-Host ""
 	Write-Host "All Windows Devices Report" -ForegroundColor Cyan
 	Write-Host "--------------------------------------------"
-	Write-Host ("Tenant                   : {0} ({1})" -f $tenantDisplayName, $tenantId)
-	Write-Host ("Total Windows devices    : {0}" -f $totalDevices)
-	Write-Host ("Active                   : {0}  ({1}% of enabled)" -f $totalActive, $percentActive) -ForegroundColor Green
-	Write-Host ("Inactive                 : {0}  ({1}% of enabled)" -f $totalInactive, $percentInactive) -ForegroundColor Red
-	Write-Host ("Disabled                 : {0}" -f $totalDisabled) -ForegroundColor DarkGray
-	Write-Host ("Compliant                : {0}" -f $totalCompliant) -ForegroundColor Green
+	Write-Host ("Tenant                   : {0} ({1})" -f $S_TenantDisplayName, $S_TenantId)
+	Write-Host ("Total Windows devices    : {0}" -f $S_TotalDevices)
+	Write-Host ("Active                   : {0}  ({1}% of enabled)" -f $S_TotalActive, $S_PercentActive) -ForegroundColor Green
+	Write-Host ("Inactive                 : {0}  ({1}% of enabled)" -f $S_TotalInactive, $S_PercentInactive) -ForegroundColor Red
+	Write-Host ("Disabled                 : {0}" -f $S_TotalDisabled) -ForegroundColor DarkGray
+	Write-Host ("Compliant                : {0}" -f $S_TotalCompliant) -ForegroundColor Green
 	Write-Host ""
 	Write-Host "Trust Types" -ForegroundColor Cyan
-	foreach ($tt in $trustSummary) {
-		Write-Host ("  {0,-25}: {1}" -f $tt.TrustType, $tt.Count)
+	foreach ($S_Tt in $S_TrustSummary)
+                                               {
+		Write-Host ("  {0,-25}: {1}" -f $S_Tt.TrustType, $S_Tt.Count)
 	}
 	Write-Host ""
 	Write-Host "Management Types" -ForegroundColor Cyan
-	foreach ($mt in $mgmtSummary) {
-		Write-Host ("  {0,-25}: {1}" -f $mt.ManagementType, $mt.Count)
+	foreach ($S_Mt in $S_MgmtSummary)
+                                                    {
+		Write-Host ("  {0,-25}: {1}" -f $S_Mt.ManagementType, $S_Mt.Count)
 	}
 	Write-Host ""
 	Write-Host ("Inactive days threshold  : {0}" -f $InactiveDays)
-	Write-Host ("Devices in export        : {0}" -f $totalDevices)
-	Write-Host ("CSV report               : {0}" -f $csvFile) -ForegroundColor Yellow
-	Write-Host ("HTML report              : {0}" -f $htmlReportFile) -ForegroundColor Yellow
+	Write-Host ("Devices in export        : {0}" -f $S_TotalDevices)
+	Write-Host ("CSV report               : {0}" -f $S_CsvFile) -ForegroundColor Yellow
+	Write-Host ("HTML report              : {0}" -f $S_HtmlReportFile) -ForegroundColor Yellow
 
 	$S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph? (Y/N)"
-	if ($S_DisconnectChoice -match '^(y|yes)$') {
+	if ($S_DisconnectChoice -match '^(y|yes)$')
+                                                                         {
 		Disconnect-MgGraph -ErrorAction SilentlyContinue
 	}
 }
-catch {
+catch
+ {
 	Write-Error $_
 	exit 1
 }
+

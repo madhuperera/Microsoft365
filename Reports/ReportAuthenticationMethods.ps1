@@ -87,62 +87,72 @@ if ($S_ContextConfirmation -ne 'Y')
 }
 
 Write-Host "Finding licensed Azure AD accounts"
-[array]$S_Users = Get-MgUser -Filter "assignedLicenses/`$count ne 0 and userType eq 'Member'" -ConsistencyLevel eventual -CountVariable Records -All
-If (!($S_Users)) { Write-Host "No licensed users found in Azure AD... exiting!"; break }
+[array]$S_Users = Get-MgUser -Filter "assignedLicenses/`$count ne 0 and userType eq 'Member'" -ConsistencyLevel eventual -CountVariable S_Records -All
+if (!($S_Users))
+{
+    Write-Host "No licensed users found in Azure AD... exiting!"
+    break
+}
 
-$i = 0
+$S_Counter = 0
 $S_Report = [System.Collections.Generic.List[Object]]::new()
-ForEach ($User in $S_Users) {
- $i++
- Write-Host ("Processing user {0} {1}/{2}." -f $User.DisplayName, $i, $S_Users.Count)
- $AuthMethods = Get-MgUserAuthenticationMethod -UserId $User.Id
- ForEach ($AuthMethod in $AuthMethods) {
-  $P1 = $Null; $P2 = $Null
-  $Method = $AuthMethod.AdditionalProperties['@odata.type']
-  Switch ($Method) {
-     "#microsoft.graph.passwordAuthenticationMethod" {
-       $DisplayMethod = "Password"
-       $P1 = "Traditional password"
-     }
-     "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod" {
-       $DisplayMethod = "Microsoft Authenticator" 
-       $P1 = $AuthMethod.AdditionalProperties['displayName']
-       $P2 = $AuthMethod.AdditionalProperties['deviceTag'] + ": " + $AuthMethod.AdditionalProperties['clientAppName'] 
-     }
-     "#microsoft.graph.fido2AuthenticationMethod" {
-       $DisplayMethod = "Passkey"
-       $P1 = $AuthMethod.AdditionalProperties['displayName']
-       $P2 = If ($AuthMethod.AdditionalProperties['creationDateTime']) { Get-Date($AuthMethod.AdditionalProperties['creationDateTime']) -format g } Else { $Null }
-     }
-     "#microsoft.graph.phoneAuthenticationMethod" {
-       $DisplayMethod = "Phone" 
-       $P1 = "Number: " + $AuthMethod.AdditionalProperties['phoneNumber']
-       $P2 = "Type: " + $AuthMethod.AdditionalProperties['phoneType']
-     }
-    "#microsoft.graph.emailAuthenticationMethod" {
-      $DisplayMethod = "Email"
-      $P1 = "Address: " + $AuthMethod.AdditionalProperties['emailAddress']
-     }
-    "#microsoft.graph.passwordlessMicrosoftAuthenticatorAuthenticationMethod" {
-      $DisplayMethod = "Microsoft Authentication Passwordless"
-      $P1 = $AuthMethod.AdditionalProperties['displayName']
-      $P2 = If ($AuthMethod.AdditionalProperties['creationDateTime']) { Get-Date($AuthMethod.AdditionalProperties['creationDateTime']) -format g } Else { $Null }
-    }
-     "Default" {
-      $DisplayMethod = $Method
-    }
-  }
-  
-  $ReportLine   = [PSCustomObject] @{ 
-     User   = $User.DisplayName
-     UPN    = $User.UserPrincipalName
-     Method = $DisplayMethod
-     Id     = $AuthMethod.Id
-     P1     = $P1
-     P2     = $P2 
-     UserId = $User.Id }
-  $S_Report.Add($ReportLine)
- } #End ForEach Authentication Method
+ForEach ($S_User in $S_Users)
+{
+    $S_Counter++
+    Write-Host ("Processing user {0} {1}/{2}." -f $S_User.DisplayName, $S_Counter, $S_Users.Count)
+    $S_AuthMethods = Get-MgUserAuthenticationMethod -UserId $S_User.Id
+    Start-Sleep -Milliseconds $S_GraphRequestDelayMilliseconds
+    ForEach ($S_AuthMethod in $S_AuthMethods)
+    {
+        $S_P1 = $Null
+        $S_P2 = $Null
+        $S_Method = $S_AuthMethod.AdditionalProperties['@odata.type']
+        Switch ($S_Method)
+        {
+            "#microsoft.graph.passwordAuthenticationMethod" {
+                $S_DisplayMethod = "Password"
+                $S_P1 = "Traditional password"
+            }
+            "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod" {
+                $S_DisplayMethod = "Microsoft Authenticator"
+                $S_P1 = $S_AuthMethod.AdditionalProperties['displayName']
+                $S_P2 = $S_AuthMethod.AdditionalProperties['deviceTag'] + ": " + $S_AuthMethod.AdditionalProperties['clientAppName']
+            }
+            "#microsoft.graph.fido2AuthenticationMethod" {
+                $S_DisplayMethod = "Passkey"
+                $S_P1 = $S_AuthMethod.AdditionalProperties['displayName']
+                $S_P2 = If ($S_AuthMethod.AdditionalProperties['creationDateTime']) { Get-Date($S_AuthMethod.AdditionalProperties['creationDateTime']) -format g } Else { $Null }
+            }
+            "#microsoft.graph.phoneAuthenticationMethod" {
+                $S_DisplayMethod = "Phone"
+                $S_P1 = "Number: " + $S_AuthMethod.AdditionalProperties['phoneNumber']
+                $S_P2 = "Type: " + $S_AuthMethod.AdditionalProperties['phoneType']
+            }
+            "#microsoft.graph.emailAuthenticationMethod" {
+                $S_DisplayMethod = "Email"
+                $S_P1 = "Address: " + $S_AuthMethod.AdditionalProperties['emailAddress']
+            }
+            "#microsoft.graph.passwordlessMicrosoftAuthenticatorAuthenticationMethod" {
+                $S_DisplayMethod = "Microsoft Authentication Passwordless"
+                $S_P1 = $S_AuthMethod.AdditionalProperties['displayName']
+                $S_P2 = If ($S_AuthMethod.AdditionalProperties['creationDateTime']) { Get-Date($S_AuthMethod.AdditionalProperties['creationDateTime']) -format g } Else { $Null }
+            }
+            "Default" {
+                $S_DisplayMethod = $S_Method
+            }
+        }
+
+        $S_ReportLine = [PSCustomObject] @{
+            User   = $S_User.DisplayName
+            UPN    = $S_User.UserPrincipalName
+            Method = $S_DisplayMethod
+            Id     = $S_AuthMethod.Id
+            P1     = $S_P1
+            P2     = $S_P2
+            UserId = $S_User.Id
+        }
+        $S_Report.Add($S_ReportLine)
+    } #End ForEach Authentication Method
 } #End ForEach User
    
 $S_Report = $S_Report | Sort-Object User 
