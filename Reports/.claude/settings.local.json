@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_microsoft-docs_microsoft-learn__microsoft_docs_search"
+    ]
+  }
+}
