@@ -30,7 +30,7 @@
 #>
 
 [CmdletBinding()]
-param (
+param(
     [Parameter(Mandatory = $false)]
     [ValidateRange(1, 100)]
     [int]$Threshold = 85,

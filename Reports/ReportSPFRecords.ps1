@@ -14,7 +14,7 @@
 #>
 
 [CmdletBinding()]
-param ()
+param()
 
 $ErrorActionPreference = 'Stop'
 

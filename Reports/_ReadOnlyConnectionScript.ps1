@@ -43,8 +43,7 @@
 #>
 
 [CmdletBinding()]
-param
-(
+param(
     [Parameter(Mandatory = $false)]
     [switch]$Force
 )
