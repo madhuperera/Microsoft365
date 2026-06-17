@@ -138,7 +138,7 @@ elseif ($S_ExistingContext -and $Force)
 Write-Host "Connecting to Microsoft Graph with the read-only scope set..." -ForegroundColor Cyan
 try
 {
-    Connect-MgGraph -Scopes $S_ReadOnlyGraphScopes -NoWelcome
+    Connect-MgGraph -Scopes $S_ReadOnlyGraphScopes -NoWelcome -ContextScope Process
 }
 catch
 {
