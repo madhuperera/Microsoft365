@@ -163,11 +163,29 @@ try
 
         $F_OwnerCount  = 0
         $F_MemberCount = 0
+        $F_OwnerNames  = @()
+        $F_OwnerUpns   = @()
 
         try
         {
             $F_Owners = Get-MgGroupOwner -GroupId $S_Group.Id -All -ErrorAction Stop
             $F_OwnerCount = ($F_Owners | Measure-Object).Count
+
+            foreach ($F_Owner in $F_Owners)
+            {
+                $F_OwnerName = $null
+                $F_OwnerUpn  = $null
+                if ($F_Owner.AdditionalProperties)
+                {
+                    if ($F_Owner.AdditionalProperties.ContainsKey('displayName'))        { $F_OwnerName = [string]$F_Owner.AdditionalProperties['displayName'] }
+                    if ($F_Owner.AdditionalProperties.ContainsKey('userPrincipalName')) { $F_OwnerUpn  = [string]$F_Owner.AdditionalProperties['userPrincipalName'] }
+                    if (-not $F_OwnerUpn -and $F_Owner.AdditionalProperties.ContainsKey('mail')) { $F_OwnerUpn = [string]$F_Owner.AdditionalProperties['mail'] }
+                }
+                if (-not $F_OwnerName) { $F_OwnerName = if ($F_OwnerUpn) { $F_OwnerUpn } else { $F_Owner.Id } }
+                $F_OwnerNames += $F_OwnerName
+                if ($F_OwnerUpn) { $F_OwnerUpns += $F_OwnerUpn }
+            }
+
             Start-Sleep -Milliseconds $S_GraphRequestDelayMilliseconds
         }
         catch
@@ -191,6 +209,8 @@ try
             MailNickname    = $S_Group.MailNickname
             Visibility      = $S_Group.Visibility
             OwnerCount      = $F_OwnerCount
+            OwnerNames      = ($F_OwnerNames -join '; ')
+            OwnerUpns       = ($F_OwnerUpns  -join '; ')
             MemberCount     = $F_MemberCount
             CreatedDateTime = $S_Group.CreatedDateTime
             GroupId         = $S_Group.Id
@@ -294,7 +314,18 @@ try
         $F_RowClass     = if ($F_Visibility -eq 'Public' -and $_.OwnerCount -eq 0) { 'row-critical' } else { '' }
         $F_OwnerRisk    = if ($_.OwnerCount -eq 0) { 'none' } elseif ($_.OwnerCount -eq 1) { 'single' } else { 'ok' }
 
-        "<tr class=`"$F_RowClass`" data-vis=`"$($F_Visibility.ToLower())`" data-ownerrisk=`"$F_OwnerRisk`"><td>$([System.Net.WebUtility]::HtmlEncode($_.DisplayName))</td><td>$([System.Net.WebUtility]::HtmlEncode($_.MailNickname))</td><td><span class=`"badge $F_VisClass`">$F_Visibility</span></td><td><span class=`"badge $F_OwnerClass`">$($_.OwnerCount)</span></td><td>$($_.MemberCount)</td><td>$F_Created</td><td>$F_Description</td></tr>"
+        # Owner cell: list display names, with UPNs as tooltip; data-owners attribute holds lowercased names+UPNs for the filter
+        if ($_.OwnerCount -gt 0 -and $_.OwnerNames) {
+            $F_OwnerNamesHtml = [System.Net.WebUtility]::HtmlEncode([string]$_.OwnerNames).Replace('; ', '<br>')
+            $F_OwnerTitle     = [System.Net.WebUtility]::HtmlEncode([string]$_.OwnerUpns)
+            $F_OwnerCell      = "<td title=`"$F_OwnerTitle`">$F_OwnerNamesHtml</td>"
+        } else {
+            $F_OwnerCell = '<td><em style="color:#c0392b;">(none)</em></td>'
+        }
+        $F_OwnerSearch = (([string]$_.OwnerNames + ' ' + [string]$_.OwnerUpns)).ToLower()
+        $F_OwnerSearchAttr = [System.Net.WebUtility]::HtmlEncode($F_OwnerSearch)
+
+        "<tr class=`"$F_RowClass`" data-vis=`"$($F_Visibility.ToLower())`" data-ownerrisk=`"$F_OwnerRisk`" data-owners=`"$F_OwnerSearchAttr`"><td>$([System.Net.WebUtility]::HtmlEncode($_.DisplayName))</td><td>$([System.Net.WebUtility]::HtmlEncode($_.MailNickname))</td><td><span class=`"badge $F_VisClass`">$F_Visibility</span></td><td><span class=`"badge $F_OwnerClass`">$($_.OwnerCount)</span></td>$F_OwnerCell<td>$($_.MemberCount)</td><td>$F_Created</td><td>$F_Description</td></tr>"
     }) -join "`n"
 
     $S_Html = @"
@@ -408,6 +439,7 @@ try
   <h2>Teams Group Details</h2>
   <div class="table-controls">
     <input type="text" id="searchBox" placeholder="Search by name, mail nickname, description..." onkeyup="filterTable()" />
+    <input type="text" id="ownerSearch" placeholder="Filter by owner name or UPN..." onkeyup="filterTable()" />
     <select id="visFilter" onchange="filterTable()">
       <option value="all">All Visibility</option>
       <option value="public">Public Only</option>
@@ -428,9 +460,10 @@ try
       <th onclick="sortTable(1)">Mail Nickname</th>
       <th onclick="sortTable(2)">Visibility</th>
       <th onclick="sortTable(3)">Owners</th>
-      <th onclick="sortTable(4)">Members</th>
-      <th onclick="sortTable(5)">Created</th>
-      <th onclick="sortTable(6)">Description</th>
+      <th onclick="sortTable(4)">Owner Names</th>
+      <th onclick="sortTable(5)">Members</th>
+      <th onclick="sortTable(6)">Created</th>
+      <th onclick="sortTable(7)">Description</th>
     </tr></thead>
     <tbody>
 $S_TableRows
@@ -465,6 +498,7 @@ new Chart(document.getElementById('memChart'), {
 
 function filterTable() {
   var search = document.getElementById('searchBox').value.toLowerCase();
+  var ownerSearch = document.getElementById('ownerSearch').value.toLowerCase().trim();
   var vis = document.getElementById('visFilter').value;
   var owner = document.getElementById('ownerFilter').value;
   var rows = document.querySelectorAll('#teamsTable tbody tr');
@@ -473,7 +507,9 @@ function filterTable() {
     var text = row.textContent.toLowerCase();
     var rowVis = row.getAttribute('data-vis');
     var rowOwner = row.getAttribute('data-ownerrisk');
+    var rowOwners = row.getAttribute('data-owners') || '';
     var matchSearch = !search || text.indexOf(search) !== -1;
+    var matchOwnerSearch = !ownerSearch || rowOwners.indexOf(ownerSearch) !== -1;
     var matchVis = vis === 'all' || rowVis === vis;
     var matchOwner;
     if (owner === 'all') {
@@ -483,7 +519,7 @@ function filterTable() {
     } else {
       matchOwner = rowOwner === owner;
     }
-    if (matchSearch && matchVis && matchOwner) {
+    if (matchSearch && matchOwnerSearch && matchVis && matchOwner) {
       row.classList.remove('hidden-row');
       visible++;
     } else {
