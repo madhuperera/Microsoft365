@@ -413,13 +413,13 @@ try
 
 <!-- ACTIVE DEVICES: MANAGEMENT TYPE -->
 <div class="dist-section">
-  <div class="section-title">Active Devices — Management Type</div>
+  <div class="section-title">Active Devices &mdash; Management Type</div>
   <div class="dist-cards" id="activeMgmtCards"></div>
 </div>
 
 <!-- ACTIVE DEVICES: TRUST TYPE -->
 <div class="dist-section">
-  <div class="section-title">Active Devices — Trust Type (Join Type)</div>
+  <div class="section-title">Active Devices &mdash; Trust Type (Join Type)</div>
   <div class="dist-cards" id="activeTrustCards"></div>
 </div>
 
