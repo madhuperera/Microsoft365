@@ -65,6 +65,8 @@ $S_RequiredGraphScopes = @(
     'Policy.Read.All'
 )
 
+$S_GraphRequestDelayMilliseconds = 5
+
 $S_ExistingContext = Get-MgContext
 if ($S_ExistingContext)
 {

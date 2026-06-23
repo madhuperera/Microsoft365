@@ -1,4 +1,4 @@
-#Requires -Modules Microsoft.Graph.Users
+#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.Users
 
 <#
 .SYNOPSIS
@@ -49,6 +49,8 @@ $ErrorActionPreference = 'Stop'
 $S_RequiredGraphScopes = @(
     'AuditLog.Read.All'
 )
+
+$S_GraphRequestDelayMilliseconds = 5
 
 # ---------------------------------------------------------------------------
 # Connection
