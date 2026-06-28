@@ -37,6 +37,7 @@
   - [Reports — Licensing](#reports--licensing)
   - [Reports — DNS and email security](#reports--dns-and-email-security)
   - [Reports — Microsoft Teams](#reports--microsoft-teams)
+  - [Reports — Microsoft Defender](#reports--microsoft-defender)
   - [Exchange — Calendar permission management](#exchange--calendar-permission-management)
   - [Exchange — Transport rules](#exchange--transport-rules)
   - [Exchange — Anti-malware policy](#exchange--anti-malware-policy)
@@ -57,6 +58,8 @@ Scripts cover the following Microsoft 365 workloads:
 - Entra ID (Azure Active Directory) — users, guests, devices, roles, and application registrations
 - Exchange Online — mailboxes, calendar permissions, and DNS email security records
 - Microsoft Intune — managed application inventory, device compliance, and Windows/mobile device posture reporting
+- Microsoft Teams — Teams governance and tenant security posture reporting
+- Microsoft Defender for Endpoint — network device inventory and firmware reporting
 - Microsoft 365 licensing — plan and SKU reporting
 - Incident response — audit log analysis and sign-in investigation
 
@@ -243,7 +246,23 @@ All scripts in this section are located in [`Reports/`](Reports/).
 
 | Script | Description | Key permissions / modules |
 |--------|-------------|--------------------------|
+| [`ReportMSTeamsSettings.ps1`](Reports/ReportMSTeamsSettings.ps1) | Reports tenant-wide Microsoft Teams governance and security settings, and lists Teams with no owner. Exports settings and ownerless-Teams data to CSV and HTML. | `MicrosoftTeams` |
 | [`ReportTeamsGroups.ps1`](Reports/ReportTeamsGroups.ps1) | Reports on all Microsoft Teams-enabled groups in the tenant, including display name, mail nickname, visibility (Public/Private), creation date, and owner and member counts. Exports to CSV. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Groups`, `Microsoft.Graph.Teams`, `Microsoft.Graph.Identity.DirectoryManagement`; `Group.Read.All`, `GroupMember.Read.All`, `Team.ReadBasic.All` |
+
+</details>
+
+---
+
+### Reports — Microsoft Defender
+
+All scripts in this section are located in [`Reports/`](Reports/).
+
+<details>
+<summary>View Microsoft Defender reporting scripts</summary>
+
+| Script | Description | Key permissions / modules |
+|--------|-------------|--------------------------|
+| [`ReportMdeNetworkDevices.ps1`](Reports/ReportMdeNetworkDevices.ps1) | Reports on network devices discovered by Microsoft Defender for Endpoint, including device inventory and firmware/hardware detail from MDE APIs. Supports a lookback filter and test mode. Exports to CSV and HTML. | Entra ID application permission `Machine.Read.All` (WindowsDefenderATP) |
 
 </details>
 
