@@ -20,7 +20,7 @@
 #>
 
 [CmdletBinding()]
-param (
+param(
     [Parameter(Mandatory = $true)]
     [string]$DistributionGroupName,
 
