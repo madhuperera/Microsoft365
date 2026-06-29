@@ -57,6 +57,7 @@ Scripts cover the following Microsoft 365 workloads:
 
 - Entra ID (Azure Active Directory) — users, guests, devices, roles, and application registrations
 - Exchange Online — mailboxes, calendar permissions, and DNS email security records
+- Microsoft Teams — Teams-enabled groups and tenant-wide governance or security settings
 - Microsoft Intune — managed application inventory, device compliance, and Windows/mobile device posture reporting
 - Microsoft Teams — Teams governance and tenant security posture reporting
 - Microsoft Defender for Endpoint — network device inventory and firmware reporting
@@ -127,13 +128,16 @@ Install-Module Microsoft.Graph.Teams -Scope CurrentUser
 
 # Exchange Online Management
 Install-Module ExchangeOnlineManagement -Scope CurrentUser
+
+# Microsoft Teams Management
+Install-Module MicrosoftTeams -Scope CurrentUser
 ```
 
 ### Permissions
 
 Required permissions vary per script. High-level requirements are listed in the script catalogue below. Always check the individual script header for the exact scopes or roles required.
 
-Most reporting scripts require **read-only** Microsoft Graph delegated permissions or Exchange Online read access. Scripts that can disable accounts require additional write permissions.
+Most reporting scripts require **read-only** Microsoft Graph delegated permissions, Exchange Online read access, or Microsoft Teams read access. Scripts that can disable accounts require additional write permissions.
 
 ---
 
@@ -246,7 +250,7 @@ All scripts in this section are located in [`Reports/`](Reports/).
 
 | Script | Description | Key permissions / modules |
 |--------|-------------|--------------------------|
-| [`ReportMSTeamsSettings.ps1`](Reports/ReportMSTeamsSettings.ps1) | Reports tenant-wide Microsoft Teams governance and security settings, and lists Teams with no owner. Exports settings and ownerless-Teams data to CSV and HTML. | `MicrosoftTeams` |
+| [`ReportMSTeamsSettings.ps1`](Reports/ReportMSTeamsSettings.ps1) | Reports tenant-wide Microsoft Teams governance and security settings and lists any Teams that have no owner. Exports CSV and HTML reports. | `MicrosoftTeams` — Global Reader, Teams Administrator, or Teams Communications Administrator |
 | [`ReportTeamsGroups.ps1`](Reports/ReportTeamsGroups.ps1) | Reports on all Microsoft Teams-enabled groups in the tenant, including display name, mail nickname, visibility (Public/Private), creation date, and owner and member counts. Exports to CSV. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Groups`, `Microsoft.Graph.Teams`, `Microsoft.Graph.Identity.DirectoryManagement`; `Group.Read.All`, `GroupMember.Read.All`, `Team.ReadBasic.All` |
 
 </details>
