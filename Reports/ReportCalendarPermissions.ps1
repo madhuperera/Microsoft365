@@ -17,7 +17,7 @@
 #>
 
 [CmdletBinding()]
-param (
+param(
     [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()]
     [string]$DistributionGroupName
 )

@@ -39,7 +39,7 @@
 #>
 
 [CmdletBinding()]
-param (
+param(
     # One or more attacker IPs, e.g. -IPAddresses "1.2.3.4","5.6.7.8"
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]

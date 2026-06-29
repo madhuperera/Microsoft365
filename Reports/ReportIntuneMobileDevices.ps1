@@ -55,6 +55,8 @@ $S_RequiredGraphScopes = @(
     'Organization.Read.All'
 )
 
+$S_GraphRequestDelayMilliseconds = 5
+
 try
 {
     if (-not (Get-Module -ListAvailable -Name Microsoft.Graph.Authentication))

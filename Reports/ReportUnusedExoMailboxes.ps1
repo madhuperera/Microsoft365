@@ -31,7 +31,7 @@
 #>
 
 [CmdletBinding()]
-param (
+param(
     [Parameter(Mandatory = $false)]
     [bool]$ReportInExcel = $false,
 

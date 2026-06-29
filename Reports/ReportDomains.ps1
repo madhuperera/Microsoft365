@@ -68,8 +68,7 @@
 #>
 
 [CmdletBinding()]
-param
-(
+param(
     [Parameter(Mandatory = $false)]
     [ValidateNotNullOrEmpty()]
     [string]$OutputPath,

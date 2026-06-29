@@ -1,4 +1,4 @@
-#Requires -Modules Microsoft.Graph.Users
+#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.Users
 
 <#
 .SYNOPSIS
@@ -26,7 +26,7 @@
 #>
 
 [CmdletBinding()]
-param (
+param(
     # Number of days to look back from now (UTC). Supported range: 1 to 30.
     [Parameter(Mandatory = $true)]
     [ValidateRange(1, 30)]
@@ -49,6 +49,8 @@ $ErrorActionPreference = 'Stop'
 $S_RequiredGraphScopes = @(
     'AuditLog.Read.All'
 )
+
+$S_GraphRequestDelayMilliseconds = 5
 
 # ---------------------------------------------------------------------------
 # Connection
