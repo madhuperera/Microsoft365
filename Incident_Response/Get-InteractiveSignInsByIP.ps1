@@ -1,4 +1,4 @@
-#Requires -Modules Microsoft.Graph.Users
+#Requires -Modules Microsoft.Graph.Authentication, Microsoft.Graph.Users
 
 <#
 .SYNOPSIS
