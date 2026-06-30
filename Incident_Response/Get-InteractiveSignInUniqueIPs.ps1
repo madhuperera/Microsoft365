@@ -130,7 +130,8 @@ Write-Host "  Tenant ID: $S_TenantId" -ForegroundColor Cyan
 Write-Host ("=" * 70) -ForegroundColor Cyan
 Write-Host ""
 
-function Get-GraphNextLink {
+function Get-GraphNextLink
+{
     param(
         [Parameter(Mandatory = $false)]
         [object]$Response
@@ -149,7 +150,8 @@ function Get-GraphNextLink {
     return $null
 }
 
-function Get-GraphPageValues {
+function Get-GraphPageValues
+{
     param(
         [Parameter(Mandatory = $false)]
         [object]$Response
