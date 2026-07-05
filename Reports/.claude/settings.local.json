@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "mcp__plugin_microsoft-docs_microsoft-learn__microsoft_docs_search"
+      "mcp__plugin_microsoft-docs_microsoft-learn__microsoft_docs_search",
+      "Bash(pwsh --version)",
+      "Bash(cp ReportDomains.ps1 ReportDomains_v2.ps1)",
+      "Bash(cp ReportAuthenticationMethods.ps1 ReportAuthenticationMethods_v2.ps1)",
+      "Bash(cp ReportUnusedExoMailboxes.ps1 ReportUnusedExoMailboxes_v2.ps1)",
+      "Bash(cd *)"
     ]
   }
 }
