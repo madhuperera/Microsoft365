@@ -59,7 +59,6 @@ Scripts cover the following Microsoft 365 workloads:
 - Exchange Online — mailboxes, calendar permissions, and DNS email security records
 - Microsoft Teams — Teams-enabled groups and tenant-wide governance or security settings
 - Microsoft Intune — managed application inventory, device compliance, and Windows/mobile device posture reporting
-- Microsoft Teams — Teams governance and tenant security posture reporting
 - Microsoft Defender for Endpoint — network device inventory and firmware reporting
 - Microsoft 365 licensing — plan and SKU reporting
 - Incident response — audit log analysis and sign-in investigation
@@ -170,6 +169,14 @@ All scripts in this section are located in [`Reports/`](Reports/).
 | [`ReportAADAuthenticationMethods.ps1`](Reports/ReportAADAuthenticationMethods.ps1) | Reports Windows Hello for Business authentication method registrations for enabled Entra ID users. Exports to CSV. | `UserAuthenticationMethod.Read.All` |
 
 </details>
+
+Supporting documentation for the `ReportMemberMFA_*` scripts:
+
+| File | Description |
+|------|-------------|
+| [`ReportMemberMFA-Guide.html`](Reports/ReportMemberMFA-Guide.html) | Reference guide for interpreting `ReportMemberMFA` report outputs. |
+| [`ReportMemberMFA-CHANGELOG.md`](Reports/ReportMemberMFA-CHANGELOG.md) | Version history notes for the `ReportMemberMFA` script set. |
+| [`ReportMemberMFA-KNOWN-ISSUES.md`](Reports/ReportMemberMFA-KNOWN-ISSUES.md) | Known limitations and issue notes for `ReportMemberMFA` reporting. |
 
 ---
 
