@@ -709,27 +709,27 @@ try
 
     function ConvertTo-PieJson
     {
-        param([System.Collections.IDictionary]$Map)
-        $entries = @()
-        foreach ($k in $Map.Keys)
+        param([System.Collections.IDictionary]$F_Map)
+        $F_Entries = @()
+        foreach ($F_K in $F_Map.Keys)
         {
-            if ([int]$Map[$k] -gt 0)
+            if ([int]$F_Map[$F_K] -gt 0)
             {
-                $entries += [pscustomobject]@{ Label = $k; Value = [int]$Map[$k] }
+                $F_Entries += [pscustomobject]@{ Label = $F_K; Value = [int]$F_Map[$F_K] }
             }
         }
-        if (-not $entries -or $entries.Count -eq 0)
+        if (-not $F_Entries -or $F_Entries.Count -eq 0)
         {
             return '{"labels":[],"data":[]}'
         }
-        $labels = ($entries | ForEach-Object { '"' + $_.Label + '"' }) -join ','
-        $data = ($entries | ForEach-Object { $_.Value }) -join ','
-        "{`"labels`":[$labels],`"data`":[$data]}"
+        $F_Labels = ($F_Entries | ForEach-Object { '"' + $_.Label + '"' }) -join ','
+        $F_Data = ($F_Entries | ForEach-Object { $_.Value }) -join ','
+        "{`"labels`":[$F_Labels],`"data`":[$F_Data]}"
     }
 
     # Tenant pie data
-    $S_TenantPieJson = ConvertTo-PieJson -Map $S_TenantStates
-    $S_ActivePieJson = ConvertTo-PieJson -Map $S_ActiveStates
+    $S_TenantPieJson = ConvertTo-PieJson -F_Map $S_TenantStates
+    $S_ActivePieJson = ConvertTo-PieJson -F_Map $S_ActiveStates
 
     # Policy table rows
     $S_PolicyRows = ($S_PolicyReport | Sort-Object OperatingSystem, DisplayName | ForEach-Object {

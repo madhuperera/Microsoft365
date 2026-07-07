@@ -153,9 +153,9 @@ try
         $S_Resp = Invoke-MgGraphRequest -Method GET -Uri $S_Uri -ErrorAction Stop
         if ($S_Resp.value)
         {
-            foreach ($d in $S_Resp.value)
+            foreach ($S_D in $S_Resp.value)
             {
-                $S_Devices.Add([pscustomobject]$d) | Out-Null
+                $S_Devices.Add([pscustomobject]$S_D) | Out-Null
             }
         }
         $S_Uri = $S_Resp.'@odata.nextLink'
@@ -167,11 +167,11 @@ try
     # OS version format from Intune is typically "10.0.19045.4046".
     # Win10 and Win11 both report major 10; Win11 is identified by build >= 22000.
     $S_Now = Get-Date
-    $S_Report = foreach ($d in $S_Devices)
+    $S_Report = foreach ($S_D in $S_Devices)
     {
-        $S_RawVer = if ($d.osVersion)
+        $S_RawVer = if ($S_D.osVersion)
         {
-            [string]$d.osVersion
+            [string]$S_D.osVersion
         }
         else
         {
@@ -228,9 +228,9 @@ try
             $S_SupportStatus = 'NoThreshold'
         }
 
-        $S_LastSync = if ($d.lastSyncDateTime)
+        $S_LastSync = if ($S_D.lastSyncDateTime)
         {
-            [datetime]$d.lastSyncDateTime
+            [datetime]$S_D.lastSyncDateTime
         }
         else
         {
@@ -246,30 +246,30 @@ try
         }
 
         [pscustomobject]@{
-            DeviceName        = $d.deviceName
-            User              = if ($d.userDisplayName)
+            DeviceName        = $S_D.deviceName
+            User              = if ($S_D.userDisplayName)
             {
-                $d.userDisplayName
+                $S_D.userDisplayName
             }
             else
             {
-                $d.userPrincipalName
+                $S_D.userPrincipalName
             }
-            UserPrincipalName = $d.userPrincipalName
+            UserPrincipalName = $S_D.userPrincipalName
             OsGeneration      = $S_OsGeneration
             OSVersion         = $S_RawVer
             WinBuild          = $S_WinBuild
             MinimumSupported  = $S_Threshold
             SupportStatus     = $S_SupportStatus
-            Manufacturer      = $d.manufacturer
-            Model             = $d.model
-            Ownership         = $d.managedDeviceOwnerType
-            JoinType          = $d.joinType
-            ComplianceState   = $d.complianceState
-            EnrolledDateTime  = $d.enrolledDateTime
-            LastSyncDateTime  = $d.lastSyncDateTime
+            Manufacturer      = $S_D.manufacturer
+            Model             = $S_D.model
+            Ownership         = $S_D.managedDeviceOwnerType
+            JoinType          = $S_D.joinType
+            ComplianceState   = $S_D.complianceState
+            EnrolledDateTime  = $S_D.enrolledDateTime
+            LastSyncDateTime  = $S_D.lastSyncDateTime
             DaysSinceLastSync = $S_DaysSinceSync
-            SerialNumber      = $d.serialNumber
+            SerialNumber      = $S_D.serialNumber
         }
     }
 
@@ -423,13 +423,13 @@ try
     # Build version spread cards per OsGeneration
     function Build-SpreadCardsHtml
     {
-        param([object[]]$Items, [string]$Label)
-        if (-not $Items -or $Items.Count -eq 0)
+        param([object[]]$F_Items, [string]$F_Label)
+        if (-not $F_Items -or $F_Items.Count -eq 0)
         {
-            return "<div class='dist-card'><div class='dist-label'>No $Label devices</div><div class='dist-value'>0</div></div>"
+            return "<div class='dist-card'><div class='dist-label'>No $F_Label devices</div><div class='dist-value'>0</div></div>"
         }
-        ($Items | ForEach-Object {
-            $cls = if ($_.Outdated)
+        ($F_Items | ForEach-Object {
+            $F_Cls = if ($_.Outdated)
             {
                 'dist-card outdated'
             }
@@ -437,7 +437,7 @@ try
             {
                 'dist-card'
             }
-            $badge = if ($_.Outdated)
+            $F_Badge = if ($_.Outdated)
             {
                 "<div class='outdated-badge'>Outdated</div>"
             }
@@ -445,7 +445,7 @@ try
             {
                 ''
             }
-            $buildText = if ($_.WinBuild -eq 0)
+            $F_BuildText = if ($_.WinBuild -eq 0)
             {
                 'Unknown'
             }
@@ -453,7 +453,7 @@ try
             {
                 $_.WinBuild
             }
-            "<div class='$cls'><div class='dist-label'>$Label $buildText</div><div class='dist-value'>$($_.Total)</div>$badge</div>"
+            "<div class='$F_Cls'><div class='dist-label'>$F_Label $F_BuildText</div><div class='dist-value'>$($_.Total)</div>$F_Badge</div>"
         }) -join "`n"
     }
 
@@ -461,20 +461,20 @@ try
     $S_Win11Items = $S_Breakdown | Where-Object { $_.OsGeneration -eq 'Windows 11' }
     $S_OtherItems = $S_Breakdown | Where-Object { $_.OsGeneration -eq 'Other Windows' }
 
-    $S_Win10CardsHtml = Build-SpreadCardsHtml -Items $S_Win10Items -Label 'Build'
-    $S_Win11CardsHtml = Build-SpreadCardsHtml -Items $S_Win11Items -Label 'Build'
-    $S_OtherCardsHtml = Build-SpreadCardsHtml -Items $S_OtherItems -Label 'Build'
+    $S_Win10CardsHtml = Build-SpreadCardsHtml -F_Items $S_Win10Items -F_Label 'Build'
+    $S_Win11CardsHtml = Build-SpreadCardsHtml -F_Items $S_Win11Items -F_Label 'Build'
+    $S_OtherCardsHtml = Build-SpreadCardsHtml -F_Items $S_OtherItems -F_Label 'Build'
 
     # Build chart data JSON
     function ConvertTo-ChartJson
     {
-        param([object[]]$Items)
-        if (-not $Items -or $Items.Count -eq 0)
+        param([object[]]$F_Items)
+        if (-not $F_Items -or $F_Items.Count -eq 0)
         {
             return '{"labels":[],"data":[],"outdated":[]}'
         }
-        $labels = ($Items | ForEach-Object {
-                $b = if ($_.WinBuild -eq 0)
+        $F_Labels = ($F_Items | ForEach-Object {
+                $F_B = if ($_.WinBuild -eq 0)
                 {
                     'Unknown'
                 }
@@ -482,10 +482,10 @@ try
                 {
                     [string]$_.WinBuild
                 }
-                '"' + $b + '"'
+                '"' + $F_B + '"'
             }) -join ','
-        $counts = ($Items | ForEach-Object { $_.Total }) -join ','
-        $outFlag = ($Items | ForEach-Object {
+        $F_Counts = ($F_Items | ForEach-Object { $_.Total }) -join ','
+        $F_OutFlag = ($F_Items | ForEach-Object {
                 if ($_.Outdated)
                 {
                     'true'
@@ -495,12 +495,12 @@ try
                     'false'
                 }
             }) -join ','
-        "{`"labels`":[$labels],`"data`":[$counts],`"outdated`":[$outFlag]}"
+        "{`"labels`":[$F_Labels],`"data`":[$F_Counts],`"outdated`":[$F_OutFlag]}"
     }
 
-    $S_Win10ChartJson = ConvertTo-ChartJson -Items $S_Win10Items
-    $S_Win11ChartJson = ConvertTo-ChartJson -Items $S_Win11Items
-    $S_OtherChartJson = ConvertTo-ChartJson -Items $S_OtherItems
+    $S_Win10ChartJson = ConvertTo-ChartJson -F_Items $S_Win10Items
+    $S_Win11ChartJson = ConvertTo-ChartJson -F_Items $S_Win11Items
+    $S_OtherChartJson = ConvertTo-ChartJson -F_Items $S_OtherItems
 
     # Device table rows
     $S_TableRows = ($S_Report | Sort-Object OsGeneration, WinBuild, DeviceName | ForEach-Object {
