@@ -94,27 +94,31 @@ $S_Users = Get-MgUser -All -Filter "assignedLicenses/`$count ne 0 and accountEna
 
 $S_UsersWithManagers = @()
 
-foreach ($user in $S_Users) {
-    Write-Progress -Activity "Processing users" -Status "Checking $($user.DisplayName)" -PercentComplete (($S_UsersWithManagers.Count / $S_Users.Count) * 100)
-    
+foreach ($S_User in $S_Users)
+{
+    Write-Progress -Activity "Processing users" -Status "Checking $($S_User.DisplayName)" -PercentComplete (($S_UsersWithManagers.Count / $S_Users.Count) * 100)
+
     # Get manager for each user
-    try {
+    try
+    {
         Start-Sleep -Milliseconds $S_GraphRequestDelayMilliseconds
-        $manager = Get-MgUserManager -UserId $user.Id -ErrorAction SilentlyContinue
-        
-        if ($manager) {
+        $S_Manager = Get-MgUserManager -UserId $S_User.Id -ErrorAction SilentlyContinue
+
+        if ($S_Manager)
+        {
             $S_UsersWithManagers += [PSCustomObject]@{
-                DisplayName        = $user.DisplayName
-                UserPrincipalName  = $user.UserPrincipalName
-                Email              = if ($user.Mail) { $user.Mail } else { $user.UserPrincipalName }
-                JobTitle           = $user.JobTitle
-                Department         = $user.Department
-                ManagerName        = $manager.AdditionalProperties.displayName
-                ManagerEmail       = $manager.AdditionalProperties.userPrincipalName
+                DisplayName        = $S_User.DisplayName
+                UserPrincipalName  = $S_User.UserPrincipalName
+                Email              = if ($S_User.Mail) { $S_User.Mail } else { $S_User.UserPrincipalName }
+                JobTitle           = $S_User.JobTitle
+                Department         = $S_User.Department
+                ManagerName        = $S_Manager.AdditionalProperties.displayName
+                ManagerEmail       = $S_Manager.AdditionalProperties.userPrincipalName
             }
         }
     }
-    catch {
+    catch
+    {
         # User has no manager assigned, skip
         continue
     }
