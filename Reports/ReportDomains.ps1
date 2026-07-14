@@ -594,6 +594,20 @@ Write-Host ('  Tenant ID   : {0}' -f $S_Context.TenantId)
 Write-Host ('  Environment : {0}' -f $S_Context.Environment)
 Write-Host ''
 
+$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
+if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
+{
+    $S_ContextConfirmation = 'N'
+}
+else
+{
+    $S_ContextConfirmation = $S_ContextConfirmation.ToUpperInvariant()
+}
+if ($S_ContextConfirmation -ne 'Y')
+{
+    throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
+}
+
 # ---------------------------------------------------------------------------
 # Tenant + domain discovery
 # ---------------------------------------------------------------------------
@@ -1299,3 +1313,14 @@ Write-Host 'Report generation complete.' -ForegroundColor Green
 Write-Host ('  Output file : {0}' -f $S_OutputFile)
 Write-Host ('  Domains processed : {0}' -f $S_DomainResults.Count)
 Write-Host ''
+$S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
+if ($S_DisconnectChoice -eq 'Y')
+{
+    Disconnect-MgGraph | Out-Null
+    Write-Host "Disconnected from Microsoft Graph." -ForegroundColor Yellow
+}
+else
+{
+    Write-Host "Graph session kept alive." -ForegroundColor Green
+}
+

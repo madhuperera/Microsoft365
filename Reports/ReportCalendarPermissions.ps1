@@ -34,10 +34,10 @@ $S_AllMembers = Get-DistributionGroupMember -Identity $DistributionGroupName `
     | Select-Object DisplayName, PrimarySmtpAddress `
     | Sort-Object DisplayName
 
-foreach ($Member in $S_AllMembers)
+foreach ($S_Member in $S_AllMembers)
 {
-    Write-Host "$($Member.DisplayName)" -ForegroundColor Green
-    Get-MailboxFolderPermission -Identity $($Member.PrimarySmtpAddress + ":\Calendar") `
+    Write-Host "$($S_Member.DisplayName)" -ForegroundColor Green
+    Get-MailboxFolderPermission -Identity $($S_Member.PrimarySmtpAddress + ":\Calendar") `
         | Where-Object {($_.User.DisplayName -ne "Default") -and ($_.User.DisplayName -ne "Anonymous")}
     Write-Host "`n"
 }
