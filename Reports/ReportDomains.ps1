@@ -562,7 +562,14 @@ if ($S_ExistingContext)
         if ($S_Answer -notmatch '^(Y|y)')
         {
             Write-Host 'Disconnecting existing Microsoft Graph session...' -ForegroundColor Yellow
-            try { Disconnect-MgGraph | Out-Null } catch { Write-Warning $_.Exception.Message }
+            try
+            {
+                Disconnect-MgGraph | Out-Null
+            }
+            catch
+            {
+                Write-Warning $_.Exception.Message
+            }
             $S_ExistingContext = $null
         }
     }
