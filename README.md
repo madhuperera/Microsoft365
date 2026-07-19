@@ -183,6 +183,12 @@ All scripts in this section are located in [`Reports/`](Reports/).
 
 </details>
 
+Companion documentation for the `ReportMemberMFA` script family:
+
+- [`ReportMemberMFA-Guide.html`](Reports/ReportMemberMFA-Guide.html)
+- [`ReportMemberMFA-CHANGELOG.md`](Reports/ReportMemberMFA-CHANGELOG.md)
+- [`ReportMemberMFA-KNOWN-ISSUES.md`](Reports/ReportMemberMFA-KNOWN-ISSUES.md)
+
 ---
 
 ### Reports — Exchange Online
