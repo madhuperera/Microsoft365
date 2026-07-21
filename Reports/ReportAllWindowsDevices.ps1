@@ -36,7 +36,7 @@ param(
 	[int]$InactiveDays = 180
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
 $S_RequiredGraphScopes = @(
 	'Device.Read.All'

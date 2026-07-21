@@ -38,7 +38,7 @@ param(
     [string]$ReportPath
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
 $S_ReportPath = $ReportPath
 
@@ -85,11 +85,11 @@ $S_PlatformTypeMap = @{
 function Get-AppPlatform
 {
     param([string]$OdataType)
-    foreach ($plat in $S_PlatformTypeMap.Keys)
+    foreach ($F_Platform in $S_PlatformTypeMap.Keys)
     {
-        if ($S_PlatformTypeMap[$plat] -contains $OdataType)
+        if ($S_PlatformTypeMap[$F_Platform] -contains $OdataType)
         {
-            return $plat
+            return $F_Platform
         }
     }
     return 'Other'
@@ -99,11 +99,11 @@ function Get-AppVersion
 {
     param($App)
     # Try common version property names across app types
-    foreach ($prop in @('displayVersion', 'version', 'versionName', 'productVersion', 'identityVersion', 'bundleVersion'))
+    foreach ($F_Prop in @('displayVersion', 'version', 'versionName', 'productVersion', 'identityVersion', 'bundleVersion'))
     {
-        if ($App.PSObject.Properties[$prop] -and $App.$prop)
+        if ($App.PSObject.Properties[$F_Prop] -and $App.$F_Prop)
         {
-            return [string]$App.$prop
+            return [string]$App.$F_Prop
         }
     }
     return ''
