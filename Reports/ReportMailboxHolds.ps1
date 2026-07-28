@@ -107,6 +107,37 @@ function ConvertTo-NormalisedGuid
     }
 }
 
+# Summarise a policy's deployment/distribution state from -DistributionDetail output.
+# DistributionStatus is the headline (Success = fully distributed); DistributionResults
+# carries per-location error detail when it is not Success.
+function Get-PolicyDistribution
+{
+    param($Policy)
+
+    $S_Status = "$($Policy.DistributionStatus)".Trim()
+    $S_Detail = $null
+    if ($S_Status -and $S_Status -ne 'Success')
+    {
+        try
+        {
+            $S_Parts = @()
+            foreach ($S_Res in @($Policy.DistributionResults))
+            {
+                if (-not $S_Res) { continue }
+                $S_Loc = "$($S_Res.Location)".Trim()
+                $S_St  = "$($S_Res.Status)".Trim()
+                if ($S_St -and $S_St -ne 'Success')
+                {
+                    $S_Parts += ((@($S_Loc, $S_St) | Where-Object { $_ }) -join ': ')
+                }
+            }
+            if ($S_Parts.Count -gt 0) { $S_Detail = ($S_Parts | Select-Object -Unique) -join '; ' }
+        }
+        catch { }
+    }
+    [PSCustomObject]@{ Status = $S_Status; Detail = $S_Detail }
+}
+
 # Decode a single InPlaceHolds entry into a structured hold record and resolve its name.
 function Resolve-HoldEntry
 {
@@ -153,6 +184,8 @@ function Resolve-HoldEntry
 
     # Resolve name. Try the type's natural table first, then fall back to the others.
     $S_Name = $null
+    $S_DistStatus = $null
+    $S_DistDetail = $null
     if ($S_Norm)
     {
         $S_Order = switch ($S_Type)
@@ -170,6 +203,8 @@ function Resolve-HoldEntry
                 $S_Name = $S_Match.Name
                 if ($S_Match.Type -and $S_Type -eq 'LegacyInPlaceHold') { $S_Type = $S_Match.Type }
                 if (-not $S_Scope -and $S_Match.Scope) { $S_Scope = $S_Match.Scope }
+                $S_DistStatus = $S_Match.DistributionStatus
+                $S_DistDetail = $S_Match.DistributionDetail
                 break
             }
         }
@@ -181,13 +216,16 @@ function Resolve-HoldEntry
     }
 
     [PSCustomObject]@{
-        Type      = $S_Type
-        Scope     = $S_Scope
-        Name      = $S_Name
-        Guid      = $S_Norm
-        Excluded  = $S_Excluded
-        Action    = $S_Action
-        Raw       = $Raw
+        Type               = $S_Type
+        Scope              = $S_Scope
+        Name               = $S_Name
+        Guid               = $S_Norm
+        Excluded           = $S_Excluded
+        Action             = $S_Action
+        Raw                = $Raw
+        OrgWide            = $false
+        DistributionStatus = $S_DistStatus
+        DistributionDetail = $S_DistDetail
     }
 }
 
@@ -294,7 +332,8 @@ if ($S_PolicyResolutionEnabled)
         foreach ($S_Pol in @(Get-RetentionCompliancePolicy -DistributionDetail -ErrorAction Stop))
         {
             $S_Key = ConvertTo-NormalisedGuid $S_Pol.Guid.ToString()
-            if ($S_Key) { $S_RetentionHash[$S_Key] = [PSCustomObject]@{ Name = $S_Pol.Name; Type = 'RetentionPolicy'; Scope = $null } }
+            $S_Dist = Get-PolicyDistribution $S_Pol
+            if ($S_Key) { $S_RetentionHash[$S_Key] = [PSCustomObject]@{ Name = $S_Pol.Name; Type = 'RetentionPolicy'; Scope = $null; DistributionStatus = $S_Dist.Status; DistributionDetail = $S_Dist.Detail } }
         }
         Write-Host "  Retention policies : $($S_RetentionHash.Count)" -ForegroundColor Green
     }
@@ -327,7 +366,8 @@ if ($S_PolicyResolutionEnabled)
         {
             $S_Key = ConvertTo-NormalisedGuid $S_Pol.Guid.ToString()
             $S_ScopeText = if ($S_Pol._CaseName) { "Case: $($S_Pol._CaseName)" } else { 'eDiscovery case' }
-            if ($S_Key) { $S_CaseHash[$S_Key] = [PSCustomObject]@{ Name = $S_Pol.Name; Type = 'eDiscoveryCaseHold'; Scope = $S_ScopeText } }
+            $S_Dist = Get-PolicyDistribution $S_Pol
+            if ($S_Key) { $S_CaseHash[$S_Key] = [PSCustomObject]@{ Name = $S_Pol.Name; Type = 'eDiscoveryCaseHold'; Scope = $S_ScopeText; DistributionStatus = $S_Dist.Status; DistributionDetail = $S_Dist.Detail } }
         }
         Write-Host "  eDiscovery holds   : $($S_CaseHash.Count)" -ForegroundColor Green
     }
@@ -338,25 +378,40 @@ if ($S_PolicyResolutionEnabled)
         foreach ($S_Pol in @(Get-AppRetentionCompliancePolicy -DistributionDetail -ErrorAction Stop))
         {
             $S_Key = ConvertTo-NormalisedGuid $S_Pol.Guid.ToString()
-            if ($S_Key) { $S_AppHash[$S_Key] = [PSCustomObject]@{ Name = $S_Pol.Name; Type = 'AppRetentionPolicy'; Scope = ($S_Pol.Applications -join ', ') } }
+            $S_Dist = Get-PolicyDistribution $S_Pol
+            if ($S_Key) { $S_AppHash[$S_Key] = [PSCustomObject]@{ Name = $S_Pol.Name; Type = 'AppRetentionPolicy'; Scope = ($S_Pol.Applications -join ', '); DistributionStatus = $S_Dist.Status; DistributionDetail = $S_Dist.Detail } }
         }
         Write-Host "  App retention pol. : $($S_AppHash.Count)" -ForegroundColor Green
     }
     catch { Write-Warning "  Get-AppRetentionCompliancePolicy failed: $($_.Exception.Message)" }
-
-    # Org-wide policies apply to all mailboxes without being stamped on each mailbox object.
-    try
-    {
-        $S_OrgConfig = Get-OrganizationConfig -ErrorAction Stop
-        foreach ($S_Raw in @($S_OrgConfig.InPlaceHolds))
-        {
-            if ([string]::IsNullOrWhiteSpace($S_Raw)) { continue }
-            $S_OrgWidePolicies.Add((Resolve-HoldEntry -Raw $S_Raw -RetentionHash $S_RetentionHash -CaseHash $S_CaseHash -AppHash $S_AppHash))
-        }
-        Write-Host "  Org-wide holds     : $($S_OrgWidePolicies.Count)" -ForegroundColor Green
-    }
-    catch { Write-Warning "  Get-OrganizationConfig failed: $($_.Exception.Message)" }
 }
+
+# ---------------------------------------------------------------------------
+# Organization-wide (entire-location) retention policies.
+# Per Microsoft Learn, a retention policy scoped to the whole location is NOT
+# stamped on each mailbox's InPlaceHolds; it only appears in Get-OrganizationConfig
+# and applies to every mailbox except those that carry a -mbx<guid> exclusion.
+# Get-OrganizationConfig is an Exchange Online cmdlet, so this runs regardless of
+# whether policy-name resolution (Connect-IPPSSession) succeeded.
+# ---------------------------------------------------------------------------
+try
+{
+    $S_OrgConfig = Get-OrganizationConfig -ErrorAction Stop
+    foreach ($S_Raw in @($S_OrgConfig.InPlaceHolds))
+    {
+        if ([string]::IsNullOrWhiteSpace($S_Raw)) { continue }
+        $S_OrgWidePolicies.Add((Resolve-HoldEntry -Raw $S_Raw -RetentionHash $S_RetentionHash -CaseHash $S_CaseHash -AppHash $S_AppHash))
+    }
+    Write-Host "  Org-wide holds     : $($S_OrgWidePolicies.Count)" -ForegroundColor Green
+}
+catch { Write-Warning "  Get-OrganizationConfig failed: $($_.Exception.Message)" }
+
+# Org-wide policies that cover USER mailboxes: mbx (Exchange mailbox / 1xN Teams chats)
+# and skp (Skype). grp policies target group mailboxes, not user mailboxes, so they are
+# excluded from per-mailbox coverage (still shown in the org-wide summary section).
+$S_OrgWideMailboxPolicies = @(
+    $S_OrgWidePolicies | Where-Object { $_.Guid -and -not $_.Excluded -and $_.Scope -ne 'M365 Group' }
+)
 
 # ---------------------------------------------------------------------------
 # Retrieve mailboxes
@@ -442,13 +497,41 @@ foreach ($S_Mb in $S_Mbx)
             {
                 $S_LitName = "Litigation Hold ($($S_Mb.LitigationHoldDuration))"
             }
-            $S_Holds.Add([PSCustomObject]@{ Type = 'LitigationHold'; Scope = 'Whole mailbox'; Name = $S_LitName; Guid = $null; Excluded = $false; Action = 'Hold only'; Raw = 'LitigationHoldEnabled' })
+            $S_Holds.Add([PSCustomObject]@{ Type = 'LitigationHold'; Scope = 'Whole mailbox'; Name = $S_LitName; Guid = $null; Excluded = $false; Action = 'Hold only'; Raw = 'LitigationHoldEnabled'; OrgWide = $false; DistributionStatus = $null; DistributionDetail = $null })
         }
 
         foreach ($S_Raw in @($S_Mb.InPlaceHolds))
         {
             if ([string]::IsNullOrWhiteSpace($S_Raw)) { continue }
             $S_Holds.Add((Resolve-HoldEntry -Raw $S_Raw -RetentionHash $S_RetentionHash -CaseHash $S_CaseHash -AppHash $S_AppHash))
+        }
+
+        # Apply organization-wide (entire-location) retention policies. These are not
+        # stamped on the mailbox, so add them here unless the mailbox is explicitly
+        # excluded (-mbx<guid>) or already carries the policy as an explicit hold.
+        $S_ExcludedGuids = [System.Collections.Generic.HashSet[string]]::new()
+        $S_PresentGuids  = [System.Collections.Generic.HashSet[string]]::new()
+        foreach ($S_H in $S_Holds)
+        {
+            if (-not $S_H.Guid) { continue }
+            if ($S_H.Excluded) { [void]$S_ExcludedGuids.Add($S_H.Guid) }
+            else { [void]$S_PresentGuids.Add($S_H.Guid) }
+        }
+        foreach ($S_Ow in $S_OrgWideMailboxPolicies)
+        {
+            if ($S_ExcludedGuids.Contains($S_Ow.Guid) -or $S_PresentGuids.Contains($S_Ow.Guid)) { continue }
+            $S_Holds.Add([PSCustomObject]@{
+                Type               = $S_Ow.Type
+                Scope              = $S_Ow.Scope
+                Name               = $S_Ow.Name
+                Guid               = $S_Ow.Guid
+                Excluded           = $false
+                Action             = $S_Ow.Action
+                Raw                = $S_Ow.Raw
+                OrgWide            = $true
+                DistributionStatus = $S_Ow.DistributionStatus
+                DistributionDetail = $S_Ow.DistributionDetail
+            })
         }
 
         $S_ActiveHolds = @($S_Holds | Where-Object { -not $_.Excluded })
@@ -547,11 +630,13 @@ foreach ($S_Line in $S_Report)
         if (-not $S_PolicyPivot.ContainsKey($S_PolKey))
         {
             $S_PolicyPivot[$S_PolKey] = [PSCustomObject]@{
-                Name     = $S_Hold.Name
-                Type     = $S_Hold.Type
-                Scope    = $S_Hold.Scope
-                Covered  = [System.Collections.Generic.List[string]]::new()
-                Excluded = [System.Collections.Generic.List[string]]::new()
+                Name               = $S_Hold.Name
+                Type               = $S_Hold.Type
+                Scope              = $S_Hold.Scope
+                DistributionStatus = $S_Hold.DistributionStatus
+                DistributionDetail = $S_Hold.DistributionDetail
+                Covered            = [System.Collections.Generic.List[string]]::new()
+                Excluded           = [System.Collections.Generic.List[string]]::new()
             }
         }
         if ($S_Hold.Excluded) { $S_PolicyPivot[$S_PolKey].Excluded.Add($S_Line.Mailbox) }
@@ -559,6 +644,12 @@ foreach ($S_Line in $S_Report)
     }
 }
 $S_Policies = @($S_PolicyPivot.Values | Sort-Object @{ Expression = { $_.Covered.Count }; Descending = $true }, Name)
+
+# --- All resolved retention / app-retention policies with their distribution status ---
+# Answers "is each retention policy fully distributed or not", independent of mailbox coverage.
+$S_AllPolicyList = @(@($S_RetentionHash.Values) + @($S_AppHash.Values) | Sort-Object Name)
+$S_DistIncomplete = @($S_AllPolicyList | Where-Object { $_.DistributionStatus -and $_.DistributionStatus -ne 'Success' })
+$S_DistIncompleteCount = $S_DistIncomplete.Count
 
 # ---------------------------------------------------------------------------
 # File paths
@@ -619,6 +710,20 @@ function Format-Badge
     "<span class=`"badge badge-$($S_Def.cls)$(if ($Excluded) { ' badge-excluded' })`">$([System.Net.WebUtility]::HtmlEncode($S_Txt))</span>"
 }
 
+# Render a distribution/deployment status as a colour-coded badge (Success = complete).
+function Format-Distribution
+{
+    param([string]$Status, [string]$Detail)
+
+    if ([string]::IsNullOrWhiteSpace($Status)) { return '<span class="muted">-</span>' }
+    if ($Status -eq 'Success') { return '<span class="badge badge-none">Complete</span>' }
+
+    $S_Cls = if ($Status -match 'Pending|Processing|Sync') { 'label' } else { 'onhold' }
+    $S_Text = "Incomplete: $Status"
+    $S_Title = if ($Detail) { " title=`"$([System.Net.WebUtility]::HtmlEncode($Detail))`"" } else { '' }
+    "<span class=`"badge badge-$S_Cls`"$S_Title>$([System.Net.WebUtility]::HtmlEncode($S_Text))</span>"
+}
+
 $S_TestModeBanner = if ($TestMode)
 {
     "<div class=`"notice`"><strong>Test Mode:</strong> This report was generated from a random sample of $($S_Mbx.Count) mailboxes. Run without <code>-TestMode</code> to report on all mailboxes in scope.</div>"
@@ -649,7 +754,7 @@ if ($S_OrgWidePolicies.Count -gt 0)
     $S_OrgWideRows = @"
 <div class="table-section">
   <h2>Organization-wide retention policies</h2>
-  <p class="muted" style="margin-bottom:12px;">These policies apply to <strong>all</strong> mailboxes in scope and are not stamped on individual mailbox objects, so they do not appear in the per-mailbox rows below.</p>
+  <p class="muted" style="margin-bottom:12px;">These entire-location policies are <strong>not stamped</strong> on individual mailbox objects (they only appear in <code>Get-OrganizationConfig</code>), yet they apply to <strong>every</strong> in-scope mailbox except those explicitly excluded. Their coverage is expanded into the per-mailbox rows and the policy-coverage view below. Group-scoped (<code>grp</code>) policies are listed here for reference but target group mailboxes, not user mailboxes.</p>
   <ul class="orglist">$S_OrgWideRows</ul>
 </div>
 "@
@@ -678,10 +783,18 @@ $S_MailboxRows = ($S_Report | Sort-Object Mailbox | ForEach-Object {
     $S_Mrm     = if ($_.MrmRetentionPolicy) { [System.Net.WebUtility]::HtmlEncode($_.MrmRetentionPolicy) } else { '<span class="muted">-</span>' }
     $S_OnHold  = if ($_.OnHold) { '<span class="badge badge-onhold">On hold</span>' } else { '<span class="badge badge-none">No</span>' }
 
+    # Litigation Hold duration: shown for every mailbox regardless of LitigationHoldEnabled,
+    # since LitigationHoldEnabled stays False for org-wide retention coverage. The value
+    # renders as an EnhancedTimeSpan ("2555.00:00:00") or "Unlimited".
+    $S_LdRaw = "$($_.LitigationHoldDuration)".Trim()
+    $S_LitDur = if ($S_LdRaw -match '^(\d+)\.\d{2}:\d{2}:\d{2}') { "$($Matches[1]) days" }
+        elseif ([string]::IsNullOrWhiteSpace($S_LdRaw)) { '<span class="muted">-</span>' }
+        else { [System.Net.WebUtility]::HtmlEncode($S_LdRaw) }
+
     $S_DataTypes    = ([System.Net.WebUtility]::HtmlEncode((@($_.HoldTypes) -join ' ')))
     $S_DataPolicies = ([System.Net.WebUtility]::HtmlEncode($_.PolicyNames))
 
-    "<tr data-holdtypes=`"$S_DataTypes`" data-state=`"$S_St`" data-policies=`"$S_DataPolicies`" data-onhold=`"$($_.OnHold)`"><td>$S_Name</td><td class=`"upn`">$S_Upn</td><td>$S_St</td><td>$S_OnHold</td><td>$S_Badges</td><td>$S_PolCell</td><td>$S_Mrm</td></tr>"
+    "<tr data-holdtypes=`"$S_DataTypes`" data-state=`"$S_St`" data-policies=`"$S_DataPolicies`" data-onhold=`"$($_.OnHold)`"><td>$S_Name</td><td class=`"upn`">$S_Upn</td><td>$S_St</td><td>$S_OnHold</td><td>$S_Badges</td><td>$S_PolCell</td><td>$S_Mrm</td><td>$S_LitDur</td></tr>"
 }) -join "`n"
 
 # --- Policy-centric table rows ---
@@ -692,12 +805,23 @@ $S_PolicyRows = ($S_Policies | ForEach-Object {
     $S_CovList = (@($_.Covered | Sort-Object) | ForEach-Object { [System.Net.WebUtility]::HtmlEncode($_) }) -join ', '
     if (-not $S_CovList) { $S_CovList = '<span class="muted">-</span>' }
     $S_ExcCount = $_.Excluded.Count
+    $S_Dist = Format-Distribution -Status $_.DistributionStatus -Detail $_.DistributionDetail
 
-    "<tr data-policytype=`"$([System.Net.WebUtility]::HtmlEncode($_.Type))`"><td>$S_N</td><td>$S_Badge</td><td>$S_Sc</td><td>$($_.Covered.Count)</td><td>$S_ExcCount</td><td class=`"covered`">$S_CovList</td></tr>"
+    "<tr data-policytype=`"$([System.Net.WebUtility]::HtmlEncode($_.Type))`"><td>$S_N</td><td>$S_Badge</td><td>$S_Sc</td><td>$S_Dist</td><td>$($_.Covered.Count)</td><td>$S_ExcCount</td><td class=`"covered`">$S_CovList</td></tr>"
 }) -join "`n"
 
-if (-not $S_MailboxRows) { $S_MailboxRows = '<tr><td colspan="7" class="muted">No mailboxes found.</td></tr>' }
-if (-not $S_PolicyRows)  { $S_PolicyRows  = '<tr><td colspan="6" class="muted">No policy-based holds matched any mailbox in scope.</td></tr>' }
+# --- Policy distribution table rows (all resolved retention / app-retention policies) ---
+$S_DistRows = ($S_AllPolicyList | ForEach-Object {
+    $S_N     = [System.Net.WebUtility]::HtmlEncode($_.Name)
+    $S_Badge = Format-Badge -Type $_.Type -Excluded $false
+    $S_Dist  = Format-Distribution -Status $_.DistributionStatus -Detail $_.DistributionDetail
+    $S_DetailCell = if ($_.DistributionDetail) { [System.Net.WebUtility]::HtmlEncode($_.DistributionDetail) } else { '<span class="muted">-</span>' }
+    "<tr><td>$S_N</td><td>$S_Badge</td><td>$S_Dist</td><td>$S_DetailCell</td></tr>"
+}) -join "`n"
+
+if (-not $S_MailboxRows) { $S_MailboxRows = '<tr><td colspan="8" class="muted">No mailboxes found.</td></tr>' }
+if (-not $S_PolicyRows)  { $S_PolicyRows  = '<tr><td colspan="7" class="muted">No policy-based holds matched any mailbox in scope.</td></tr>' }
+if (-not $S_DistRows)    { $S_DistRows    = '<tr><td colspan="4" class="muted">No retention policies resolved (Security &amp; Compliance not connected).</td></tr>' }
 
 $S_ErrorCard = if ($S_ErrorCount -gt 0) { "<div class=`"card`"><div class=`"label`">Errors</div><div class=`"value`" style=`"color:#6c757d;`">$S_ErrorCount</div><div class=`"sub`">Could not process</div></div>" } else { '' }
 
@@ -789,6 +913,7 @@ $S_PolicyBanner
   <div class="card"><div class="label">Retention Policy</div><div class="value" style="color:#0b5394;">$S_RetCount</div></div>
   <div class="card"><div class="label">eDiscovery</div><div class="value" style="color:#9a3412;">$S_EdiscCount</div></div>
   <div class="card"><div class="label">Delay Hold</div><div class="value" style="color:#9a1f1a;">$S_DelayCount</div></div>
+  <div class="card"><div class="label">Distribution Incomplete</div><div class="value" style="color:$(if ($S_DistIncompleteCount -gt 0) { '#e67e22' } else { '#27ae60' });">$S_DistIncompleteCount</div><div class="sub">of $($S_AllPolicyList.Count) retention policies</div></div>
   $S_ErrorCard
 </div>
 
@@ -845,6 +970,7 @@ $S_OrgWideRows
         <th>Hold Types</th>
         <th onclick="sortTable('mbxTable', 5)">Retention / Hold Policies &#x25B2;&#x25BC;</th>
         <th onclick="sortTable('mbxTable', 6)">MRM Policy &#x25B2;&#x25BC;</th>
+        <th onclick="sortTable('mbxTable', 7)">Litigation Duration &#x25B2;&#x25BC;</th>
       </tr>
     </thead>
     <tbody id="mbxBody">
@@ -866,13 +992,37 @@ $S_MailboxRows
         <th onclick="sortTable('polTable', 0)">Policy &#x25B2;&#x25BC;</th>
         <th>Type</th>
         <th onclick="sortTable('polTable', 2)">Scope &#x25B2;&#x25BC;</th>
-        <th onclick="sortTable('polTable', 3)">Covered &#x25B2;&#x25BC;</th>
-        <th onclick="sortTable('polTable', 4)">Excluded &#x25B2;&#x25BC;</th>
+        <th onclick="sortTable('polTable', 3)">Distribution &#x25B2;&#x25BC;</th>
+        <th onclick="sortTable('polTable', 4)">Covered &#x25B2;&#x25BC;</th>
+        <th onclick="sortTable('polTable', 5)">Excluded &#x25B2;&#x25BC;</th>
         <th>Covered mailboxes</th>
       </tr>
     </thead>
     <tbody id="polBody">
 $S_PolicyRows
+    </tbody>
+  </table>
+</div>
+
+<!-- POLICY DISTRIBUTION -->
+<div class="table-section">
+  <h2>Retention policy distribution status</h2>
+  <p class="muted" style="margin-bottom:12px;">Every resolved Microsoft Purview retention / app-retention policy and whether its deployment to all locations is <strong>complete</strong> (<code>DistributionStatus = Success</code>) or still pending/errored. Hover an incomplete badge for the per-location detail.</p>
+  <div class="table-controls">
+    <input type="text" id="distSearch" placeholder="Search policy name..." onkeyup="filterDist()" />
+    <span class="count-label" id="distCount">$($S_AllPolicyList.Count) policies &nbsp;|&nbsp; $S_DistIncompleteCount not fully distributed</span>
+  </div>
+  <table id="distTable">
+    <thead>
+      <tr>
+        <th onclick="sortTable('distTable', 0)">Policy &#x25B2;&#x25BC;</th>
+        <th>Type</th>
+        <th onclick="sortTable('distTable', 2)">Distribution &#x25B2;&#x25BC;</th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody id="distBody">
+$S_DistRows
     </tbody>
   </table>
 </div>
@@ -953,6 +1103,19 @@ function filterPol() {
     else { r.classList.add('hidden-row'); }
   });
   document.getElementById('polCount').textContent = visible + ' policies';
+}
+
+// --- Filter: distribution table ---
+function filterDist() {
+  var search = document.getElementById('distSearch').value.toLowerCase();
+  var rows = document.querySelectorAll('#distBody tr');
+  var visible = 0;
+  rows.forEach(function(r) {
+    var text = r.textContent.toLowerCase();
+    if (!search || text.indexOf(search) > -1) { r.classList.remove('hidden-row'); visible++; }
+    else { r.classList.add('hidden-row'); }
+  });
+  document.getElementById('distCount').textContent = visible + ' policies';
 }
 
 // --- Sort ---
