@@ -48,7 +48,7 @@ param(
     [switch]$IncludeDeviceStatusDetails
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
 $S_ReportPath = $ReportPath
 
@@ -710,21 +710,21 @@ try
     function ConvertTo-PieJson
     {
         param([System.Collections.IDictionary]$Map)
-        $entries = @()
-        foreach ($k in $Map.Keys)
+        $F_Entries = @()
+        foreach ($F_Key in $Map.Keys)
         {
-            if ([int]$Map[$k] -gt 0)
+            if ([int]$Map[$F_Key] -gt 0)
             {
-                $entries += [pscustomobject]@{ Label = $k; Value = [int]$Map[$k] }
+                $F_Entries += [pscustomobject]@{ Label = $F_Key; Value = [int]$Map[$F_Key] }
             }
         }
-        if (-not $entries -or $entries.Count -eq 0)
+        if (-not $F_Entries -or $F_Entries.Count -eq 0)
         {
             return '{"labels":[],"data":[]}'
         }
-        $labels = ($entries | ForEach-Object { '"' + $_.Label + '"' }) -join ','
-        $data = ($entries | ForEach-Object { $_.Value }) -join ','
-        "{`"labels`":[$labels],`"data`":[$data]}"
+        $F_Labels = ($F_Entries | ForEach-Object { '"' + $_.Label + '"' }) -join ','
+        $F_Data = ($F_Entries | ForEach-Object { $_.Value }) -join ','
+        "{`"labels`":[$F_Labels],`"data`":[$F_Data]}"
     }
 
     # Tenant pie data
