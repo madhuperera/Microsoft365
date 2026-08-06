@@ -31,6 +31,7 @@
 - [Folder structure](#folder-structure)
 - [Prerequisites](#prerequisites)
 - [Script catalogue](#script-catalogue)
+  - [Reports — shared orchestration and connection helpers](#reports--shared-orchestration-and-connection-helpers)
   - [Reports — Entra ID and Identity](#reports--entra-id-and-identity)
   - [Reports — Exchange Online](#reports--exchange-online)
   - [Reports — Intune](#reports--intune)
@@ -59,7 +60,6 @@ Scripts cover the following Microsoft 365 workloads:
 - Exchange Online — mailboxes, calendar permissions, and DNS email security records
 - Microsoft Teams — Teams-enabled groups and tenant-wide governance or security settings
 - Microsoft Intune — managed application inventory, device compliance, and Windows/mobile device posture reporting
-- Microsoft Teams — Teams governance and tenant security posture reporting
 - Microsoft Defender for Endpoint — network device inventory and firmware reporting
 - Microsoft 365 licensing — plan and SKU reporting
 - Incident response — audit log analysis and sign-in investigation
@@ -143,6 +143,17 @@ Most reporting scripts require **read-only** Microsoft Graph delegated permissio
 
 ## Script catalogue
 
+### Reports — shared orchestration and connection helpers
+
+Scripts in this section are located in [`Reports/`](Reports/).
+
+| Script | Description | Key permissions / modules |
+|--------|-------------|--------------------------|
+| [`_ReadOnlyConnectionScript.ps1`](Reports/_ReadOnlyConnectionScript.ps1) | Establishes a shared read-only Microsoft Graph session for reporting scripts so Graph reports can reuse one connection context. | `Microsoft.Graph.Authentication`; read-only Graph delegated scopes only |
+| [`_RunDiscovery.ps1`](Reports/_RunDiscovery.ps1) | Orchestrates selected `Report*` and `Review*` scripts in one discovery run, grouped by connection type (`Graph`, `Exchange`, `Teams`, `Other`) with consolidated output folders and summary logging. | `Microsoft.Graph.Authentication`; child scripts may also require `ExchangeOnlineManagement` and `MicrosoftTeams` |
+
+---
+
 ### Reports — Entra ID and Identity
 
 All scripts in this section are located in [`Reports/`](Reports/).
@@ -155,6 +166,7 @@ All scripts in this section are located in [`Reports/`](Reports/).
 | [`ReportAllMemberUsers.ps1`](Reports/ReportAllMemberUsers.ps1) | Reports on all member users in Entra ID including account status, last sign-in, licensing, and on-premises sync state. Supports an inactivity threshold parameter. Exports to CSV and HTML. | `Microsoft.Graph.Users` |
 | [`ReportAllWindowsDevices.ps1`](Reports/ReportAllWindowsDevices.ps1) | Reports on all Windows devices registered in Entra ID, including registration state and last activity. Supports an inactivity threshold parameter. Exports to CSV and HTML. | `Microsoft.Graph.Identity.DirectoryManagement` |
 | [`ReportAuthenticationMethods.ps1`](Reports/ReportAuthenticationMethods.ps1) | Reports authentication methods registered for licensed Entra ID member accounts. Exports to CSV. | `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
+| [`ReportAuthenticationMethods_v2.ps1`](Reports/ReportAuthenticationMethods_v2.ps1) | Cross-platform variant of the authentication methods report for licensed Entra ID member accounts. Exports to CSV and supports interactive review where available. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users`; `UserAuthenticationMethod.Read.All`, `Directory.Read.All`, `User.Read.All` |
 | [`ReportEntraIDApps.ps1`](Reports/ReportEntraIDApps.ps1) | Reports on enterprise applications (service principals) in Entra ID, including sign-in activity. Cross-references app registrations to identify which service principals have a local app registration. Supports an inactivity threshold parameter. Exports to CSV and HTML. | `Microsoft.Graph.Applications`, `Microsoft.Graph.Identity.DirectoryManagement` |
 | [`ReportEntraIDRolesMemberships.ps1`](Reports/ReportEntraIDRolesMemberships.ps1) | Reports on users assigned to administrator or Global Reader directory roles, including last sign-in date. Exports to CSV and HTML. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users`, `Microsoft.Graph.Groups`, `Microsoft.Graph.Identity.DirectoryManagement` |
 | [`ReviewInactiveGuestUsers.ps1`](Reports/ReviewInactiveGuestUsers.ps1) | Reports on guest users who have not signed in within a configurable number of days. Supports a `Disable` mode to disable accounts after reporting. Exports to CSV and HTML. | `Microsoft.Graph.Users` |
@@ -171,6 +183,12 @@ All scripts in this section are located in [`Reports/`](Reports/).
 
 </details>
 
+Companion documentation for the `ReportMemberMFA` script family:
+
+- [`ReportMemberMFA-Guide.html`](Reports/ReportMemberMFA-Guide.html)
+- [`ReportMemberMFA-CHANGELOG.md`](Reports/ReportMemberMFA-CHANGELOG.md)
+- [`ReportMemberMFA-KNOWN-ISSUES.md`](Reports/ReportMemberMFA-KNOWN-ISSUES.md)
+
 ---
 
 ### Reports — Exchange Online
@@ -185,6 +203,7 @@ All scripts in this section are located in [`Reports/`](Reports/).
 | [`ReportMailboxQuota.ps1`](Reports/ReportMailboxQuota.ps1) | Reports on mailbox quota usage for all user mailboxes. Accepts a warning threshold percentage parameter. Exports to CSV. | `ExchangeOnlineManagement` |
 | [`ReportCalendarPermissions.ps1`](Reports/ReportCalendarPermissions.ps1) | Reports on calendar permissions for all members of a specified distribution group. Outputs to the console. | `ExchangeOnlineManagement` |
 | [`ReportUnusedExoMailboxes.ps1`](Reports/ReportUnusedExoMailboxes.ps1) | Finds and reports on Exchange Online mailboxes that show no recent activity, cross-referencing Entra ID sign-in data. Exports to CSV. | `ExchangeOnlineManagement`, `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users` |
+| [`ReportUnusedExoMailboxes_v2.ps1`](Reports/ReportUnusedExoMailboxes_v2.ps1) | Cross-platform variant of the unused mailbox report with the same Exchange Online and Entra ID sign-in correlation workflow. Exports to CSV, with optional Excel and grid output where supported. | `ExchangeOnlineManagement`, `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users` |
 
 </details>
 
@@ -233,9 +252,13 @@ All scripts in this section are located in [`Reports/`](Reports/).
 | Script | Description | Key permissions / modules |
 |--------|-------------|--------------------------|
 | [`ReportDkimRecords.ps1`](Reports/ReportDkimRecords.ps1) | Queries DKIM DNS records for all accepted domains configured in Exchange Online. Uses the Cloudflare DNS resolver (1.1.1.1). Outputs results to the console. | `ExchangeOnlineManagement` |
+| [`ReportDkimRecords_v2.ps1`](Reports/ReportDkimRecords_v2.ps1) | Cross-platform DKIM report variant that performs DNS lookups via DNS-over-HTTPS (Google and Cloudflare). Outputs results to the console. | `ExchangeOnlineManagement` |
 | [`ReportDmarcRecords.ps1`](Reports/ReportDmarcRecords.ps1) | Queries DMARC DNS records for all accepted domains configured in Exchange Online. Uses the Cloudflare DNS resolver (1.1.1.1). Outputs results to the console. | `ExchangeOnlineManagement` |
+| [`ReportDmarcRecords_v2.ps1`](Reports/ReportDmarcRecords_v2.ps1) | Cross-platform DMARC report variant that performs DNS lookups via DNS-over-HTTPS (Google and Cloudflare). Outputs results to the console. | `ExchangeOnlineManagement` |
 | [`ReportDomains.ps1`](Reports/ReportDomains.ps1) | Generates a comprehensive domain and DNS HTML report for all verified Microsoft 365 tenant domains. Collects authoritative name servers, SPF, MX, DKIM (selector1/selector2), and DMARC records. DNS is resolved against authoritative name servers first, falling back to Cloudflare (1.1.1.1) then Google (8.8.8.8). Supports optional RDAP/WHOIS registrar lookup. Exports to HTML. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Identity.DirectoryManagement`; `Domain.Read.All`, `Organization.Read.All` |
+| [`ReportDomains_v2.ps1`](Reports/ReportDomains_v2.ps1) | Cross-platform domain and DNS HTML report variant using DNS-over-HTTPS for record resolution, with optional registrar lookup control switches. Exports to HTML. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Identity.DirectoryManagement`; `Domain.Read.All`, `Organization.Read.All` |
 | [`ReportSPFRecords.ps1`](Reports/ReportSPFRecords.ps1) | Queries SPF DNS records for all accepted domains configured in Exchange Online. Uses the Cloudflare DNS resolver (1.1.1.1). Outputs results to the console. | `ExchangeOnlineManagement` |
+| [`ReportSPFRecords_v2.ps1`](Reports/ReportSPFRecords_v2.ps1) | Cross-platform SPF report variant that performs DNS lookups via DNS-over-HTTPS (Google and Cloudflare). Outputs results to the console. | `ExchangeOnlineManagement` |
 
 </details>
 
