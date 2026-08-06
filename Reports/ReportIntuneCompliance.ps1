@@ -48,7 +48,7 @@ param(
     [switch]$IncludeDeviceStatusDetails
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
 $S_ReportPath = $ReportPath
 
@@ -348,12 +348,12 @@ try
     # Others tile, so totals match the UI exactly. The endpoint returns a
     # columnar { Schema:[{Column,PropertyType}], Values:[[...]] } payload.
     $S_PolicyIndex = 0
-    foreach ($pol in $S_Policies)
+    foreach ($S_Pol in $S_Policies)
     {
         $S_PolicyIndex++
-        Write-Host ("  [{0}/{1}] {2}" -f $S_PolicyIndex, $S_Policies.Count, $pol.displayName) -ForegroundColor DarkGray
+        Write-Host ("  [{0}/{1}] {2}" -f $S_PolicyIndex, $S_Policies.Count, $S_Pol.displayName) -ForegroundColor DarkGray
 
-        $S_Odata = $pol.'@odata.type'
+        $S_Odata = $S_Pol.'@odata.type'
         $S_Os = if ($S_Odata -and $S_OsTypeMap.ContainsKey($S_Odata))
         {
             $S_OsTypeMap[$S_Odata]
@@ -382,7 +382,7 @@ try
         while ($S_KeepFetching)
         {
             $S_Body = @{
-                filter = "(PolicyId eq '$($pol.id)')"
+                filter = "(PolicyId eq '$($S_Pol.id)')"
                 skip   = $S_Skip
                 top    = $S_Top
                 select = @('DeviceId', 'DeviceName', 'UPN', 'UserEmail', 'UserName', 'OS', 'OSDescription', 'OSVersion', 'OwnerType', 'LastContact', 'ComplianceState', 'PolicyId', 'PolicyName', 'PolicyPlatformType', 'ReportStatus', 'DeviceModel', 'DeviceType', 'IMEI')
@@ -399,7 +399,7 @@ try
             }
             catch
             {
-                Write-Warning ("getCompliancePolicyDevicesReport failed for {0}: {1}" -f $pol.displayName, $_.Exception.Message)
+                Write-Warning ("getCompliancePolicyDevicesReport failed for {0}: {1}" -f $S_Pol.displayName, $_.Exception.Message)
                 break
             }
 
@@ -447,11 +447,11 @@ try
             $S_IxDevId = $S_ColIdx['DeviceId']
             $S_IxModel = $S_ColIdx['DeviceModel']
 
-            foreach ($row in $S_Values)
+            foreach ($S_Row in $S_Values)
             {
                 $S_RawState = if ($null -ne $S_IxState)
                 {
-                    [string]$row[$S_IxState]
+                    [string]$S_Row[$S_IxState]
                 }
                 else
                 {
@@ -486,11 +486,11 @@ try
                 if ($IncludeDeviceStatusDetails)
                 {
                     $S_DeviceStatusRows.Add([pscustomobject]@{
-                            PolicyName        = $pol.displayName
+                            PolicyName        = $S_Pol.displayName
                             PolicyOS          = $S_Os
                             DeviceId          = if ($null -ne $S_IxDevId)
                             {
-                                $row[$S_IxDevId]
+                                $S_Row[$S_IxDevId]
                             }
                             else
                             {
@@ -498,7 +498,7 @@ try
                             }
                             DeviceDisplayName = if ($null -ne $S_IxDevice)
                             {
-                                $row[$S_IxDevice]
+                                $S_Row[$S_IxDevice]
                             }
                             else
                             {
@@ -506,7 +506,7 @@ try
                             }
                             UserPrincipalName = if ($null -ne $S_IxUpn)
                             {
-                                $row[$S_IxUpn]
+                                $S_Row[$S_IxUpn]
                             }
                             else
                             {
@@ -514,7 +514,7 @@ try
                             }
                             OS                = if ($null -ne $S_IxOs)
                             {
-                                $row[$S_IxOs]
+                                $S_Row[$S_IxOs]
                             }
                             else
                             {
@@ -522,7 +522,7 @@ try
                             }
                             OSVersion         = if ($null -ne $S_IxOsVer)
                             {
-                                $row[$S_IxOsVer]
+                                $S_Row[$S_IxOsVer]
                             }
                             else
                             {
@@ -530,7 +530,7 @@ try
                             }
                             OwnerType         = if ($null -ne $S_IxOwner)
                             {
-                                $row[$S_IxOwner]
+                                $S_Row[$S_IxOwner]
                             }
                             else
                             {
@@ -538,7 +538,7 @@ try
                             }
                             LastContact       = if ($null -ne $S_IxLast)
                             {
-                                $row[$S_IxLast]
+                                $S_Row[$S_IxLast]
                             }
                             else
                             {
@@ -546,7 +546,7 @@ try
                             }
                             DeviceModel       = if ($null -ne $S_IxModel)
                             {
-                                $row[$S_IxModel]
+                                $S_Row[$S_IxModel]
                             }
                             else
                             {
@@ -585,9 +585,9 @@ try
             $null
         }
 
-        $S_AssignedGroupCount = if ($pol.assignments)
+        $S_AssignedGroupCount = if ($S_Pol.assignments)
         {
-            @($pol.assignments).Count
+            @($S_Pol.assignments).Count
         }
         else
         {
@@ -595,7 +595,7 @@ try
         }
 
         $S_PolicyReport.Add([pscustomobject]@{
-                DisplayName          = $pol.displayName
+                DisplayName          = $S_Pol.displayName
                 OperatingSystem      = $S_Os
                 OdataType            = $S_Odata
                 AssignmentCount      = $S_AssignedGroupCount
@@ -613,8 +613,8 @@ try
                 Unknown              = [int]$S_StatusCounts['Unknown']
                 TotalReporting       = $S_Total
                 PercentCompliant     = $S_PctCompliant
-                LastModifiedDateTime = $pol.lastModifiedDateTime
-                Id                   = $pol.id
+                LastModifiedDateTime = $S_Pol.lastModifiedDateTime
+                Id                   = $S_Pol.id
             }) | Out-Null
     }
 
@@ -710,21 +710,21 @@ try
     function ConvertTo-PieJson
     {
         param([System.Collections.IDictionary]$Map)
-        $entries = @()
-        foreach ($k in $Map.Keys)
+        $F_Entries = @()
+        foreach ($F_K in $Map.Keys)
         {
-            if ([int]$Map[$k] -gt 0)
+            if ([int]$Map[$F_K] -gt 0)
             {
-                $entries += [pscustomobject]@{ Label = $k; Value = [int]$Map[$k] }
+                $F_Entries += [pscustomobject]@{ Label = $F_K; Value = [int]$Map[$F_K] }
             }
         }
-        if (-not $entries -or $entries.Count -eq 0)
+        if (-not $F_Entries -or $F_Entries.Count -eq 0)
         {
             return '{"labels":[],"data":[]}'
         }
-        $labels = ($entries | ForEach-Object { '"' + $_.Label + '"' }) -join ','
-        $data = ($entries | ForEach-Object { $_.Value }) -join ','
-        "{`"labels`":[$labels],`"data`":[$data]}"
+        $F_Labels = ($F_Entries | ForEach-Object { '"' + $_.Label + '"' }) -join ','
+        $F_Data = ($F_Entries | ForEach-Object { $_.Value }) -join ','
+        "{`"labels`":[$F_Labels],`"data`":[$F_Data]}"
     }
 
     # Tenant pie data

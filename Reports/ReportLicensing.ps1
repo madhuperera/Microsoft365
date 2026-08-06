@@ -5,6 +5,12 @@
     Reports on Microsoft 365 licensing plans (subscribed SKUs) in the tenant.
     Exports CSV and HTML.
 
+.DESCRIPTION
+    Connects to Microsoft Graph and retrieves all subscribed SKUs from the tenant.
+    Reports on the licence name, active units, consumed units, available units, and
+    status of each plan. Optionally excludes free and trial SKUs. Exports results to
+    CSV and HTML.
+
 .PARAMETER OutputPath
     Path for the output CSV file. Defaults to a timestamped file in the current directory.
 
@@ -76,6 +82,27 @@ else
     Write-Host "Connecting to Microsoft Graph..." -ForegroundColor Cyan
     Connect-MgGraph -Scopes $S_RequiredGraphScopes -NoWelcome
     Write-Host "Connected to Microsoft Graph." -ForegroundColor Green
+}
+$S_ActiveContext = Get-MgContext
+Write-Host ""
+Write-Host "Active Graph context:" -ForegroundColor Cyan
+Write-Host "  Account    : $($S_ActiveContext.Account)" -ForegroundColor Cyan
+Write-Host "  TenantId   : $($S_ActiveContext.TenantId)" -ForegroundColor Cyan
+Write-Host "  Environment: $($S_ActiveContext.Environment)" -ForegroundColor Cyan
+Write-Host ""
+
+$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
+if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
+{
+    $S_ContextConfirmation = 'N'
+}
+else
+{
+    $S_ContextConfirmation = $S_ContextConfirmation.ToUpperInvariant()
+}
+if ($S_ContextConfirmation -ne 'Y')
+{
+    throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
 }
 
 try

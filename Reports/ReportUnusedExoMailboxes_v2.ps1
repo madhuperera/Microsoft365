@@ -117,8 +117,8 @@ if ($S_ContextConfirmation -ne 'Y')
 try
 {
   # Check for Exchange Online
-  $ModulesLoaded = Get-Module | Select-Object Name
-  If (!($ModulesLoaded -match "ExchangeOnlineManagement")) 
+  $S_ModulesLoaded = Get-Module | Select-Object Name
+  If (!($S_ModulesLoaded -match "ExchangeOnlineManagement")) 
   {
     Write-Host "Loading Exchange Online PowerShell module" -ForegroundColor Yellow
     Connect-ExchangeOnline -ShowBanner:$False -ErrorAction Stop
@@ -133,75 +133,75 @@ catch
 
 # Find mailboxes and check if they are unused
 $S_Now = Get-Date -format s
-[int]$i = 0
+[int]$S_I = 0
 Write-Host "Looking for User Mailboxes..."
-[array]$Mbx = Get-ExoMailbox -RecipientTypeDetails UserMailbox -ResultSize Unlimited | `
+[array]$S_Mbx = Get-ExoMailbox -RecipientTypeDetails UserMailbox -ResultSize Unlimited | `
     Select-Object DisplayName, DistinguishedName, UserPrincipalName, ExternalDirectoryObjectId | Sort-Object DisplayName
-  Write-Host ("Reporting {0} mailboxes..." -f $Mbx.Count)
-  $Report = [System.Collections.Generic.List[Object]]::new() 
-  ForEach ($M in $Mbx) 
+  Write-Host ("Reporting {0} mailboxes..." -f $S_Mbx.Count)
+  $S_Report = [System.Collections.Generic.List[Object]]::new() 
+  ForEach ($S_M in $S_Mbx) 
   {
-    $i++  
-    Write-Host ("`n`nProcessing {0} {1}/{2}" -f $M.DisplayName, $i, $Mbx.count) 
-    $LastActive = $Null
-    $Log = Export-MailboxDiagnosticLogs -Identity $M.DistinguishedName -ExtendedProperties
-    $xml = [xml]($Log.MailboxLog) 
-    $LastEMail = $Null; $LastCalendar = $Null; $LastContacts = $Null; $LastFile = $Null
-    $LastEmail = ($xml.Properties.MailboxTable.Property | Where-Object {$_.Name -eq "LastEmailTimeCurrentValue"}).Value
-    $LastCalendar = ($xml.Properties.MailboxTable.Property | Where-Object {$_.Name -eq "LastCalendarTimeCurrentValue"}).Value
-    $LastContacts = ($xml.Properties.MailboxTable.Property | Where-Object {$_.Name -eq "LastContactsTimeCurrentValue"}).Value
-    $LastFile = ($xml.Properties.MailboxTable.Property | Where-Object {$_.Name -eq "LastFileTimeCurrentValue"}).Value
-    $LastLogonTime = ($xml.Properties.MailboxTable.Property | Where-Object {$_.Name -eq "LastLogonTime"}).Value 
-    $LastActive = ($xml.Properties.MailboxTable.Property | Where-Object {$_.Name -eq "LastUserActionWorkloadAggregateTime"}).Value 
+    $S_I++  
+    Write-Host ("`n`nProcessing {0} {1}/{2}" -f $S_M.DisplayName, $S_I, $S_Mbx.count) 
+    $S_LastActive = $Null
+    $S_Log = Export-MailboxDiagnosticLogs -Identity $S_M.DistinguishedName -ExtendedProperties
+    $S_Xml = [xml]($S_Log.MailboxLog) 
+    $S_LastEMail = $Null; $S_LastCalendar = $Null; $S_LastContacts = $Null; $S_LastFile = $Null
+    $S_LastEmail = ($S_Xml.Properties.MailboxTable.Property | Where-Object {$_.Name -eq "LastEmailTimeCurrentValue"}).Value
+    $S_LastCalendar = ($S_Xml.Properties.MailboxTable.Property | Where-Object {$_.Name -eq "LastCalendarTimeCurrentValue"}).Value
+    $S_LastContacts = ($S_Xml.Properties.MailboxTable.Property | Where-Object {$_.Name -eq "LastContactsTimeCurrentValue"}).Value
+    $S_LastFile = ($S_Xml.Properties.MailboxTable.Property | Where-Object {$_.Name -eq "LastFileTimeCurrentValue"}).Value
+    $S_LastLogonTime = ($S_Xml.Properties.MailboxTable.Property | Where-Object {$_.Name -eq "LastLogonTime"}).Value 
+    $S_LastActive = ($S_Xml.Properties.MailboxTable.Property | Where-Object {$_.Name -eq "LastUserActionWorkloadAggregateTime"}).Value 
     
     # This massaging of dates is to accommodate the different U.S. date format returned by Export-MailboxDiagnosticsData
-    [datetime]$LastActiveDateTime = Get-Date
-    If ([string]::IsNullOrEmpty($LastActive)) 
+    [datetime]$S_LastActiveDateTime = Get-Date
+    If ([string]::IsNullOrEmpty($S_LastActive)) 
     {
-        $DaysSinceActive = "N/A"
+        $S_DaysSinceActive = "N/A"
     }
-    If (($LastActive.IndexOf("M") -gt -0)) { # U.S. format date with AM or PM in it
-        $LastActiveDateTime = [datetime]$LastActive
+    If (($S_LastActive.IndexOf("M") -gt -0)) { # U.S. format date with AM or PM in it
+        $S_LastActiveDateTime = [datetime]$S_LastActive
     } Else {
-        $LastActiveDateTime = Get-Date ($LastActive) 
+        $S_LastActiveDateTime = Get-Date ($S_LastActive) 
     }
-    If ($LastActiveDateTime) 
+    If ($S_LastActiveDateTime) 
     {
-        $DaysSinceActive = (New-TimeSpan -Start $LastActiveDateTime -End $S_Now).Days 
+        $S_DaysSinceActive = (New-TimeSpan -Start $S_LastActiveDateTime -End $S_Now).Days 
     }
   
     # Get Mailbox statistics
-    $Stats = (Get-ExoMailboxStatistics -Identity $M.DistinguishedName)
-    $MbxSize = ($Stats.TotalItemSize.Value.ToString()).Split("(")[0] 
+    $S_Stats = (Get-ExoMailboxStatistics -Identity $S_M.DistinguishedName)
+    $S_MbxSize = ($S_Stats.TotalItemSize.Value.ToString()).Split("(")[0] 
     # Get last Sign in from Entra ID sign in logs
-    $LastUserSignIn = $null
-    $LastUserSignIn = (Get-MgAuditLogSignIn -Filter "UserId eq '$($M.ExternalDirectoryObjectId)'" -Top 1).CreatedDateTime
+    $S_LastUserSignIn = $null
+    $S_LastUserSignIn = (Get-MgAuditLogSignIn -Filter "UserId eq '$($S_M.ExternalDirectoryObjectId)'" -Top 1).CreatedDateTime
     Start-Sleep -Milliseconds $S_GraphRequestDelayMilliseconds # To avoid throttling from Graph
-    If ($LastUserSignIn) 
+    If ($S_LastUserSignIn) 
     {
-       $LastUserSignInDate = Get-Date($LastUserSignIn) -format g 
+       $S_LastUserSignInDate = Get-Date($S_LastUserSignIn) -format g 
     } 
     else
     {
-       $LastUserSignInDate = "No sign in records found in last 30 days" 
+       $S_LastUserSignInDate = "No sign in records found in last 30 days" 
     }
     # Get account enabled status
-    $AccountEnabled = (Get-MgUser -UserId $M.ExternalDirectoryObjectId -Property AccountEnabled).AccountEnabled
-    $ReportLine = [PSCustomObject][Ordered]@{ 
-        Mailbox         = $M.DisplayName 
-        UPN             = $M.UserPrincipalName
-        Enabled         = $AccountEnabled
-        Items           = $Stats.ItemCount 
-        Size            = $MbxSize 
-        LastLogonExo    = $LastLogonTime
-        LastLogonAD     = $LastUserSignInDate
-        DaysSinceActive = $DaysSinceActive
-        LastActive      = $LastActive
-        LastEmail       = $LastEmail
-        LastCalendar    = $LastCalendar
-        LastContacts    = $LastContacts
-        LastFile        = $LastFile } 
-    $Report.Add($ReportLine) 
+    $S_AccountEnabled = (Get-MgUser -UserId $S_M.ExternalDirectoryObjectId -Property AccountEnabled).AccountEnabled
+    $S_ReportLine = [PSCustomObject][Ordered]@{ 
+        Mailbox         = $S_M.DisplayName 
+        UPN             = $S_M.UserPrincipalName
+        Enabled         = $S_AccountEnabled
+        Items           = $S_Stats.ItemCount 
+        Size            = $S_MbxSize 
+        LastLogonExo    = $S_LastLogonTime
+        LastLogonAD     = $S_LastUserSignInDate
+        DaysSinceActive = $S_DaysSinceActive
+        LastActive      = $S_LastActive
+        LastEmail       = $S_LastEmail
+        LastCalendar    = $S_LastCalendar
+        LastContacts    = $S_LastContacts
+        LastFile        = $S_LastFile } 
+    $S_Report.Add($S_ReportLine) 
   } 
 
 if ($RequiredGridView)
@@ -210,7 +210,7 @@ if ($RequiredGridView)
   if (Get-Command Out-GridView -ErrorAction SilentlyContinue)
   {
     Write-Host "`n`nDisplaying report in Grid View..."
-    $Report | Sort-Object DaysSinceActive -Descending | Out-GridView
+    $S_Report | Sort-Object DaysSinceActive -Descending | Out-GridView
   }
   else
   {
@@ -223,24 +223,24 @@ if ($ReportInExcel)
     If (Get-Module ImportExcel -ListAvailable) 
     { 
         Import-Module ImportExcel -ErrorAction SilentlyContinue 
-        $ExcelOutputFile = "$OutputPath.xlsx"
-        $Report | Export-Excel -Path $ExcelOutputFile -WorksheetName $S_ReportWorksheetName -Title ("$S_ReportNameTitle {0}" -f (Get-Date -format 'dd-MMM-yyyy')) -TitleBold -TableName $S_ReportWorksheetName
-        $OutputFile = $ExcelOutputFile 
+        $S_ExcelOutputFile = "$OutputPath.xlsx"
+        $S_Report | Export-Excel -Path $S_ExcelOutputFile -WorksheetName $S_ReportWorksheetName -Title ("$S_ReportNameTitle {0}" -f (Get-Date -format 'dd-MMM-yyyy')) -TitleBold -TableName $S_ReportWorksheetName
+        $S_OutputFile = $S_ExcelOutputFile 
     }
     else 
     { 
-        $CSVOutputFile = "$OutputPath.csv"
-        $Report | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
-        $Outputfile = $CSVOutputFile 
+        $S_CSVOutputFile = "$OutputPath.csv"
+        $S_Report | Export-Csv -Path $S_CSVOutputFile -NoTypeInformation -Encoding Utf8 
+        $S_OutputFile = $S_CSVOutputFile 
     } 
 }
 else
 {
-    $CSVOutputFile = "$OutputPath.csv"
-    $Report | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
-    $Outputfile = $CSVOutputFile 
+    $S_CSVOutputFile = "$OutputPath.csv"
+    $S_Report | Export-Csv -Path $S_CSVOutputFile -NoTypeInformation -Encoding Utf8 
+    $S_OutputFile = $S_CSVOutputFile 
 }
-Write-Host ("Output data is available in {0}" -f $OutputFile)
+Write-Host ("Output data is available in {0}" -f $S_OutputFile)
 
 $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
 if ($S_DisconnectChoice -eq 'Y')
