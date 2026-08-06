@@ -36,6 +36,7 @@
   - [Reports — Intune](#reports--intune)
   - [Reports — Licensing](#reports--licensing)
   - [Reports — DNS and email security](#reports--dns-and-email-security)
+  - [Reports — Defender for Endpoint](#reports--defender-for-endpoint)
   - [Reports — Microsoft Teams](#reports--microsoft-teams)
   - [Reports — Microsoft Defender](#reports--microsoft-defender)
   - [Exchange — Calendar permission management](#exchange--calendar-permission-management)
@@ -62,6 +63,7 @@ Scripts cover the following Microsoft 365 workloads:
 - Microsoft Teams — Teams governance and tenant security posture reporting
 - Microsoft Defender for Endpoint — network device inventory and firmware reporting
 - Microsoft 365 licensing — plan and SKU reporting
+- Microsoft Teams — governance, ownership, and tenant settings review
 - Incident response — audit log analysis and sign-in investigation
 
 ---
@@ -97,7 +99,7 @@ Microsoft365/
 | Folder | Purpose |
 |--------|---------|
 | `.github/` | Repository workflow automation and instruction files used to guide maintenance tasks. |
-| `Reports/` | All reporting scripts for every Microsoft 365 workload. Scripts produce CSV or HTML output suitable for review or client delivery. |
+| `Reports/` | All reporting scripts for every Microsoft 365 workload. Scripts produce CSV, HTML, or console output suitable for review, operational checking, or client delivery. |
 | `Exchange/` | Exchange Online operational scripts and supporting assets. Workload-specific non-reporting tooling lives here. |
 | `Exchange/AntiMalwarePolicy/` | Reference files for Microsoft Defender anti-malware policy configuration, including a curated list of file types to block. |
 | `Exchange/ManageCalendarPermissionsViaGroups/` | Scripts for bulk management of mailbox calendar permissions via distribution group membership. |
@@ -123,13 +125,14 @@ Install-Module Microsoft.Graph.Users -Scope CurrentUser
 Install-Module Microsoft.Graph.Groups -Scope CurrentUser
 Install-Module Microsoft.Graph.Reports -Scope CurrentUser
 Install-Module Microsoft.Graph.Identity.DirectoryManagement -Scope CurrentUser
+Install-Module Microsoft.Graph.Identity.SignIns -Scope CurrentUser
 Install-Module Microsoft.Graph.Applications -Scope CurrentUser
 Install-Module Microsoft.Graph.Teams -Scope CurrentUser
 
 # Exchange Online Management
 Install-Module ExchangeOnlineManagement -Scope CurrentUser
 
-# Microsoft Teams Management
+# Microsoft Teams PowerShell
 Install-Module MicrosoftTeams -Scope CurrentUser
 ```
 
@@ -137,7 +140,8 @@ Install-Module MicrosoftTeams -Scope CurrentUser
 
 Required permissions vary per script. High-level requirements are listed in the script catalogue below. Always check the individual script header for the exact scopes or roles required.
 
-Most reporting scripts require **read-only** Microsoft Graph delegated permissions, Exchange Online read access, or Microsoft Teams read access. Scripts that can disable accounts require additional write permissions.
+Most reporting scripts require **read-only** Microsoft Graph delegated permissions or Exchange Online read access. Scripts that can disable accounts require additional write permissions.
+Some scripts use workload-specific access instead, such as Microsoft Teams administrative roles or a Microsoft Defender for Endpoint application permission.
 
 ---
 
@@ -168,6 +172,11 @@ All scripts in this section are located in [`Reports/`](Reports/).
 | [`ReportMemberMFA_v3.ps1`](Reports/ReportMemberMFA_v3.ps1) | Legacy versioned member MFA coverage report retained in the repository. Like v1, it reports MFA coverage across Member users (Guests excluded) and classifies each user as Modern Auth, Legacy Auth, or No MFA with inactivity-day filtering. Exports to CSV and HTML. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users`, `Microsoft.Graph.Reports`, `Microsoft.Graph.Identity.SignIns`; `User.Read.All`, `AuditLog.Read.All`, `UserAuthenticationMethod.Read.All`, `Policy.Read.All` |
 | [`ReportMemberMFA_v4.ps1`](Reports/ReportMemberMFA_v4.ps1) | Reports MFA coverage across Member users with an `-IncludeDisabled` option to include disabled member accounts in the assessment. Supports `-Test`. Exports to CSV and HTML. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users`, `Microsoft.Graph.Reports`, `Microsoft.Graph.Identity.SignIns`; `User.Read.All`, `AuditLog.Read.All`, `UserAuthenticationMethod.Read.All`, `Policy.Read.All` |
 | [`ReportAADAuthenticationMethods.ps1`](Reports/ReportAADAuthenticationMethods.ps1) | Reports Windows Hello for Business authentication method registrations for enabled Entra ID users. Exports to CSV. | `UserAuthenticationMethod.Read.All` |
+
+Related files for the versioned member MFA reports:
+[`ReportMemberMFA-Guide.html`](Reports/ReportMemberMFA-Guide.html),
+[`ReportMemberMFA-KNOWN-ISSUES.md`](Reports/ReportMemberMFA-KNOWN-ISSUES.md), and
+[`ReportMemberMFA-CHANGELOG.md`](Reports/ReportMemberMFA-CHANGELOG.md).
 
 </details>
 
@@ -241,6 +250,21 @@ All scripts in this section are located in [`Reports/`](Reports/).
 
 ---
 
+### Reports — Defender for Endpoint
+
+All scripts in this section are located in [`Reports/`](Reports/).
+
+<details>
+<summary>View Defender for Endpoint reporting scripts</summary>
+
+| Script | Description | Key permissions / modules |
+|--------|-------------|--------------------------|
+| [`ReportMdeNetworkDevices.ps1`](Reports/ReportMdeNetworkDevices.ps1) | Reports on network devices discovered by Microsoft Defender for Endpoint, including device identity, operating system, IP data, sensor status, and available hardware or firmware metadata. Supports `-DaysBack` and `-Test` filters. Exports to CSV and HTML. | Built-in PowerShell REST cmdlets; Microsoft Defender for Endpoint application permission `Machine.Read.All` |
+
+</details>
+
+---
+
 ### Reports — Microsoft Teams
 
 All scripts in this section are located in [`Reports/`](Reports/).
@@ -250,7 +274,7 @@ All scripts in this section are located in [`Reports/`](Reports/).
 
 | Script | Description | Key permissions / modules |
 |--------|-------------|--------------------------|
-| [`ReportMSTeamsSettings.ps1`](Reports/ReportMSTeamsSettings.ps1) | Reports tenant-wide Microsoft Teams governance and security settings and lists any Teams that have no owner. Exports CSV and HTML reports. | `MicrosoftTeams` — Global Reader, Teams Administrator, or Teams Communications Administrator |
+| [`ReportMSTeamsSettings.ps1`](Reports/ReportMSTeamsSettings.ps1) | Reports tenant-wide Microsoft Teams governance and security settings and lists Teams that have no owner. Exports a settings CSV, an ownerless Teams CSV, and an HTML report. | `MicrosoftTeams` — Global Reader, Teams Administrator, or Teams Communications Administrator |
 | [`ReportTeamsGroups.ps1`](Reports/ReportTeamsGroups.ps1) | Reports on all Microsoft Teams-enabled groups in the tenant, including display name, mail nickname, visibility (Public/Private), creation date, and owner and member counts. Exports to CSV. | `Microsoft.Graph.Authentication`, `Microsoft.Graph.Groups`, `Microsoft.Graph.Teams`, `Microsoft.Graph.Identity.DirectoryManagement`; `Group.Read.All`, `GroupMember.Read.All`, `Team.ReadBasic.All` |
 
 </details>
