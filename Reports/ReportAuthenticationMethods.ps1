@@ -28,10 +28,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if (-not $OutputPath)
+$S_OutputPath = $OutputPath
+
+if (-not $S_OutputPath)
 {
     $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-    $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportAuthenticationMethods_$S_Timestamp.csv"
+    $S_OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportAuthenticationMethods_$S_Timestamp.csv"
 }
 
 $S_RequiredGraphScopes = @(
@@ -164,8 +166,8 @@ $S_Report | Group-Object Method | Sort-Object Count -Descending | Select Name, C
 
 $S_Report | Out-GridView
 
-$S_Report | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
-Write-Host "Report exported to: $OutputPath" -ForegroundColor Green
+$S_Report | Export-Csv -Path $S_OutputPath -NoTypeInformation -Encoding UTF8
+Write-Host "Report exported to: $S_OutputPath" -ForegroundColor Green
 
 $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
 if ($S_DisconnectChoice -eq 'Y')
