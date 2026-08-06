@@ -127,39 +127,41 @@ try
     Write-Host "  Date range : $S_FromIso  ->  $S_ToIso"
     Write-Host "  Days       : $Days"
 
-    function Get-GraphNextLink {
+    function Get-GraphNextLink
+    {
         param(
             [Parameter(Mandatory = $false)]
-            [object]$Response
+            [object]$F_Response
         )
 
-        if (-not $Response)
+        if (-not $F_Response)
         {
             return $null
         }
 
-        if ($Response.PSObject.Properties.Name -contains '@odata.nextLink')
+        if ($F_Response.PSObject.Properties.Name -contains '@odata.nextLink')
         {
-            return [string]$Response.'@odata.nextLink'
+            return [string]$F_Response.'@odata.nextLink'
         }
 
         return $null
     }
 
-    function Get-GraphPageValues {
+    function Get-GraphPageValues
+    {
         param(
             [Parameter(Mandatory = $false)]
-            [object]$Response
+            [object]$F_Response
         )
 
-        if (-not $Response)
+        if (-not $F_Response)
         {
             return @()
         }
 
-        if ($Response.PSObject.Properties.Name -contains 'value')
+        if ($F_Response.PSObject.Properties.Name -contains 'value')
         {
-            return @($Response.value)
+            return @($F_Response.value)
         }
 
         return @()
@@ -199,7 +201,7 @@ try
         while ($S_NextLink)
         {
             $S_Response = Invoke-MgGraphRequest -Method GET -Uri $S_NextLink -OutputType PSObject
-            $S_PageValues = Get-GraphPageValues -Response $S_Response
+            $S_PageValues = Get-GraphPageValues -F_Response $S_Response
 
             if ($S_PageValues.Count -gt 0)
             {
@@ -207,7 +209,7 @@ try
                 Write-Host "  Retrieved $($S_AllSignIns.Count) interactive sign-in record(s) so far..." -ForegroundColor Gray
             }
 
-            $S_NextLink = Get-GraphNextLink -Response $S_Response
+            $S_NextLink = Get-GraphNextLink -F_Response $S_Response
             if ($S_NextLink)
             {
                 [System.Threading.Thread]::Sleep($S_GraphRequestDelayMilliseconds)
@@ -227,7 +229,7 @@ try
         while ($S_NextLink)
         {
             $S_Response = Invoke-MgGraphRequest -Method GET -Uri $S_NextLink -OutputType PSObject
-            $S_PageValues = Get-GraphPageValues -Response $S_Response
+            $S_PageValues = Get-GraphPageValues -F_Response $S_Response
 
             if ($S_PageValues.Count -gt 0)
             {
@@ -235,7 +237,7 @@ try
                 Write-Host "  Retrieved $($S_AllSignIns.Count) total sign-in record(s) so far..." -ForegroundColor Gray
             }
 
-            $S_NextLink = Get-GraphNextLink -Response $S_Response
+            $S_NextLink = Get-GraphNextLink -F_Response $S_Response
             if ($S_NextLink)
             {
                 [System.Threading.Thread]::Sleep($S_GraphRequestDelayMilliseconds)
