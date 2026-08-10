@@ -185,6 +185,7 @@ All scripts in this section are located in [`Reports/`](Reports/).
 | [`ReportMailboxQuota.ps1`](Reports/ReportMailboxQuota.ps1) | Reports on mailbox quota usage for all user mailboxes. Accepts a warning threshold percentage parameter. Exports to CSV. | `ExchangeOnlineManagement` |
 | [`ReportCalendarPermissions.ps1`](Reports/ReportCalendarPermissions.ps1) | Reports on calendar permissions for all members of a specified distribution group. Outputs to the console. | `ExchangeOnlineManagement` |
 | [`ReportUnusedExoMailboxes.ps1`](Reports/ReportUnusedExoMailboxes.ps1) | Finds and reports on Exchange Online mailboxes that show no recent activity, cross-referencing Entra ID sign-in data. Exports to CSV. | `ExchangeOnlineManagement`, `Microsoft.Graph.Authentication`, `Microsoft.Graph.Users` |
+| [`ReportPurviewSIT.ps1`](Reports/ReportPurviewSIT.ps1) | Reports which Microsoft Purview sensitive information types exist across Exchange, OneDrive, SharePoint and Teams, where they live and at what confidence. Tag-driven selection by jurisdiction, data class or priority. Census mode for item counts, Full mode for item-level detail with derived confidence bands. Exports to CSV and a self-contained HTML report. See the [guide](Reports/ReportPurviewSIT-Guide.md) and [output schema](Reports/ReportPurviewSIT-OutputSchema.md). | `ExchangeOnlineManagement`; Purview role `Content Explorer List Viewer` |
 
 </details>
 
