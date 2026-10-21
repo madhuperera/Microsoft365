@@ -53,7 +53,7 @@ param(
 	[bool]$SkipIfLastSignInIsNEVER = $true
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
 # Scopes required for ReportOnly mode. Disable mode additionally requires User.ReadWrite.All.
 $S_RequiredGraphScopes = @(
