@@ -53,7 +53,7 @@ param(
 	[bool]$SkipIfLastSignInIsNEVER = $true
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
 # Scopes required for ReportOnly mode. Disable mode additionally requires User.ReadWrite.All.
 $S_RequiredGraphScopes = @(
@@ -73,6 +73,22 @@ try
 	Import-Module Microsoft.Graph.Users -ErrorAction Stop
 
 	$S_Context = Get-MgContext
+	if ($S_Context)
+	{
+		Write-Host "Existing Graph session detected:" -ForegroundColor Yellow
+		Write-Host "  Account : $($S_Context.Account)" -ForegroundColor Yellow
+		Write-Host "  TenantId: $($S_Context.TenantId)" -ForegroundColor Yellow
+		Write-Host "  Scopes  : $($S_Context.Scopes -join ', ')" -ForegroundColor Yellow
+		Write-Host ""
+
+		$S_Choice = Read-Host "Use existing session? [Y] Yes  [N] Disconnect and reconnect  (Default: Y)"
+		if ($S_Choice -eq 'N')
+		{
+			Disconnect-MgGraph | Out-Null
+			$S_Context = $null
+		}
+	}
+
 	if (-not $S_Context)
 	{
 		$S_Scopes = if ($Mode -eq "Disable")
@@ -85,6 +101,28 @@ try
 		}
 
 		Connect-MgGraph -Scopes $S_Scopes -ErrorAction Stop | Out-Null
+	}
+
+	$S_ActiveContext = Get-MgContext
+	Write-Host ""
+	Write-Host "Active Graph context:" -ForegroundColor Cyan
+	Write-Host "  Account    : $($S_ActiveContext.Account)" -ForegroundColor Cyan
+	Write-Host "  TenantId   : $($S_ActiveContext.TenantId)" -ForegroundColor Cyan
+	Write-Host "  Environment: $($S_ActiveContext.Environment)" -ForegroundColor Cyan
+	Write-Host ""
+
+	$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
+	if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
+	{
+		$S_ContextConfirmation = 'N'
+	}
+	else
+	{
+		$S_ContextConfirmation = $S_ContextConfirmation.ToUpperInvariant()
+	}
+	if ($S_ContextConfirmation -ne 'Y')
+	{
+		throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
 	}
 
 	$S_CutoffDate = (Get-Date).AddDays(-$InactiveDays)
