@@ -38,6 +38,7 @@
   - [Reports — DNS and email security](#reports--dns-and-email-security)
   - [Reports — Microsoft Teams](#reports--microsoft-teams)
   - [Reports — Microsoft Defender](#reports--microsoft-defender)
+  - [Exchange — Distribution list member visibility](#exchange--distribution-list-member-visibility)
   - [Exchange — Calendar permission management](#exchange--calendar-permission-management)
   - [Exchange — Transport rules](#exchange--transport-rules)
   - [Exchange — Anti-malware policy](#exchange--anti-malware-policy)
@@ -86,6 +87,7 @@ Microsoft365/
 ├── Reports/                     All reporting scripts across all workloads
 ├── Exchange/
 │   ├── AntiMalwarePolicy/       Anti-malware policy reference files
+│   ├── DistributionListMemberVisibility/     Distribution list address-list visibility report and remediation
 │   ├── ManageCalendarPermissionsViaGroups/   Bulk calendar permission scripts
 │   └── TransportRules/          Transport rule supporting assets (HTML templates)
 ├── Incident_Response/           Incident response and investigation scripts
@@ -100,6 +102,7 @@ Microsoft365/
 | `Reports/` | All reporting scripts for every Microsoft 365 workload. Scripts produce CSV or HTML output suitable for review or client delivery. |
 | `Exchange/` | Exchange Online operational scripts and supporting assets. Workload-specific non-reporting tooling lives here. |
 | `Exchange/AntiMalwarePolicy/` | Reference files for Microsoft Defender anti-malware policy configuration, including a curated list of file types to block. |
+| `Exchange/DistributionListMemberVisibility/` | Reports distribution list membership and which members are hidden from the address lists, and unhides them on request. Lives here rather than in `Reports/` because it writes to the tenant. |
 | `Exchange/ManageCalendarPermissionsViaGroups/` | Scripts for bulk management of mailbox calendar permissions via distribution group membership. |
 | `Exchange/TransportRules/` | HTML templates and assets used in Exchange Online transport rules. |
 | `Incident_Response/` | Reactive investigation scripts for use during a security incident. Scripts query audit logs and sign-in data to support analysis. |
@@ -268,6 +271,25 @@ All scripts in this section are located in [`Reports/`](Reports/).
 | Script | Description | Key permissions / modules |
 |--------|-------------|--------------------------|
 | [`ReportMdeNetworkDevices.ps1`](Reports/ReportMdeNetworkDevices.ps1) | Reports on network devices discovered by Microsoft Defender for Endpoint, including device inventory and firmware/hardware detail from MDE APIs. Supports a lookback filter and test mode. Exports to CSV and HTML. | Entra ID application permission `Machine.Read.All` (WindowsDefenderATP) |
+
+</details>
+
+---
+
+### Exchange — Distribution list member visibility
+
+Scripts are located in [`Exchange/DistributionListMemberVisibility/`](Exchange/DistributionListMemberVisibility/). See the [folder guide](Exchange/DistributionListMemberVisibility/README.md).
+
+Reports every distribution list with its members and each member's address-list visibility, then unhides the hidden ones on request. Read-only unless `-Unhide` is supplied, which is also why it sits here rather than in `Reports/`.
+
+Three different mechanisms can clear the flag, and the report says which one each member needs: the Exchange `Set-*` cmdlet for the recipient type, **Microsoft Graph** for Entra ID guest users (whose visibility is the `showInAddressList` property on the Entra ID object, not an Exchange setting), and **on-premises Active Directory** for directory-synchronized objects, which Exchange Online refuses to write.
+
+<details>
+<summary>View distribution list visibility scripts</summary>
+
+| Script | Description | Key permissions / modules |
+|--------|-------------|--------------------------|
+| [`ReportDistributionListMemberVisibility.ps1`](Exchange/DistributionListMemberVisibility/ReportDistributionListMemberVisibility.ps1) | Reports all distribution lists, mail-enabled security groups and (opt-in) dynamic distribution groups and Microsoft 365 Groups, with every member's `HiddenFromAddressListsEnabled` state. Supports `-Unhide` to clear the flag, `-UnhideGroups` for the lists themselves, `-WhatIf`, `-TestMode`, per-group scoping, and per-recipient targeting via `-Member`, `-ExcludeMember` (both accepting wildcards) or an interactive `-SelectMembers` picker. Routes Entra ID guests through `Update-MgUser -ShowInAddressList` (connecting to Graph before Exchange, since the two modules ship incompatible MSAL versions and the first to authenticate wins) and flags directory-synced objects as needing an on-premises change. Writes a companion guest remediation script when guests are left unchanged. Exports to CSV and a self-contained, brand-agnostic HTML report. | `ExchangeOnlineManagement`; `Microsoft.Graph.Authentication` and `Microsoft.Graph.Users` only when unhiding guests. Report needs `View-Only Recipients`; `-Unhide` needs `Mail Recipients`; guests need `User.ReadWrite.All` |
 
 </details>
 
