@@ -10,7 +10,9 @@ release tag that fixed it.
 
 Files in scope:
 
-- [`ReportMemberMFA_v4.ps1`](ReportMemberMFA_v4.ps1) — current working version
+- [`ReportMemberMFA_prod.ps1`](ReportMemberMFA_prod.ps1) — production version (release 1.3.0, formerly `_v4`)
+- [`ReportMemberMFA_dev.ps1`](ReportMemberMFA_dev.ps1) — development version
+- [`ReportMemberMFA_v4.ps1`](ReportMemberMFA_v4.ps1) — frozen v4 reference
 - [`ReportMemberMFA_v3.ps1`](ReportMemberMFA_v3.ps1) — frozen v3 reference
 - [`ReportMemberMFA_v2.ps1`](ReportMemberMFA_v2.ps1) — frozen v2 reference
 - [`ReportMemberMFA_v1.ps1`](ReportMemberMFA_v1.ps1) — frozen v1 reference
@@ -56,12 +58,12 @@ Files in scope:
 ## Resolved
 
 - **User table defaults to enabled accounts** — Resolved in **1.3.0**
-  ([`ReportMemberMFA_v4.ps1`](ReportMemberMFA_v4.ps1)). The Active filter on
+  ([`ReportMemberMFA_prod.ps1`](ReportMemberMFA_prod.ps1), formerly `_v4`). The Active filter on
   the user table starts on a new **Enabled (any)** option, so picking a
   posture lines up with the matching summary card on first render. The old
   `All` behaviour is still available as **All (incl. Disabled)**.
 - **Enabled-only by default + `-IncludeDisabled` opt-in** — Resolved in
-  **1.3.0** ([`ReportMemberMFA_v4.ps1`](ReportMemberMFA_v4.ps1)). The script
+  **1.3.0** ([`ReportMemberMFA_prod.ps1`](ReportMemberMFA_prod.ps1), formerly `_v4`). The script
   pushes `accountEnabled eq true` into the Graph `$filter` by default so
   Disabled accounts are never fetched. The Disabled card renders as
   **N/A** unless `-IncludeDisabled` is passed.

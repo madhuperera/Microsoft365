@@ -99,6 +99,12 @@ placeholders (or use `-Include`) before enabling:
 - **`_v2` scripts** are the cross-platform variants (DNS-over-HTTPS instead of the
   Windows-only `Resolve-DnsName`, guarded `Out-GridView`) and run on macOS/Linux/Windows.
   The orchestrator references the latest variant of each report.
+- **`_prod` / `_dev` scripts** (currently `ReportMemberMFA` only) follow a two-name
+  lifecycle. `<Report>_prod.ps1` is the released script and the only name other scripts
+  and projects should reference. `<Report>_dev.ps1` is the working copy for new features.
+  `_PromoteReport.ps1 -ReportName <Report>` retires the current `_prod` to the next
+  frozen `<Report>_vN.ps1` snapshot and copies `_dev` over `_prod`. Run it with `-WhatIf`
+  first to preview the changes.
 
 ---
 
