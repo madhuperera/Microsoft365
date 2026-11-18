@@ -1455,7 +1455,7 @@ try
                     $_.AuthenticationStrengthName } else
                 {
                     '<unknown>' }
-                $S_GrantParts += "AuthStrength: $S_AsName"
+                $S_GrantParts += "AuthStrength: $([System.Web.HttpUtility]::HtmlEncode([string]$S_AsName))"
             }
             $S_GrantText = ($S_GrantParts -join '<br>')
             if ($_.MfaIsBypassable)
@@ -1625,15 +1625,19 @@ try
     {
         Write-Warning "Could not retrieve tenant display name: $_"
     }
+    # Tenant-supplied text is HTML-encoded before it is written into the report.
+    $S_TenantNameEnc = [System.Web.HttpUtility]::HtmlEncode([string]$S_TenantName)
+    $S_TenantDomEnc  = [System.Web.HttpUtility]::HtmlEncode([string]$S_TenantPrimaryDom)
+    $S_TenantIdEnc   = [System.Web.HttpUtility]::HtmlEncode([string]$S_TenantId)
     $S_TenantLabel = if ($S_TenantName -and $S_TenantPrimaryDom)
     {
-        "$S_TenantName ($S_TenantPrimaryDom &middot; $S_TenantId)" }
+        "$S_TenantNameEnc ($S_TenantDomEnc &middot; $S_TenantIdEnc)" }
     elseif ($S_TenantName)
     {
-        "$S_TenantName ($S_TenantId)" }
+        "$S_TenantNameEnc ($S_TenantIdEnc)" }
     else
     {
-        "$S_TenantId" }
+        "$S_TenantIdEnc" }
 
     if ($null -eq $Script:S_SecurityDefaultsEnabled)
     {

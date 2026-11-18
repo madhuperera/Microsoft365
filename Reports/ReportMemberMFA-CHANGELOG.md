@@ -50,6 +50,10 @@ host changelogs and tags for many reports without collisions.
   is tiered Ignored and flagged in the Grants column; if the strength cannot
   be read the policy is capped at Acceptable. Policies that use *Require
   multifactor authentication* are unaffected.
+- **HTML encoding fix.** The Authentication Strength name in the Grants
+  column and the tenant name and domain in the report subtitle are now
+  HTML-encoded, so markup in those tenant-supplied values is shown as text
+  instead of being interpreted by the browser.
 
 ### Known issues
 - See [`ReportMemberMFA-KNOWN-ISSUES.md`](ReportMemberMFA-KNOWN-ISSUES.md) for
