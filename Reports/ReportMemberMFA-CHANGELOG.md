@@ -1,9 +1,11 @@
 # Changelog — Report: Member MFA
 
-All notable changes to the active `ReportMemberMFA_vN.ps1` script and its
-companion guide [`ReportMemberMFA-Guide.html`](ReportMemberMFA-Guide.html).
-Older revisions are kept as frozen reference copies (`_v1`, `_v2`, …)
-alongside the active version.
+All notable changes to the production script
+[`ReportMemberMFA_prod.ps1`](ReportMemberMFA_prod.ps1) and its companion guide
+[`ReportMemberMFA-Guide.html`](ReportMemberMFA-Guide.html). New work is done in
+[`ReportMemberMFA_dev.ps1`](ReportMemberMFA_dev.ps1) and promoted with
+[`_PromoteReport.ps1`](_PromoteReport.ps1). Older revisions are kept as frozen
+reference copies (`_v1`, `_v2`, …) alongside the production script.
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`.
@@ -14,6 +16,40 @@ host changelogs and tags for many reports without collisions.
 ---
 
 ## [Unreleased]
+
+### Changed
+- **Two-name lifecycle (`_prod` / `_dev`).** Release 1.3.0 is now published
+  as [`ReportMemberMFA_prod.ps1`](ReportMemberMFA_prod.ps1). It is identical
+  to [`ReportMemberMFA_v4.ps1`](ReportMemberMFA_v4.ps1) apart from the
+  filename used in the three help examples. Other scripts and projects should
+  reference the `_prod` filename only. `_RunDiscovery.ps1` now calls `_prod`.
+- [`ReportMemberMFA_v4.ps1`](ReportMemberMFA_v4.ps1) is unchanged and is now
+  a frozen reference copy.
+- [`ReportMemberMFA_dev.ps1`](ReportMemberMFA_dev.ps1) starts as a copy of
+  1.3.0 (help examples renamed only) and is where new features are built.
+
+### Added
+- [`_PromoteReport.ps1`](_PromoteReport.ps1) promotes `_dev` to `_prod` and
+  retires the outgoing `_prod` as the next frozen `_vN` snapshot.
+
+### In development (`ReportMemberMFA_dev.ps1` only, not yet promoted)
+- **Passkey flag.** New `HasPasskey` CSV column, appended after `RiskScore`
+  (`True` / `False` / `Unknown` when methods are not readable). It is `True`
+  when the user has a passkey (FIDO2) registered: a FIDO2 security key, a
+  passkey in Microsoft Authenticator, or a synced passkey. `MFA_Registered`
+  is unchanged, so these users still report as `Modern Auth`. The HTML report
+  gains a **Passkey** column at the end of the user table, a **Passkey**
+  filter, and a **Passkey Registered** card in the Auth Methods section of
+  the full and Summary reports.
+- **Authentication Strength check for Ideal policies.** A policy that uses
+  *Require authentication strength* instead of *Require multifactor
+  authentication* was already eligible for the Ideal tier, but the strength
+  itself was not inspected. The strength is now resolved before tiering. The
+  policy is Ideal only when every combination the strength allows is
+  multifactor. If the strength allows a single-factor combination the policy
+  is tiered Ignored and flagged in the Grants column; if the strength cannot
+  be read the policy is capped at Acceptable. Policies that use *Require
+  multifactor authentication* are unaffected.
 
 ### Known issues
 - See [`ReportMemberMFA-KNOWN-ISSUES.md`](ReportMemberMFA-KNOWN-ISSUES.md) for
@@ -45,7 +81,8 @@ host changelogs and tags for many reports without collisions.
   Disabled accounts are fetched, their auth methods enumerated, the
   Disabled card and the table populate with real values, and the user
   table shows every account by default.
-  - [`ReportMemberMFA_v4.ps1`](ReportMemberMFA_v4.ps1) is the active script.
+  - Released as [`ReportMemberMFA_v4.ps1`](ReportMemberMFA_v4.ps1), now
+    published as [`ReportMemberMFA_prod.ps1`](ReportMemberMFA_prod.ps1).
   - [`ReportMemberMFA_v3.ps1`](ReportMemberMFA_v3.ps1) frozen as reference.
 
 ---
