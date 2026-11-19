@@ -264,8 +264,8 @@ try
 
     function Get-VersionSpread
     {
-        param([object[]]$Devices, [int]$Threshold)
-        $grouped = $Devices | Group-Object MajorVersion | Sort-Object {
+        param([object[]]$F_Devices, [int]$F_Threshold)
+        $F_Grouped = $F_Devices | Group-Object MajorVersion | Sort-Object {
             if ([string]::IsNullOrEmpty($_.Name))
             {
                 -1
@@ -275,36 +275,36 @@ try
                 [int]$_.Name
             }
         } -Descending
-        foreach ($g in $grouped)
+        foreach ($F_G in $F_Grouped)
         {
-            $ver = if ([string]::IsNullOrEmpty($g.Name))
+            $F_Ver = if ([string]::IsNullOrEmpty($F_G.Name))
             {
                 'Unknown'
             }
             else
             {
-                $g.Name
+                $F_G.Name
             }
-            $verNum = if ($ver -eq 'Unknown')
+            $F_VerNum = if ($F_Ver -eq 'Unknown')
             {
                 $null
             }
             else
             {
-                [int]$ver
+                [int]$F_Ver
             }
-            $outdated = ($null -ne $verNum -and $verNum -lt $Threshold)
+            $F_Outdated = ($null -ne $F_VerNum -and $F_VerNum -lt $F_Threshold)
             [pscustomobject]@{
-                Version  = $ver
-                Count    = $g.Count
-                Outdated = $outdated
+                Version  = $F_Ver
+                Count    = $F_G.Count
+                Outdated = $F_Outdated
             }
         }
     }
 
-    $S_AndroidSpread = @(Get-VersionSpread -Devices $S_AndroidDevices -Threshold $LatestSupportedAndroid)
-    $S_IosSpread = @(Get-VersionSpread -Devices $S_IosDevices     -Threshold $LatestSupportedIOS)
-    $S_IpadSpread = @(Get-VersionSpread -Devices $S_IpadDevices    -Threshold $LatestSupportedIOS)
+    $S_AndroidSpread = @(Get-VersionSpread -F_Devices $S_AndroidDevices -F_Threshold $LatestSupportedAndroid)
+    $S_IosSpread = @(Get-VersionSpread -F_Devices $S_IosDevices     -F_Threshold $LatestSupportedIOS)
+    $S_IpadSpread = @(Get-VersionSpread -F_Devices $S_IpadDevices    -F_Threshold $LatestSupportedIOS)
 
     # --- Output paths ---
     if (-not $S_ReportPath)
@@ -347,13 +347,13 @@ try
     # Build version spread cards HTML
     function Build-SpreadCardsHtml
     {
-        param([object[]]$Spread, [string]$PlatformLabel)
-        if (-not $Spread -or $Spread.Count -eq 0)
+        param([object[]]$F_Spread, [string]$F_PlatformLabel)
+        if (-not $F_Spread -or $F_Spread.Count -eq 0)
         {
-            return "<div class='dist-card'><div class='dist-label'>No $PlatformLabel devices</div><div class='dist-value'>0</div></div>"
+            return "<div class='dist-card'><div class='dist-label'>No $F_PlatformLabel devices</div><div class='dist-value'>0</div></div>"
         }
-        ($Spread | ForEach-Object {
-            $cls = if ($_.Outdated)
+        ($F_Spread | ForEach-Object {
+            $F_Cls = if ($_.Outdated)
             {
                 'dist-card outdated'
             }
@@ -361,7 +361,7 @@ try
             {
                 'dist-card'
             }
-            $badge = if ($_.Outdated)
+            $F_Badge = if ($_.Outdated)
             {
                 "<div class='outdated-badge'>Outdated</div>"
             }
@@ -369,25 +369,25 @@ try
             {
                 ''
             }
-            "<div class='$cls'><div class='dist-label'>$PlatformLabel $($_.Version)</div><div class='dist-value'>$($_.Count)</div>$badge</div>"
+            "<div class='$F_Cls'><div class='dist-label'>$F_PlatformLabel $($_.Version)</div><div class='dist-value'>$($_.Count)</div>$F_Badge</div>"
         }) -join "`n"
     }
 
-    $S_AndroidCardsHtml = Build-SpreadCardsHtml -Spread $S_AndroidSpread -PlatformLabel 'Android'
-    $S_IosCardsHtml = Build-SpreadCardsHtml -Spread $S_IosSpread     -PlatformLabel 'iOS'
-    $S_IpadCardsHtml = Build-SpreadCardsHtml -Spread $S_IpadSpread    -PlatformLabel 'iPadOS'
+    $S_AndroidCardsHtml = Build-SpreadCardsHtml -F_Spread $S_AndroidSpread -F_PlatformLabel 'Android'
+    $S_IosCardsHtml = Build-SpreadCardsHtml -F_Spread $S_IosSpread     -F_PlatformLabel 'iOS'
+    $S_IpadCardsHtml = Build-SpreadCardsHtml -F_Spread $S_IpadSpread    -F_PlatformLabel 'iPadOS'
 
     # Build chart data JSON
     function ConvertTo-ChartJson
     {
-        param([object[]]$Spread)
-        if (-not $Spread -or $Spread.Count -eq 0)
+        param([object[]]$F_Spread)
+        if (-not $F_Spread -or $F_Spread.Count -eq 0)
         {
             return '{"labels":[],"data":[],"outdated":[]}'
         }
-        $labels = ($Spread | ForEach-Object { '"' + $_.Version + '"' }) -join ','
-        $counts = ($Spread | ForEach-Object { $_.Count }) -join ','
-        $outFlag = ($Spread | ForEach-Object {
+        $F_Labels = ($F_Spread | ForEach-Object { '"' + $_.Version + '"' }) -join ','
+        $F_Counts = ($F_Spread | ForEach-Object { $_.Count }) -join ','
+        $F_OutFlag = ($F_Spread | ForEach-Object {
                 if ($_.Outdated)
                 {
                     'true'
@@ -397,12 +397,12 @@ try
                     'false'
                 }
             }) -join ','
-        "{`"labels`":[$labels],`"data`":[$counts],`"outdated`":[$outFlag]}"
+        "{`"labels`":[$F_Labels],`"data`":[$F_Counts],`"outdated`":[$F_OutFlag]}"
     }
 
-    $S_AndroidChartJson = ConvertTo-ChartJson -Spread $S_AndroidSpread
-    $S_IosChartJson = ConvertTo-ChartJson -Spread $S_IosSpread
-    $S_IpadChartJson = ConvertTo-ChartJson -Spread $S_IpadSpread
+    $S_AndroidChartJson = ConvertTo-ChartJson -F_Spread $S_AndroidSpread
+    $S_IosChartJson = ConvertTo-ChartJson -F_Spread $S_IosSpread
+    $S_IpadChartJson = ConvertTo-ChartJson -F_Spread $S_IpadSpread
 
     # Build table rows
     $S_TableRows = ($S_Report | Sort-Object Platform, DeviceName | ForEach-Object {

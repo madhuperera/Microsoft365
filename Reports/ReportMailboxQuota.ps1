@@ -86,9 +86,17 @@ try
         $S_TenantId = $S_ConnInfo.TenantID
     }
 }
-catch { }
-if (-not $S_TenantDisplayName) { $S_TenantDisplayName = 'Exchange Online' }
-if (-not $S_TenantId) { $S_TenantId = 'Unknown' }
+catch
+{
+}
+if (-not $S_TenantDisplayName)
+{
+    $S_TenantDisplayName = 'Exchange Online'
+}
+if (-not $S_TenantId)
+{
+    $S_TenantId = 'Unknown'
+}
 
 # --- Retrieve mailboxes ---
 if ($TestMode)

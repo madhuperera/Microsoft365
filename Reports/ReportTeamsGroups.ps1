@@ -315,11 +315,14 @@ try
         $F_OwnerRisk    = if ($_.OwnerCount -eq 0) { 'none' } elseif ($_.OwnerCount -eq 1) { 'single' } else { 'ok' }
 
         # Owner cell: list display names, with UPNs as tooltip; data-owners attribute holds lowercased names+UPNs for the filter
-        if ($_.OwnerCount -gt 0 -and $_.OwnerNames) {
+        if ($_.OwnerCount -gt 0 -and $_.OwnerNames)
+        {
             $F_OwnerNamesHtml = [System.Net.WebUtility]::HtmlEncode([string]$_.OwnerNames).Replace('; ', '<br>')
             $F_OwnerTitle     = [System.Net.WebUtility]::HtmlEncode([string]$_.OwnerUpns)
             $F_OwnerCell      = "<td title=`"$F_OwnerTitle`">$F_OwnerNamesHtml</td>"
-        } else {
+        }
+        else
+        {
             $F_OwnerCell = '<td><em style="color:#c0392b;">(none)</em></td>'
         }
         $F_OwnerSearch = (([string]$_.OwnerNames + ' ' + [string]$_.OwnerUpns)).ToLower()
