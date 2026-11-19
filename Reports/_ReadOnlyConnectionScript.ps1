@@ -78,6 +78,8 @@ $S_RequiredGraphScopes = @(
     'UserAuthenticationMethod.Read.All'
 )
 
+$S_GraphRequestDelayMilliseconds = 5
+
 # ---------------------------------------------------------------------------
 # Inspect any existing Microsoft Graph context
 # ---------------------------------------------------------------------------

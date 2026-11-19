@@ -37,7 +37,7 @@ param(
 	[int]$InactiveDays = 180
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
 $S_RequiredGraphScopes = @(
 	'Application.Read.All'
@@ -83,6 +83,27 @@ try
 		Connect-MgGraph -Scopes $S_RequiredGraphScopes -ErrorAction Stop | Out-Null
 	}
 	$S_ExistingContext = Get-MgContext
+
+	Write-Host ""
+	Write-Host "Active Graph context:" -ForegroundColor Cyan
+	Write-Host "  Account    : $($S_ExistingContext.Account)" -ForegroundColor Cyan
+	Write-Host "  TenantId   : $($S_ExistingContext.TenantId)" -ForegroundColor Cyan
+	Write-Host "  Environment: $($S_ExistingContext.Environment)" -ForegroundColor Cyan
+	Write-Host ""
+
+	$S_ContextConfirmation = Read-Host "Proceed with this Graph context? [Y] Yes  [N] No  (Default: N)"
+	if ([string]::IsNullOrWhiteSpace($S_ContextConfirmation))
+	{
+		$S_ContextConfirmation = 'N'
+	}
+	else
+	{
+		$S_ContextConfirmation = $S_ContextConfirmation.ToUpperInvariant()
+	}
+	if ($S_ContextConfirmation -ne 'Y')
+	{
+		throw "Operation cancelled. Please reconnect to the correct tenant and account, then run again."
+	}
 
 	# --- Tenant info ---
 	$S_TenantDisplayName = $null

@@ -46,7 +46,7 @@ param(
     [string]$ReportPath
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
 $S_ReportPath = $ReportPath
 
@@ -265,7 +265,7 @@ try
     function Get-VersionSpread
     {
         param([object[]]$Devices, [int]$Threshold)
-        $grouped = $Devices | Group-Object MajorVersion | Sort-Object {
+        $F_Grouped = $Devices | Group-Object MajorVersion | Sort-Object {
             if ([string]::IsNullOrEmpty($_.Name))
             {
                 -1
@@ -275,29 +275,29 @@ try
                 [int]$_.Name
             }
         } -Descending
-        foreach ($g in $grouped)
+        foreach ($F_G in $F_Grouped)
         {
-            $ver = if ([string]::IsNullOrEmpty($g.Name))
+            $F_Ver = if ([string]::IsNullOrEmpty($F_G.Name))
             {
                 'Unknown'
             }
             else
             {
-                $g.Name
+                $F_G.Name
             }
-            $verNum = if ($ver -eq 'Unknown')
+            $F_VerNum = if ($F_Ver -eq 'Unknown')
             {
                 $null
             }
             else
             {
-                [int]$ver
+                [int]$F_Ver
             }
-            $outdated = ($null -ne $verNum -and $verNum -lt $Threshold)
+            $F_Outdated = ($null -ne $F_VerNum -and $F_VerNum -lt $Threshold)
             [pscustomobject]@{
-                Version  = $ver
-                Count    = $g.Count
-                Outdated = $outdated
+                Version  = $F_Ver
+                Count    = $F_G.Count
+                Outdated = $F_Outdated
             }
         }
     }
@@ -353,7 +353,7 @@ try
             return "<div class='dist-card'><div class='dist-label'>No $PlatformLabel devices</div><div class='dist-value'>0</div></div>"
         }
         ($Spread | ForEach-Object {
-            $cls = if ($_.Outdated)
+            $F_Cls = if ($_.Outdated)
             {
                 'dist-card outdated'
             }
@@ -361,7 +361,7 @@ try
             {
                 'dist-card'
             }
-            $badge = if ($_.Outdated)
+            $F_Badge = if ($_.Outdated)
             {
                 "<div class='outdated-badge'>Outdated</div>"
             }
@@ -369,7 +369,7 @@ try
             {
                 ''
             }
-            "<div class='$cls'><div class='dist-label'>$PlatformLabel $($_.Version)</div><div class='dist-value'>$($_.Count)</div>$badge</div>"
+            "<div class='$F_Cls'><div class='dist-label'>$PlatformLabel $($_.Version)</div><div class='dist-value'>$($_.Count)</div>$F_Badge</div>"
         }) -join "`n"
     }
 
@@ -385,9 +385,9 @@ try
         {
             return '{"labels":[],"data":[],"outdated":[]}'
         }
-        $labels = ($Spread | ForEach-Object { '"' + $_.Version + '"' }) -join ','
-        $counts = ($Spread | ForEach-Object { $_.Count }) -join ','
-        $outFlag = ($Spread | ForEach-Object {
+        $F_Labels = ($Spread | ForEach-Object { '"' + $_.Version + '"' }) -join ','
+        $F_Counts = ($Spread | ForEach-Object { $_.Count }) -join ','
+        $F_OutFlag = ($Spread | ForEach-Object {
                 if ($_.Outdated)
                 {
                     'true'
@@ -397,7 +397,7 @@ try
                     'false'
                 }
             }) -join ','
-        "{`"labels`":[$labels],`"data`":[$counts],`"outdated`":[$outFlag]}"
+        "{`"labels`":[$F_Labels],`"data`":[$F_Counts],`"outdated`":[$F_OutFlag]}"
     }
 
     $S_AndroidChartJson = ConvertTo-ChartJson -Spread $S_AndroidSpread

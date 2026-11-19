@@ -38,7 +38,7 @@ param(
     [string]$ReportPath
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
 $S_ReportPath = $ReportPath
 
@@ -85,11 +85,11 @@ $S_PlatformTypeMap = @{
 function Get-AppPlatform
 {
     param([string]$OdataType)
-    foreach ($plat in $S_PlatformTypeMap.Keys)
+    foreach ($F_Plat in $S_PlatformTypeMap.Keys)
     {
-        if ($S_PlatformTypeMap[$plat] -contains $OdataType)
+        if ($S_PlatformTypeMap[$F_Plat] -contains $OdataType)
         {
-            return $plat
+            return $F_Plat
         }
     }
     return 'Other'
@@ -99,11 +99,11 @@ function Get-AppVersion
 {
     param($App)
     # Try common version property names across app types
-    foreach ($prop in @('displayVersion', 'version', 'versionName', 'productVersion', 'identityVersion', 'bundleVersion'))
+    foreach ($F_Prop in @('displayVersion', 'version', 'versionName', 'productVersion', 'identityVersion', 'bundleVersion'))
     {
-        if ($App.PSObject.Properties[$prop] -and $App.$prop)
+        if ($App.PSObject.Properties[$F_Prop] -and $App.$F_Prop)
         {
-            return [string]$App.$prop
+            return [string]$App.$F_Prop
         }
     }
     return ''
@@ -215,15 +215,15 @@ try
 
     # --- Resolve group display names referenced by assignments ---
     $S_GroupIds = New-Object System.Collections.Generic.HashSet[string]
-    foreach ($app in $S_Apps)
+    foreach ($S_App in $S_Apps)
     {
-        if ($app.assignments)
+        if ($S_App.assignments)
         {
-            foreach ($asn in $app.assignments)
+            foreach ($S_Asn in $S_App.assignments)
             {
-                if ($asn.target -and $asn.target.groupId)
+                if ($S_Asn.target -and $S_Asn.target.groupId)
                 {
-                    [void]$S_GroupIds.Add([string]$asn.target.groupId)
+                    [void]$S_GroupIds.Add([string]$S_Asn.target.groupId)
                 }
             }
         }
@@ -233,16 +233,16 @@ try
     if ($S_GroupIds.Count -gt 0)
     {
         Write-Host ("Resolving {0} group display names..." -f $S_GroupIds.Count) -ForegroundColor Cyan
-        foreach ($gid in $S_GroupIds)
+        foreach ($S_Gid in $S_GroupIds)
         {
             try
             {
-                $S_G = Invoke-MgGraphRequest -Method GET -Uri ("https://graph.microsoft.com/v1.0/groups/{0}?`$select=id,displayName" -f $gid) -ErrorAction Stop
-                $S_GroupLookup[$gid] = $S_G.displayName
+                $S_G = Invoke-MgGraphRequest -Method GET -Uri ("https://graph.microsoft.com/v1.0/groups/{0}?`$select=id,displayName" -f $S_Gid) -ErrorAction Stop
+                $S_GroupLookup[$S_Gid] = $S_G.displayName
             }
             catch
             {
-                $S_GroupLookup[$gid] = "(Unknown / Deleted: $gid)"
+                $S_GroupLookup[$S_Gid] = "(Unknown / Deleted: $S_Gid)"
             }
         }
     }
@@ -265,22 +265,22 @@ try
     }
 
     # --- Build report data ---
-    $S_Report = foreach ($app in $S_Apps)
+    $S_Report = foreach ($S_App in $S_Apps)
     {
-        $S_Plat = Get-AppPlatform -OdataType $app.'@odata.type'
-        $S_Ver = Get-AppVersion -App $app
-        $S_TypeShort = ($app.'@odata.type' -replace '#microsoft.graph.', '')
+        $S_Plat = Get-AppPlatform -OdataType $S_App.'@odata.type'
+        $S_Ver = Get-AppVersion -App $S_App
+        $S_TypeShort = ($S_App.'@odata.type' -replace '#microsoft.graph.', '')
 
         $S_Required = New-Object System.Collections.Generic.List[string]
         $S_Available = New-Object System.Collections.Generic.List[string]
         $S_Uninstall = New-Object System.Collections.Generic.List[string]
 
-        if ($app.assignments)
+        if ($S_App.assignments)
         {
-            foreach ($asn in $app.assignments)
+            foreach ($S_Asn in $S_App.assignments)
             {
-                $S_Name = Resolve-AssignmentTarget -Target $asn.target
-                switch ($asn.intent)
+                $S_Name = Resolve-AssignmentTarget -Target $S_Asn.target
+                switch ($S_Asn.intent)
                 {
                     'required' { $S_Required.Add($S_Name)  | Out-Null }
                     'available' { $S_Available.Add($S_Name) | Out-Null }
@@ -291,15 +291,15 @@ try
         }
 
         [pscustomobject]@{
-            DisplayName     = $app.displayName
+            DisplayName     = $S_App.displayName
             Platform        = $S_Plat
             AppType         = $S_TypeShort
             Version         = $S_Ver
-            Publisher       = $app.publisher
-            IsAssigned      = [bool]$app.isAssigned
-            PublishingState = $app.publishingState
-            CreatedDateTime = $app.createdDateTime
-            LastModified    = $app.lastModifiedDateTime
+            Publisher       = $S_App.publisher
+            IsAssigned      = [bool]$S_App.isAssigned
+            PublishingState = $S_App.publishingState
+            CreatedDateTime = $S_App.createdDateTime
+            LastModified    = $S_App.lastModifiedDateTime
             RequiredCount   = $S_Required.Count
             AvailableCount  = $S_Available.Count
             UninstallCount  = $S_Uninstall.Count
