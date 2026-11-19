@@ -55,7 +55,7 @@ param(
     [string]$ReportPath
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
 $S_ReportPath = $ReportPath
 
@@ -429,7 +429,7 @@ try
             return "<div class='dist-card'><div class='dist-label'>No $Label devices</div><div class='dist-value'>0</div></div>"
         }
         ($Items | ForEach-Object {
-            $cls = if ($_.Outdated)
+            $F_Cls = if ($_.Outdated)
             {
                 'dist-card outdated'
             }
@@ -437,7 +437,7 @@ try
             {
                 'dist-card'
             }
-            $badge = if ($_.Outdated)
+            $F_Badge = if ($_.Outdated)
             {
                 "<div class='outdated-badge'>Outdated</div>"
             }
@@ -445,7 +445,7 @@ try
             {
                 ''
             }
-            $buildText = if ($_.WinBuild -eq 0)
+            $F_BuildText = if ($_.WinBuild -eq 0)
             {
                 'Unknown'
             }
@@ -453,7 +453,7 @@ try
             {
                 $_.WinBuild
             }
-            "<div class='$cls'><div class='dist-label'>$Label $buildText</div><div class='dist-value'>$($_.Total)</div>$badge</div>"
+            "<div class='$F_Cls'><div class='dist-label'>$Label $F_BuildText</div><div class='dist-value'>$($_.Total)</div>$F_Badge</div>"
         }) -join "`n"
     }
 
@@ -473,8 +473,8 @@ try
         {
             return '{"labels":[],"data":[],"outdated":[]}'
         }
-        $labels = ($Items | ForEach-Object {
-                $b = if ($_.WinBuild -eq 0)
+        $F_Labels = ($Items | ForEach-Object {
+                $F_Build = if ($_.WinBuild -eq 0)
                 {
                     'Unknown'
                 }
@@ -482,10 +482,10 @@ try
                 {
                     [string]$_.WinBuild
                 }
-                '"' + $b + '"'
+                '"' + $F_Build + '"'
             }) -join ','
-        $counts = ($Items | ForEach-Object { $_.Total }) -join ','
-        $outFlag = ($Items | ForEach-Object {
+        $F_Counts = ($Items | ForEach-Object { $_.Total }) -join ','
+        $F_OutFlag = ($Items | ForEach-Object {
                 if ($_.Outdated)
                 {
                     'true'
@@ -495,7 +495,7 @@ try
                     'false'
                 }
             }) -join ','
-        "{`"labels`":[$labels],`"data`":[$counts],`"outdated`":[$outFlag]}"
+        "{`"labels`":[$F_Labels],`"data`":[$F_Counts],`"outdated`":[$F_OutFlag]}"
     }
 
     $S_Win10ChartJson = ConvertTo-ChartJson -Items $S_Win10Items

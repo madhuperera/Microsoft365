@@ -66,7 +66,7 @@ param(
 	)
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
 $S_RequiredGraphScopes = @(
 	'User.Read.All'
