@@ -30,10 +30,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if (-not $OutputPath)
+$S_OutputPath = $OutputPath
+
+if (-not $S_OutputPath)
 {
     $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-    $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportUsersWithManagers_$S_Timestamp.csv"
+    $S_OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportUsersWithManagers_$S_Timestamp.csv"
 }
 
 $S_RequiredGraphScopes = @(
@@ -94,15 +96,18 @@ $S_Users = Get-MgUser -All -Filter "assignedLicenses/`$count ne 0 and accountEna
 
 $S_UsersWithManagers = @()
 
-foreach ($user in $S_Users) {
+foreach ($user in $S_Users)
+{
     Write-Progress -Activity "Processing users" -Status "Checking $($user.DisplayName)" -PercentComplete (($S_UsersWithManagers.Count / $S_Users.Count) * 100)
     
     # Get manager for each user
-    try {
+    try
+    {
         Start-Sleep -Milliseconds $S_GraphRequestDelayMilliseconds
         $manager = Get-MgUserManager -UserId $user.Id -ErrorAction SilentlyContinue
         
-        if ($manager) {
+        if ($manager)
+        {
             $S_UsersWithManagers += [PSCustomObject]@{
                 DisplayName        = $user.DisplayName
                 UserPrincipalName  = $user.UserPrincipalName
@@ -114,7 +119,8 @@ foreach ($user in $S_Users) {
             }
         }
     }
-    catch {
+    catch
+    {
         # User has no manager assigned, skip
         continue
     }
@@ -122,11 +128,11 @@ foreach ($user in $S_Users) {
 
 Write-Progress -Activity "Processing users" -Completed
 
-$S_UsersWithManagers | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
+$S_UsersWithManagers | Export-Csv -Path $S_OutputPath -NoTypeInformation -Encoding UTF8
 
 Write-Host "`nExport complete!" -ForegroundColor Green
 Write-Host "Total users with managers: $($S_UsersWithManagers.Count)" -ForegroundColor Yellow
-Write-Host "File saved to: $OutputPath" -ForegroundColor Yellow
+Write-Host "File saved to: $S_OutputPath" -ForegroundColor Yellow
 
 $S_DisconnectChoice = Read-Host "`nDisconnect from Microsoft Graph? [Y] Yes  [N] Keep session  (Default: N)"
 if ($S_DisconnectChoice -eq 'Y')

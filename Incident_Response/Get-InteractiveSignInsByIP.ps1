@@ -127,7 +127,8 @@ try
     Write-Host "  Date range : $S_FromIso  ->  $S_ToIso"
     Write-Host "  Days       : $Days"
 
-    function Get-GraphNextLink {
+    function Get-GraphNextLink
+    {
         param(
             [Parameter(Mandatory = $false)]
             [object]$Response
@@ -146,7 +147,8 @@ try
         return $null
     }
 
-    function Get-GraphPageValues {
+    function Get-GraphPageValues
+    {
         param(
             [Parameter(Mandatory = $false)]
             [object]$Response

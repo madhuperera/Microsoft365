@@ -45,6 +45,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+$S_OutputPath = $OutputPath
+
 $S_RequiredGraphScopes = @(
     'User.Read.All'
     'AuditLog.Read.All'
@@ -52,10 +54,10 @@ $S_RequiredGraphScopes = @(
 
 $S_GraphRequestDelayMilliseconds = 5
 
-if (-not $OutputPath)
+if (-not $S_OutputPath)
 {
     $S_Timestamp = Get-Date -Format 'yyyy-MM-dd_HHmm'
-    $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportUnusedExoMailboxes_$S_Timestamp"
+    $S_OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportUnusedExoMailboxes_$S_Timestamp"
 }
 
 $S_ReportNameTitle = "Unused Mailboxes Report"
@@ -117,8 +119,8 @@ if ($S_ContextConfirmation -ne 'Y')
 try
 {
   # Check for Exchange Online
-  $ModulesLoaded = Get-Module | Select-Object Name
-  If (!($ModulesLoaded -match "ExchangeOnlineManagement")) 
+  $S_ModulesLoaded = Get-Module | Select-Object Name
+  If (!($S_ModulesLoaded -match "ExchangeOnlineManagement")) 
   {
     Write-Host "Loading Exchange Online PowerShell module" -ForegroundColor Yellow
     Connect-ExchangeOnline -ShowBanner:$False -ErrorAction Stop
@@ -215,20 +217,20 @@ if ($ReportInExcel)
     If (Get-Module ImportExcel -ListAvailable) 
     { 
         Import-Module ImportExcel -ErrorAction SilentlyContinue 
-        $ExcelOutputFile = "$OutputPath.xlsx"
+        $ExcelOutputFile = "$S_OutputPath.xlsx"
         $Report | Export-Excel -Path $ExcelOutputFile -WorksheetName $S_ReportWorksheetName -Title ("$S_ReportNameTitle {0}" -f (Get-Date -format 'dd-MMM-yyyy')) -TitleBold -TableName $S_ReportWorksheetName
         $OutputFile = $ExcelOutputFile 
     }
     else 
     { 
-        $CSVOutputFile = "$OutputPath.csv"
+        $CSVOutputFile = "$S_OutputPath.csv"
         $Report | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
         $Outputfile = $CSVOutputFile 
     } 
 }
 else
 {
-    $CSVOutputFile = "$OutputPath.csv"
+    $CSVOutputFile = "$S_OutputPath.csv"
     $Report | Export-Csv -Path $CSVOutputFile -NoTypeInformation -Encoding Utf8 
     $Outputfile = $CSVOutputFile 
 }

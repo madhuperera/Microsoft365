@@ -85,15 +85,17 @@ param(
 
 # ── Setup ──────────────────────────────────────────────────────────────────────
 $ErrorActionPreference = 'Stop'
+
+$S_OutputPath = $OutputPath
 Add-Type -AssemblyName System.Web
 
-if (-not $OutputPath)
+if (-not $S_OutputPath)
 {
     $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-    $OutputPath  = Join-Path (Get-Location).Path "ReportMdeNetworkDevices_$S_Timestamp.csv"
+    $S_OutputPath  = Join-Path (Get-Location).Path "ReportMdeNetworkDevices_$S_Timestamp.csv"
 }
 
-$S_HtmlPath = [System.IO.Path]::ChangeExtension($OutputPath, '.html')
+$S_HtmlPath = [System.IO.Path]::ChangeExtension($S_OutputPath, '.html')
 
 # ── Acquire MDE API token (client credentials) ─────────────────────────────────
 Write-Host "`nAcquiring MDE API token..." -ForegroundColor Cyan
@@ -279,8 +281,8 @@ Possible causes:
     Write-Progress -Activity "Processing Network Devices" -Completed
 
     # ── Export CSV ─────────────────────────────────────────────────────────────
-    $S_Results | Export-Csv -Path $OutputPath -NoTypeInformation -Encoding UTF8
-    Write-Host "`nCSV exported to  : $OutputPath" -ForegroundColor Green
+    $S_Results | Export-Csv -Path $S_OutputPath -NoTypeInformation -Encoding UTF8
+    Write-Host "`nCSV exported to  : $S_OutputPath" -ForegroundColor Green
     Write-Host "Total rows       : $($S_Results.Count)" -ForegroundColor Green
 
     # ── Calculate Statistics ───────────────────────────────────────────────────
@@ -303,11 +305,15 @@ Possible causes:
     )
 
     # ── Helper: safe HTML encode ───────────────────────────────────────────────
-    function ConvertTo-SafeHtml { param([string]$F_Text)
+    function ConvertTo-SafeHtml
+    {
+        param([string]$F_Text)
         if ([string]::IsNullOrWhiteSpace($F_Text)) { return '<span style="color:#999">—</span>' }
         return [System.Web.HttpUtility]::HtmlEncode($F_Text)
     }
-    function ConvertTo-HtmlEncoded { param([string]$F_Text)
+    function ConvertTo-HtmlEncoded
+    {
+        param([string]$F_Text)
         return [System.Web.HttpUtility]::HtmlEncode([string]$F_Text)
     }
 

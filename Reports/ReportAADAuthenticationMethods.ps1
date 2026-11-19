@@ -27,10 +27,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if (-not $OutputPath)
+$S_OutputPath = $OutputPath
+
+if (-not $S_OutputPath)
 {
     $S_Timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-    $OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportAADAuthenticationMethods_$S_Timestamp.csv"
+    $S_OutputPath = Join-Path -Path (Get-Location).Path -ChildPath "ReportAADAuthenticationMethods_$S_Timestamp.csv"
 }
 
 $S_RequiredGraphScopes = @(
@@ -120,8 +122,8 @@ foreach ($S_Member in $S_AllUsers)
     }
 }
 
-$S_AllData | Export-Csv -Path $OutputPath -NoTypeInformation
-Write-Host "Report exported to: $OutputPath" -ForegroundColor Green
+$S_AllData | Export-Csv -Path $S_OutputPath -NoTypeInformation
+Write-Host "Report exported to: $S_OutputPath" -ForegroundColor Green
 
 $S_DisconnectChoice = Read-Host "Disconnect from Microsoft Graph now? [Y] Yes  [N] No  (Default: N)"
 if ([string]::IsNullOrWhiteSpace($S_DisconnectChoice))
